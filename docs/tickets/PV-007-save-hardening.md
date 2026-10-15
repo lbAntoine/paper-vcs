@@ -122,3 +122,11 @@ can happen.
   which is outside this ticket's scope.
 - Coordinator decision: fix all three in one small round, verified by the coordinator without
   a new review (wording, one assertion, re-wrap).
+
+### GREEN (review round 1) · rust-engineer · 2026-10-16
+
+- `OutOfSyncWithGit` message now says nothing was saved or changed, that a later version will
+  support this, and to run `git log <line>`. No short id: the tests match the variant as
+  `{ line: l }` without `..`, so adding a field would break them. No reset advice.
+- `02-cli.md` matches and the paragraph is re-wrapped.
+- The deleted-branch test also asserts nothing was written (`before`/`after`).

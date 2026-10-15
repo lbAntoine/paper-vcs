@@ -72,7 +72,7 @@ pub enum SaveError {
     #[error("none of these paths has unsaved changes: {}", paths.join(", "))]
     NoChangesAt { paths: Vec<String> },
     #[error(
-        "the line '{line}' was changed with plain git since paper last saw it; paper can't save on top of that yet"
+        "the line '{line}' was changed with plain git since paper last saw it; paper can't save on top of that yet (a later version will). Nothing was saved or changed. Run `git log {line}` to see what changed"
     )]
     OutOfSyncWithGit { line: LineName },
     #[error(

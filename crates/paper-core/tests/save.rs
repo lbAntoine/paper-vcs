@@ -919,6 +919,7 @@ fn a_deleted_line_branch_is_out_of_sync_with_git() {
     let (dir, mut project) = project_with(&[("a.tex", "a")]);
     git(dir.path(), &["update-ref", "-d", "refs/heads/main"]);
     write(dir.path(), "a.tex", "a2");
+    let before = stored(dir.path(), &project);
 
     let err = project
         .save(&request("No branch", PathSelection::All))
@@ -931,6 +932,7 @@ fn a_deleted_line_branch_is_out_of_sync_with_git() {
     let message = err.to_string();
     assert!(!message.contains("new commits"), "{message}");
     assert!(message.contains("main"), "{message}");
+    assert_eq!(stored(dir.path(), &project), before);
 }
 
 #[cfg(unix)]

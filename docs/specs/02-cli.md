@@ -98,8 +98,10 @@ Other states it reports:
   saved too, and the result lists them.
 - If the line changed with plain git since paper last saw it (new commits, a `git reset`, or
   a deleted branch), `save` refuses and writes nothing: saving on top of that isn't
-  supported yet. If git
-  is on another branch (or detached), it refuses too and says to run `git switch <line>`.
+  supported yet, and a later version will. The error names the line and points to
+  `git log <line>` to see what changed; it never suggests a command that could drop git
+  commits. If git is on another branch (or detached), it refuses too and says to run
+  `git switch <line>`.
 - An empty draft means a no-op: `Nothing to save.` (exit 0).
 - If conflict markers are still present in files being saved: warn, and require `--with-conflicts`.
 - **Effect:** the draft becomes a save on the current line, the line advances, a new empty
