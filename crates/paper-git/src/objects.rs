@@ -59,3 +59,19 @@ pub enum TreeEdit {
         path: String,
     },
 }
+
+/// How a file is stored in a tree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileKind {
+    Regular,
+    Executable,
+    /// The blob holds the link target.
+    Symlink,
+}
+
+/// A file in a tree, as returned by [`GitRepo::tree_files`](crate::GitRepo::tree_files).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TreeFile {
+    pub blob: BlobId,
+    pub kind: FileKind,
+}

@@ -5,7 +5,8 @@ use std::path::Path;
 use std::process::Command;
 
 use paper_git::{
-    ChangeId, CommitId, GitRepo, GitTime, Identity, NewCommit, Signature, TreeEdit, TreeId,
+    ChangeId, CommitId, FileKind, GitRepo, GitTime, Identity, NewCommit, Signature, TreeEdit,
+    TreeFile, TreeId,
 };
 use tempfile::TempDir;
 
@@ -264,4 +265,37 @@ fn rejects_branch_names_git_does_not_accept() {
         repo.set_head_branch("bad..name", "test"),
         Err(paper_git::GitError::InvalidBranchName { .. })
     ));
+}
+
+#[test]
+fn tree_files_lists_every_file_recursively_with_its_kind() {
+    let (_dir, repo) = fresh_repo();
+    let blob = repo.write_blob(b"x").unwrap();
+    let upsert = |path: &str, executable| TreeEdit::Upsert {
+        path: path.to_owned(),
+        blob: blob.clone(),
+        executable,
+    };
+    let tree = repo
+        .edit_tree(
+            &repo.empty_tree().unwrap(),
+            &[
+                upsert("sections/intro.tex", false),
+                upsert("build.sh", true),
+            ],
+        )
+        .unwrap();
+
+    let files = repo.tree_files(&tree).unwrap();
+    let file = |kind| TreeFile {
+        blob: blob.clone(),
+        kind,
+    };
+    assert_eq!(
+        files.into_iter().collect::<Vec<_>>(),
+        vec![
+            ("build.sh".to_owned(), file(FileKind::Executable)),
+            ("sections/intro.tex".to_owned(), file(FileKind::Regular)),
+        ]
+    );
 }
