@@ -111,3 +111,10 @@ and wrapped `GitError` / `SnapshotError` / `ViewError` / I/O errors, in the styl
 ## Summary
 
 ## Handoff log
+
+### RED · test-author · 2026-10-16
+- Tests: crates/paper-core/tests/save.rs (24 tests: 5 for `Project::snapshot`, 19 for `Project::save`), crates/paper-core/src/tree_diff.rs (4 unit tests)
+- Failing on: todo!() in `Project::snapshot` (7 tests, directly or via helpers), `Project::save` (17) and `diff_trees` (4); all 28 new tests fail on a todo!(), none on an assertion yet. The 12 init, 11 snapshot, paper-git and other pre-existing tests still pass.
+- Stubs: `tree_diff::diff_trees`, `Project::snapshot`, `Project::save`, `DraftState`, `SaveRequest`, `PathSelection`, `SaveOutcome`, `Saved`, `SaveError` (all in `project/save.rs`, re-exported from `project`); `pub mod tree_diff` in lib.rs. The `SnapshotOptions` field on `Project` is left to GREEN (an unread field would trip dead_code).
+- Interpretations to confirm: `DraftState` fields are `changes`, `skipped`, `large`. `NoChangesAt` lists every unmatched path of `Only` and `AllBut` (tests compare sorted). A path matches a directory only at a component boundary (`sec` does not match `sections/...`). The message check runs before looking for changes, so a blank message is `MissingMessage` even with nothing to save. HEAD attached to another branch is `OutOfSyncWithGit`. Tests that expect an unchanged store after `NoChangesAt` or `NothingToSave` call `project.snapshot()` first, because save snapshots before selecting.
+- Questions: none

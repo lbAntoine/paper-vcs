@@ -1,6 +1,7 @@
 //! A paper project: a git repository plus paper's own state in `.git/paper/`.
 
 mod init;
+mod save;
 
 use std::fs;
 use std::io;
@@ -14,6 +15,7 @@ use crate::name::LineName;
 use crate::view::{View, ViewError};
 
 pub use init::{InitError, Initialized};
+pub use save::{DraftState, PathSelection, SaveError, SaveOutcome, SaveRequest, Saved};
 
 /// Version of the on-disk format in `.git/paper/`. Migrations are keyed on it.
 pub const FORMAT_VERSION: u32 = 1;
