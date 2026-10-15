@@ -1,7 +1,7 @@
 //! [`GitRepo`]: every git read and write paper does goes through here
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use gix::bstr::{BString, ByteSlice};
 use gix::objs::tree::EntryKind;
@@ -56,6 +56,13 @@ impl GitRepo {
         repo.committer_or_set_fallback(identity.name.as_str(), identity.email.as_str())
             .context("set the committer identity")?;
         Ok(Self { repo })
+    }
+
+    /// The working directory of the repository that contains `path`, searching upwards.
+    /// `None` if `path` isn't inside a repository with a working directory.
+    pub fn enclosing_workdir(path: &Path) -> Option<PathBuf> {
+        let repo = gix::discover(path).ok()?;
+        repo.workdir().map(Path::to_path_buf)
     }
 
     /// # Panics
@@ -297,6 +304,43 @@ impl GitRepo {
         {
             reference.delete().context(format!("delete {name}"))?;
         }
+        Ok(())
+    }
+
+    /// Every local branch (`refs/heads/*`) with the commit it points to, sorted by name.
+    ///
+    /// # Errors
+    ///
+    /// [`GitError::Gix`] if the references can't be read.
+    pub fn local_branches(&self) -> Result<Vec<(String, CommitId)>, GitError> {
+        let platform = self.repo.references().context("list branches")?;
+        let mut branches = Vec::new();
+        for reference in platform.local_branches().context("list branches")? {
+            let reference = reference.context("read a branch")?;
+            let name = reference.name().shorten().to_str_lossy().into_owned();
+            let id = reference
+                .into_fully_peeled_id()
+                .context(format!("resolve branch {name}"))?;
+            branches.push((name, CommitId::from_gix(id)));
+        }
+        branches.sort();
+        Ok(branches)
+    }
+
+    /// Rewrites git's index (the staging area) to match `tree`, so `git status` compares the
+    /// working files against that tree. Paper has no staging area of its own.
+    ///
+    /// # Errors
+    ///
+    /// [`GitError::Gix`] if the tree can't be read or the index can't be written.
+    pub fn reset_index_to(&self, tree: &TreeId) -> Result<(), GitError> {
+        let mut index = self
+            .repo
+            .index_from_tree(&tree.to_gix())
+            .context("build the index")?;
+        index
+            .write(gix::index::write::Options::default())
+            .context("write the index")?;
         Ok(())
     }
 

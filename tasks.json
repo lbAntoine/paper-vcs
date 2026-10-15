@@ -53,23 +53,23 @@
     },
     {
       "id": "d57d2e91",
-      "title": "Profile ignores: idempotent .gitignore block merge + auto-detect",
+      "title": "PV-004: Profile ignores: idempotent .gitignore block merge + auto-detect",
       "description": "",
       "status": "todo",
       "priority": "medium",
       "sprint": "v0.1",
       "created_at": "2026-09-25T12:32:57Z",
-      "updated_at": "2026-09-25T12:32:57Z"
+      "updated_at": "2026-10-15T23:27:41Z"
     },
     {
       "id": "52d93bc2",
       "title": "init: new project + adopt existing git repo",
       "description": "",
-      "status": "in_progress",
+      "status": "done",
       "priority": "high",
       "sprint": "v0.1",
       "created_at": "2026-09-25T12:32:57Z",
-      "updated_at": "2026-10-15T16:58:58Z"
+      "updated_at": "2026-10-15T23:27:41Z"
     },
     {
       "id": "d6863905",
@@ -83,53 +83,53 @@
     },
     {
       "id": "add3aa7c",
-      "title": "save (whole + paths) and git mirror: HEAD, branch, index",
+      "title": "PV-001: save (whole + paths) and git mirror: HEAD, branch, index",
       "description": "",
       "status": "todo",
       "priority": "high",
       "sprint": "v0.1",
       "created_at": "2026-09-25T12:32:57Z",
-      "updated_at": "2026-09-25T12:32:57Z"
+      "updated_at": "2026-10-15T23:27:41Z"
     },
     {
       "id": "ec7e9d3b",
-      "title": "history, show, diff --lines, restore, status",
+      "title": "PV-002: history, show, diff --lines, restore, status",
       "description": "",
       "status": "todo",
       "priority": "high",
       "sprint": "v0.1",
       "created_at": "2026-09-25T12:32:57Z",
-      "updated_at": "2026-09-25T12:32:57Z"
+      "updated_at": "2026-10-15T23:27:41Z"
     },
     {
       "id": "21434090",
-      "title": "CLI: clap, human + --json rendering, 3-part errors, exit codes, insta tests",
+      "title": "PV-003: CLI: clap, human + --json rendering, 3-part errors, exit codes, insta tests",
       "description": "",
       "status": "todo",
       "priority": "high",
       "sprint": "v0.1",
       "created_at": "2026-09-25T12:32:57Z",
-      "updated_at": "2026-09-25T12:32:57Z"
+      "updated_at": "2026-10-15T23:27:41Z"
     },
     {
       "id": "9a6b3b7c",
-      "title": "config get/set/list + identity",
+      "title": "PV-005: config get/set/list + identity",
       "description": "",
       "status": "todo",
       "priority": "medium",
       "sprint": "v0.1",
       "created_at": "2026-09-25T12:32:57Z",
-      "updated_at": "2026-09-25T12:32:57Z"
+      "updated_at": "2026-10-15T23:27:41Z"
     },
     {
       "id": "c6026c86",
-      "title": "Release pipeline (cargo-dist) + v0.1.0 acceptance run",
+      "title": "PV-006: Release pipeline (cargo-dist) + v0.1.0 acceptance run",
       "description": "",
       "status": "todo",
       "priority": "medium",
       "sprint": "v0.1",
       "created_at": "2026-09-25T12:32:57Z",
-      "updated_at": "2026-09-25T12:32:57Z"
+      "updated_at": "2026-10-15T23:27:41Z"
     }
   ]
 }
