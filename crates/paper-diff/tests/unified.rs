@@ -7,9 +7,9 @@ use paper_diff::{FileDiff, LineDiffOptions, diff_files, to_unified};
 
 /// Run git on two temp files and return the output from the first `@@` line on.
 fn git_hunks(old: Option<&str>, new: Option<&str>) -> String {
-    let dir = tempfile_dir();
-    let old_path = dir.join("old.txt");
-    let new_path = dir.join("new.txt");
+    let dir = tempfile::tempdir().unwrap();
+    let old_path = dir.path().join("old.txt");
+    let new_path = dir.path().join("new.txt");
     let (old_arg, new_arg) = (
         old.map_or("/dev/null".to_string(), |c| {
             fs::write(&old_path, c).unwrap();
@@ -21,6 +21,9 @@ fn git_hunks(old: Option<&str>, new: Option<&str>) -> String {
         }),
     );
     let out = Command::new("git")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("HOME", dir.path())
         .args(["diff", "--no-index", "-U3", "--no-color", "--"])
         .arg(&old_arg)
         .arg(&new_arg)
@@ -34,19 +37,21 @@ fn git_hunks(old: Option<&str>, new: Option<&str>) -> String {
     );
     let text = String::from_utf8(out.stdout).unwrap();
     let start = text.find("@@").expect("git printed a hunk");
-    text[start..].to_string()
+    normalise_headings(&text[start..])
 }
 
-fn tempfile_dir() -> std::path::PathBuf {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    static N: AtomicUsize = AtomicUsize::new(0);
-    let dir = std::env::temp_dir().join(format!(
-        "paper-diff-unified-{}-{}",
-        std::process::id(),
-        N.fetch_add(1, Ordering::SeqCst)
-    ));
-    fs::create_dir_all(&dir).unwrap();
-    dir
+/// Drop git's function-context heading from `@@ ... @@ <heading>` lines.
+fn normalise_headings(text: &str) -> String {
+    text.split_inclusive('\n')
+        .map(|line| {
+            if let Some(rest) = line.strip_prefix("@@ ") {
+                let end = rest.find(" @@").expect("hunk header") + 3 + 3;
+                format!("{}\n", &line[..end])
+            } else {
+                line.to_string()
+            }
+        })
+        .collect()
 }
 
 fn ours(old: Option<&str>, new: Option<&str>) -> String {
@@ -118,4 +123,18 @@ fn a_deleted_file_matches_git() {
 fn a_missing_final_newline_matches_git() {
     assert_matches_git(Some("a\nb\n"), Some("a\nb"));
     assert_matches_git(Some("a\nb"), Some("a\nb\n"));
+}
+
+#[test]
+fn a_cr_in_the_middle_of_a_line_matches_git() {
+    let old = "a\rb\nc\nd\n";
+    let new = "a\rx\nc\nd\n";
+    assert_matches_git(Some(old), Some(new));
+}
+
+#[test]
+fn crlf_files_match_git() {
+    let old = "a\r\nb\r\nc\r\n";
+    let new = "a\r\nB\r\nc\r\n";
+    assert_matches_git(Some(old), Some(new));
 }

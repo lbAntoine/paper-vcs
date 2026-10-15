@@ -106,3 +106,11 @@ these; word diff (v0.3) builds on the same structure later.
 - NIT: document that `to_unified` doesn't escape control characters (`\r`).
 - Coordinator: authorised test changes. In tests/unified.rs, normalise git's hunk heading and
   isolate the git config; add the new tests. Don't weaken other assertions.
+
+### GREEN (review round 1) · rust-engineer · 2026-10-16
+- Lines are now split on `\n` only (`split_inclusive` + `diff_slices`); lone `\r` stays in its line. Unit test plus git cross-checks for mid-line CR and CRLF.
+- Removed `Hunk.section` and the spec sentence; `tests/unified.rs` normalises git's `@@ ... @@ <heading>` to `@@ ... @@` (only change to test assertions). Added a spec note on `\n`-only line ends.
+- `None` vs `Some(b"")` tested both ways and documented on `diff_files` and `FileDiff::Text`.
+- Cross-checks use `tempfile` (dev-dependency) and isolate git config (`GIT_CONFIG_NOSYSTEM`, `GIT_CONFIG_GLOBAL=/dev/null`, `HOME`).
+- Added test: invalid byte after 8 KiB of valid UTF-8 is `Binary`. Documented that `to_unified` does not escape control characters.
+- Checks run with the isolated target dir: fmt, clippy -D warnings, full suite pass.

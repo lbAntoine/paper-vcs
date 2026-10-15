@@ -27,8 +27,8 @@ more readable hunks than Myers. The output is git's unified format with 3 lines 
   a deleted file as the new one.
 - Hunks start with `@@ -<line>,<count> +<line>,<count> @@`. Line numbers are 1-based, a count
   of 1 is omitted, and an empty side is `0,0`. Edits closer than twice the context merge into
-  one hunk. As in git, the header ends with the nearest earlier old line that starts with a
-  letter, `_` or `$` (at most 80 bytes), when there is one.
+  one hunk.
+  Lines end at `\n` only; a lone `\r` stays inside its line.
 - A last line without a final newline is followed by `\ No newline at end of file`.
 - A file is text when it is valid UTF-8 with no NUL byte in its first 8 KiB; otherwise it is
   binary. If either side is binary, no hunks are produced: the result is a one-line summary

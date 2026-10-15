@@ -75,30 +75,6 @@ pub struct Hunk {
     pub new_len: usize,
     /// The lines of the hunk, in order.
     pub lines: Vec<DiffLine>,
-    /// Git's "function context": the nearest earlier old line that starts with a
-    /// letter, `_` or `$`, shown after the `@@` header. `None` when there is none.
-    pub section: Option<String>,
-}
-
-/// Longest section heading git prints, in bytes.
-const SECTION_MAX_LEN: usize = 80;
-
-fn section_before(old: &str, old_idx: usize) -> Option<String> {
-    let before: Vec<&str> = old
-        .split_inclusive('\n')
-        .take(old_idx)
-        .map(|l| l.strip_suffix('\n').unwrap_or(l))
-        .collect();
-    let line = before.into_iter().rfind(|l| {
-        l.bytes()
-            .next()
-            .is_some_and(|b| b.is_ascii_alphabetic() || b == b'_' || b == b'$')
-    })?;
-    let mut end = line.len().min(SECTION_MAX_LEN);
-    while !line.is_char_boundary(end) {
-        end -= 1;
-    }
-    Some(line[..end].trim_end().to_owned())
 }
 
 /// A line diff of two text versions.
@@ -124,7 +100,8 @@ pub enum FileDiff {
         /// Size of the new side in bytes.
         new_size: Option<u64>,
     },
-    /// Both sides are text and differ.
+    /// Both sides are text and differ. An absent side against an empty file
+    /// counts as a difference but has no hunks.
     Text(TextDiff),
 }
 
@@ -137,7 +114,8 @@ fn text_of(bytes: Option<&[u8]>) -> Option<&str> {
 }
 
 /// Compare two versions of a file. `None` means the file does not exist on
-/// that side (added or deleted).
+/// that side (added or deleted). `None` against `Some(b"")` is a
+/// [`FileDiff::Text`] with no hunks; only equal inputs are `Identical`.
 #[must_use]
 pub fn diff_files(old: Option<&[u8]>, new: Option<&[u8]>, options: &LineDiffOptions) -> FileDiff {
     if old == new {
@@ -153,9 +131,12 @@ pub fn diff_files(old: Option<&[u8]>, new: Option<&[u8]>, options: &LineDiffOpti
 }
 
 fn line_diff(old: &str, new: &str, context: usize) -> TextDiff {
+    // Split on `\n` only: a lone `\r` is not a line end (it is for `diff_lines`).
+    let old_lines: Vec<&str> = old.split_inclusive('\n').collect();
+    let new_lines: Vec<&str> = new.split_inclusive('\n').collect();
     let diff = similar::TextDiff::configure()
         .algorithm(Algorithm::Patience)
-        .diff_lines(old, new);
+        .diff_slices(&old_lines, &new_lines);
     let mut added = 0;
     let mut removed = 0;
     let mut hunks = Vec::new();
@@ -184,7 +165,7 @@ fn line_diff(old: &str, new: &str, context: usize) -> TextDiff {
                         LineKind::Added
                     }
                 };
-                let value = change.value();
+                let value: &str = change.value();
                 lines.push(DiffLine {
                     kind,
                     text: value.strip_suffix('\n').unwrap_or(value).to_owned(),
@@ -199,7 +180,6 @@ fn line_diff(old: &str, new: &str, context: usize) -> TextDiff {
             new_start: if new_len == 0 { new_idx } else { new_idx + 1 },
             new_len,
             lines,
-            section: section_before(old, old_idx),
         });
     }
     TextDiff {
@@ -209,7 +189,8 @@ fn line_diff(old: &str, new: &str, context: usize) -> TextDiff {
     }
 }
 
-/// Render a text diff in git's unified format.
+/// Render a text diff in git's unified format. Line text is written as is:
+/// control characters (including `\r`) are not escaped.
 #[must_use]
 pub fn to_unified(diff: &TextDiff, old_label: &str, new_label: &str) -> String {
     use std::fmt::Write as _;
@@ -226,12 +207,9 @@ pub fn to_unified(diff: &TextDiff, old_label: &str, new_label: &str) -> String {
     for h in &diff.hunks {
         let _ = writeln!(
             out,
-            "@@ -{} +{} @@{}",
+            "@@ -{} +{} @@",
             range(h.old_start, h.old_len),
             range(h.new_start, h.new_len),
-            h.section
-                .as_ref()
-                .map_or_else(String::new, |t| format!(" {t}"))
         );
         for line in &h.lines {
             out.push(match line.kind {
@@ -463,5 +441,32 @@ mod tests {
             to_unified(&d, "/dev/null", "b/f.txt"),
             "--- /dev/null\n+++ b/f.txt\n@@ -0,0 +1 @@\n+a\n"
         );
+    }
+
+    #[test]
+    fn a_lone_cr_is_not_a_line_break() {
+        let d = text_diff(Some("a\rb\n"), Some("a\rc\n"));
+        let h = &d.hunks[0];
+        assert_eq!((h.old_len, h.new_len), (1, 1));
+        assert_eq!(h.lines[0].text, "a\rb");
+        assert!(!h.lines[0].missing_newline);
+    }
+
+    #[test]
+    fn absent_against_empty_is_a_text_diff_without_hunks() {
+        for (old, new) in [(None, Some(&b""[..])), (Some(&b""[..]), None)] {
+            let FileDiff::Text(d) = diff_files(old, new, &opts()) else {
+                panic!("expected text");
+            };
+            assert!(d.hunks.is_empty());
+            assert_eq!((d.added, d.removed), (0, 0));
+        }
+    }
+
+    #[test]
+    fn invalid_utf8_after_8_kib_is_binary() {
+        let mut bytes = vec![b'a'; BINARY_SNIFF_LEN];
+        bytes.push(0xff);
+        assert_eq!(classify(&bytes), Content::Binary);
     }
 }
