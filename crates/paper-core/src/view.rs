@@ -4,13 +4,13 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::{self, Write};
+use std::io;
 use std::path::{Path, PathBuf};
 
 use paper_git::CommitId;
 use serde::{Deserialize, Serialize};
-use tempfile::NamedTempFile;
 
+use crate::fs_util;
 use crate::name::LineName;
 
 const FILE_NAME: &str = "view.json";
@@ -133,17 +133,9 @@ impl View {
     /// Never in practice: every field of a view serialises to JSON
     pub fn save(&self, paper_dir: &Path) -> Result<(), ViewError> {
         let path = paper_dir.join(FILE_NAME);
-        let io_err = |source| ViewError::Io {
-            path: path.clone(),
-            source,
-        };
-        let json = serde_json::to_vec_pretty(self).expect("a view always serialises");
-        let mut file = NamedTempFile::new_in(paper_dir).map_err(io_err)?;
-        file.write_all(&json).map_err(io_err)?;
-        file.write_all(b"\n").map_err(io_err)?;
-        file.as_file().sync_all().map_err(io_err)?;
-        file.persist(&path).map_err(|err| io_err(err.error))?;
-        Ok(())
+        let mut json = serde_json::to_vec_pretty(self).expect("a view always serialises");
+        json.push(b'\n');
+        fs_util::write_atomic(&path, &json).map_err(|source| ViewError::Io { path, source })
     }
 }
 

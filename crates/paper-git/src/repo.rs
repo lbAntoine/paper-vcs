@@ -1,5 +1,6 @@
 //! [`GitRepo`]: every git read and write paper does goes through here
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use gix::bstr::{BString, ByteSlice};
@@ -9,8 +10,8 @@ use gix::refs::transaction::{Change, LogChange, PreviousValue, RefEdit, RefLog};
 
 use crate::error::ResultExt;
 use crate::{
-    BlobId, ChangeId, Commit, CommitId, GitError, GitTime, Identity, NewCommit, Signature,
-    TreeEdit, TreeId,
+    BlobId, ChangeId, Commit, CommitId, FileKind, GitError, GitTime, Identity, NewCommit,
+    Signature, TreeEdit, TreeFile, TreeId,
 };
 
 const CHANGE_ID_HEADER: &str = "change-id";
@@ -139,6 +140,41 @@ impl GitRepo {
         }
         let id = editor.write().context("write a tree")?;
         Ok(TreeId::from_gix(id))
+    }
+
+    /// Every file in `tree`, recursively, keyed by `/`-separated path.
+    ///
+    /// Submodules are left out: paper doesn't manage them, and snapshots never touch them.
+    ///
+    /// # Errors
+    ///
+    /// [`GitError::Gix`] if the tree or one of its subtrees can't be read.
+    pub fn tree_files(&self, tree: &TreeId) -> Result<BTreeMap<String, TreeFile>, GitError> {
+        let mut recorder = gix::traverse::tree::Recorder::default();
+        self.repo
+            .find_tree(tree.to_gix())
+            .context(format!("find tree {tree}"))?
+            .traverse()
+            .breadthfirst(&mut recorder)
+            .context(format!("walk tree {tree}"))?;
+        let files = recorder
+            .records
+            .into_iter()
+            .filter_map(|entry| {
+                let kind = match entry.mode.kind() {
+                    EntryKind::Blob => FileKind::Regular,
+                    EntryKind::BlobExecutable => FileKind::Executable,
+                    EntryKind::Link => FileKind::Symlink,
+                    EntryKind::Tree | EntryKind::Commit => return None,
+                };
+                let file = TreeFile {
+                    blob: BlobId::from_gix(entry.oid),
+                    kind,
+                };
+                Some((entry.filepath.to_str_lossy().into_owned(), file))
+            })
+            .collect();
+        Ok(files)
     }
 
     /// # Errors
