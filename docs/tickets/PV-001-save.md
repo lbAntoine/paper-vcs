@@ -1,6 +1,6 @@
 # PV-001: save
 
-- **Status:** Ready
+- **Status:** Done
 - **Branch:** `feat/PV-001-save`
 - **Depends on:** none (snapshot and init are on main)
 - **Touches:** `crates/paper-core/src/project/mod.rs`, `crates/paper-core/src/project/save.rs` (new),
@@ -110,6 +110,19 @@ and wrapped `GitError` / `SnapshotError` / `ViewError` / I/O errors, in the styl
 
 ## Summary
 
+`Project::save` (all, only some paths, all but some paths), a reusable `Project::snapshot` step
+for invariant I1, and `tree_diff::diff_trees`. The save keeps the draft's change ID; a fresh
+draft with a new change ID starts on top. Writes go draft ref → index → line ref (the commit
+point) → view. `save` refuses when git moved the line (`OutOfSyncWithGit`) or HEAD is on another
+branch (`HeadOnAnotherBranch`, which says to run `git switch <line>`).
+
+Deviations: none from the ticket. `snapshot/mod.rs` gained two unplanned bug fixes found
+through the file↔folder tests (removals now come before additions; a former folder that became
+a file counts as a deletion).
+
+Follow-up: PV-007, with the round-2 review findings (one-way conflict closure, a fast path for
+`All`, direct snapshot tests for file↔folder changes, error wording).
+
 ## Handoff log
 
 ### RED · test-author · 2026-10-16
@@ -142,3 +155,14 @@ and wrapped `GitError` / `SnapshotError` / `ViewError` / I/O errors, in the styl
 - Added fsck to three tests, plus a unix test for executable-bit saves (full and partial, mode 100755).
 - Nits: `debug_assert!` on symlinks, change-ID fallback comment, `init` keeps the `SnapshotOptions` it was given.
 - Found while testing the flips: `snapshot` applied removals after upserts (wiping a new `notes/` directory when `notes` the file was removed) and treated NotADirectory as an error. It now removes first and treats NotADirectory as deleted.
+
+### Review round 2 · reviewer · 2026-10-16
+- Verdict: APPROVE. Checks: tests pass (save.rs 27), clippy pass. Every round-1 finding addressed.
+- MINOR: the conflict closure is symmetric and transitive, so it can save more than a valid
+  tree needs → make it one-way, or keep it and pin it down with a two-file test.
+- MINOR: the closure is O(n²) even for `All` → return early for `All`, use sorted lookups.
+- MINOR: the snapshot fix is correct but only tested through `save` → add file↔folder tests to
+  `tests/snapshot.rs`.
+- NIT: the `OutOfSyncWithGit` wording should also cover `git reset` and a deleted branch.
+- Coordinator decision: the round cap is reached and the verdict is approve. Merge PV-001; the
+  four items become PV-007, groomed next.
