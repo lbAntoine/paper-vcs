@@ -1,0 +1,110 @@
+# PV-002: resolve points, history and show
+
+- **Status:** Ready
+- **Branch:** `feat/PV-002-history`
+- **Depends on:** none. Runs in parallel with PV-009 (paper-diff only, disjoint files).
+- **Touches:** `crates/paper-git/src/repo.rs`, `crates/paper-git/tests/repo.rs`,
+  `crates/paper-core/src/project/mod.rs`, `crates/paper-core/src/project/resolve.rs` (new),
+  `crates/paper-core/src/project/history.rs` (new), `crates/paper-core/tests/resolve.rs` (new),
+  `crates/paper-core/tests/history.rs` (new), `docs/specs/01-concepts.md`, `docs/specs/02-cli.md`
+- **Specs:** `01-concepts.md` § Points and § Researcher-facing wording rules;
+  `02-cli.md` § `paper history`, § `paper show`; ADR-0003 (change IDs)
+
+## Goal
+
+Every front-end can turn a point the user typed (`@`, `last~2`, `main`, `kmrw`, `3fa9c1`,
+`date:2026-09-01`) into a commit, list the saves on a line, and show one save with its changes.
+`diff`, `restore` and `status` (PV-010) build on this.
+
+## Context
+
+- `point::Point` parses the syntax already (`Draft`, `Last { back }`, `Date(DateSpec)`, `Name`);
+  `DateSpec::inclusive_end` gives the civil cutoff. This ticket adds resolution against a project.
+- `ChangeId::unique_prefix_len` and its tests (paper-git) give the shortest-prefix rule (min 4).
+- `tree_diff::diff_trees` and `snapshot::Change` describe a save's changes.
+- `GitRepo` has `read_commit`, but nothing walks history yet.
+- Milestones don't exist until v0.5. Their slot in the precedence order is reserved but empty.
+
+## Scope
+
+1. **paper-git: `GitRepo::ancestors(&self, from: &[CommitId]) -> Result<Vec<Commit>, GitError>`.**
+   Every commit reachable from `from` (all parents), each once, newest first by committer time,
+   ties broken by commit id for determinism. (A loaded `Vec` is fine for v0.1, which targets
+   about 2 000 saves.)
+2. **paper-core: `Project::resolve(&self, point: &Point) -> Result<Resolved, ResolveError>`**,
+   `Resolved { commit: CommitId, matched: PointKind }`, with
+   `PointKind::{Draft, Last, Line(LineName), ChangeId, CommitHash, Date}`. Precedence, as in
+   `01-concepts.md`:
+   - `@` → the current line's draft.
+   - `last~N` → follow first parents from the current line's tip N times.
+     `NotEnoughHistory { back, available }` if it runs out.
+   - `date:…` → the newest save on the current line's first-parent chain whose **committer time**
+     is at or before `inclusive_end()`, read in the system's local time zone.
+     `NoSaveBefore { date }` if none.
+   - a name that is a **line** → that line's tip.
+   - otherwise a **change ID prefix** (only letters `k`–`z`, any length ≥ 1), searched over
+     `ancestors` of every line's tip and draft. Drafts count, so `@`'s change ID resolves too.
+     Several matching commits with the *same* change ID resolve to the newest.
+   - otherwise a **commit hash prefix** (hex, at least 4 characters), searched over the same set.
+   - Several *different* matches → `Ambiguous { prefix, candidates }` (short ids with message).
+     No match → `UnknownPoint { name }`.
+3. **`Project::history(&self, request: &HistoryRequest) -> Result<Vec<HistoryEntry>, HistoryError>`**,
+   `HistoryRequest { path: Option<String>, all_lines: bool, limit: Option<usize> }`.
+   - Default: the current line's saves, following first parents from its tip, newest first.
+     The draft is not a save, so it isn't listed.
+   - `all_lines`: the saves of every line merged, each listed once, newest first.
+   - `path`: only saves whose changes against their first parent (the empty tree for the first
+     save) touch that file or anything under that directory (whole path components, like `save`).
+   - `limit`: at most that many entries.
+   - `HistoryEntry { commit, change_id: Option<ChangeId>, short_change_id: String, message,
+     author: Identity, time: GitTime, tip_of: Vec<LineName> }`. `short_change_id` uses
+     `unique_prefix_len` over every change ID known in the project. Commits from plain git have
+     no change ID: show the first 7 characters of the commit hash instead.
+4. **`Project::show(&self, point: &Point) -> Result<Shown, ShowError>`**,
+   `Shown { entry: HistoryEntry, changes: Vec<Change> }`, where `changes` compares against the
+   first parent (or the empty tree). `show @` works and shows the draft's changes against
+   `last`.
+5. **Specs:**
+   - `01-concepts.md` § Points: the change-ID and hash prefix rules (letters, minimum lengths,
+     the search set, ambiguity), that `date:` uses committer time in local time, and that
+     milestones join the precedence order in v0.5.
+   - `02-cli.md`: `history` and `show` in the same terms.
+
+Errors in the style of `SaveError`, teaching (CLAUDE.md rule 6). Example: `NotEnoughHistory`
+says how many saves the line has.
+
+## Out of scope
+
+- Milestones, `--graph`, output formatting and relative times (CLI, PV-003).
+- Diff content of files (PV-009, PV-010).
+- Performance beyond about 2 000 saves.
+
+## Acceptance criteria
+
+- [ ] `ancestors` returns every reachable commit once, newest first, including both parents of a merge (cross-checked with `git rev-list --all` or `--topo-order` for counts).
+- [ ] `@` resolves to the draft, `last` to the tip, `last~2` two saves back; `last~N` past the first save → `NotEnoughHistory` with the count.
+- [ ] A line name resolves to its tip, and wins over a change ID or hash prefix with the same spelling.
+- [ ] A unique change ID prefix (including the draft's) resolves; an ambiguous one → `Ambiguous` listing candidates.
+- [ ] A unique hash prefix (≥ 4 hex) resolves; fewer than 4 characters isn't treated as a hash.
+- [ ] Unknown names → `UnknownPoint`.
+- [ ] `date:` resolves to the newest save at or before the cutoff (a save made later that day counts for a day-only date), and → `NoSaveBefore` before the first save.
+- [ ] `history` lists the current line's saves newest first, excluding the draft; `limit` truncates; `path` filters by file and by directory.
+- [ ] `history` with `all_lines` merges lines without duplicates.
+- [ ] Commits made with plain git appear with a hash-based short id.
+- [ ] `short_change_id` is at least 4 letters and unique across the project.
+- [ ] `show` of a save lists its changes against its parent; `show` of the first save lists every file as added; `show @` lists the draft's unsaved changes.
+- [ ] Specs updated.
+- [ ] fmt, clippy (`-D warnings`) and the full suite pass.
+
+## Test plan
+
+- `paper-git/tests/repo.rs`: `ancestors` on a small history with a merge, built with `GitRepo`
+  or the git binary.
+- `paper-core/tests/resolve.rs` and `tests/history.rs`: build projects with `Project::init` +
+  `Project::save`. For controlled timestamps (`date:`), adopt a repo built with the `git` binary
+  using `GIT_COMMITTER_DATE`/`GIT_AUTHOR_DATE`, with saves days apart so time zones can't flip
+  the result. Lines other than `main` can be created through adoption (`git branch`).
+
+## Summary
+
+## Handoff log
