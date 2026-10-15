@@ -1,6 +1,6 @@
 # PV-007: save and snapshot hardening
 
-- **Status:** Ready
+- **Status:** Done
 - **Branch:** `feat/PV-007-save-hardening`
 - **Depends on:** PV-001 (merged)
 - **Touches:** `crates/paper-core/src/project/save.rs`, `crates/paper-core/tests/save.rs`,
@@ -79,6 +79,17 @@ can happen.
   in less. Each such change must be listed in the handoff log with the reason.
 
 ## Summary
+
+Saving only some paths now uses a one-way, single-pass rule: only a selected addition or
+modification forces the deletions a valid tree needs, and selected deletions force nothing.
+Descendant paths are found with an exact byte-order key range, so the closure is O(n log n), and
+a full save skips it entirely. The `snapshot` file↔folder fix from PV-001 has two direct tests.
+`OutOfSyncWithGit` covers commits, `git reset` and a deleted branch; it says that nothing was
+written and points to `git log <line>`.
+
+Deviation: the error doesn't show the short id of paper's last save; adding a field would have
+meant editing the PV-001 test patterns. Follow-up: `select` compares every path with every change
+(paths × changes), noted by review as out of scope (PV-008).
 
 ## Handoff log
 
