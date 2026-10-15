@@ -86,3 +86,23 @@ these; word diff (v0.3) builds on the same structure later.
 - `None` vs `Some(b"")` yields a `Text` diff with no hunks (a change, but nothing to show); only equal inputs are `Identical`.
 - Specs: 03-architecture.md and 04-content.md (new "Line diff" section, patience instead of imara-diff for word diff).
 - Follow-up: `similar` 3.x exists; 2.7 kept for now.
+
+### Review · reviewer · 2026-10-16
+- Verdict: CHANGES. Checks: paper-diff tests and clippy pass. The other suites only pass in an
+  isolated target dir (the shared one ran PV-002's paper-git binary).
+- MAJOR: `similar`'s `diff_lines` treats a lone `\r` as a line end. Line numbers drift from git's,
+  `missing_newline` gets set mid-file, and `section_before` indexes the wrong line → split with
+  `split_inclusive('\n')` and diff the slices. Test a lone CR, and cross-check CR and CRLF against git.
+- MAJOR: `Hunk.section` is an unrequested public field that the spec now promises. In prose it's
+  noise, and in LaTeX `\section` is never picked. It's also O(lines × hunks) → remove it and the
+  spec sentence, and normalise git's `@@ … @@ <heading>` in the cross-checks. Format-aware headings
+  can come later with the v0.3 tokenisers.
+- MINOR: `None` vs `Some(b"")` → `Text` with no hunks is a sound contract, but it's untested and
+  undocumented → test both directions and document it.
+- MINOR: the git cross-checks inherit user config → isolate it (`GIT_CONFIG_NOSYSTEM`,
+  `GIT_CONFIG_GLOBAL=/dev/null`, `HOME`).
+- MINOR: the cross-checks leak temp dirs → use `tempfile` as a dev-dependency.
+- MINOR: no test for valid UTF-8 in the first 8 KiB followed by an invalid byte.
+- NIT: document that `to_unified` doesn't escape control characters (`\r`).
+- Coordinator: authorised test changes. In tests/unified.rs, normalise git's hunk heading and
+  isolate the git config; add the new tests. Don't weaken other assertions.
