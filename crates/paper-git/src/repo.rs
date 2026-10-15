@@ -260,6 +260,16 @@ impl GitRepo {
         })
     }
 
+    /// Every commit reachable from `from` (following all parents), each once, newest first by
+    /// committer time. Ties are broken by commit id so the order is deterministic.
+    ///
+    /// # Errors
+    ///
+    /// [`GitError`] if a commit in the history can't be read.
+    pub fn ancestors(&self, _from: &[CommitId]) -> Result<Vec<Commit>, GitError> {
+        todo!("PV-002: walk the history")
+    }
+
     /// The commit a reference points to, following symbolic references. `None` if it doesn't exist.
     ///
     /// # Errors

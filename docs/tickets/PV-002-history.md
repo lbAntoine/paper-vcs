@@ -108,3 +108,33 @@ says how many saves the line has.
 ## Summary
 
 ## Handoff log
+
+### RED · test-author · 2026-10-16
+
+- `crates/paper-git/tests/repo.rs`: 4 new tests for `GitRepo::ancestors` (merge with both parents,
+  several tips sharing history, time ties by commit id, empty input). Cross-checked with
+  `git rev-list --count`. All fail on `todo!()`.
+- `crates/paper-core/tests/resolve.rs`: 16 tests (`@`, `last`, `last~N`, `NotEnoughHistory`, line
+  wins over change-ID and hash spellings, change-ID prefix incl. draft, ambiguity, same change ID
+  resolves to newest, hash prefix >= 4 and < 4, hash ambiguity by growing a history until a
+  4-char collision, `UnknownPoint`, four `date:` cases). All fail on `todo!()`.
+- `crates/paper-core/tests/history.rs`: 21 tests (history order, entry fields, limit, file and
+  directory path filters, whole-component matching, all lines, plain-git short id, short change ID
+  length and uniqueness, show of save / first save / merge / `@`, read-only check with fsck and
+  status). All fail on `todo!()`.
+- Stubs: `GitRepo::ancestors`; `project/resolve.rs` (`Project::resolve`, `Resolved`, `PointKind`,
+  `Candidate`, `ResolveError`), `project/history.rs` (`Project::history`, `Project::show`,
+  `HistoryRequest`, `HistoryEntry`, `Shown`, `HistoryError`, `ShowError`), re-exported from
+  `project`.
+- Interpretation choices (flag if wrong): `NotEnoughHistory.available` is the total number of
+  saves on the line (first save included), so `last~(available-1)` is the oldest reachable.
+  `Ambiguous.candidates` is `Vec<Candidate { commit, short_id, message }>`. `NoSaveBefore { date:
+  DateSpec }`. Path `sections/` (trailing slash) equals `sections`. `tip_of` lists lines whose
+  tip is the commit. For `date:` tests, commit times are built with jiff in the system zone;
+  author time is 2020 to prove committer time is used.
+- Environment note: worktrees sharing CARGO_TARGET_DIR can reuse each other's `paper-git` /
+  `paper-diff` artifacts (a stale build lacked `ancestors`; `touch crates/paper-git/src/lib.rs`
+  fixed it). `paper-diff` unit failures in a workspace run come from PV-009's artifacts, not
+  this branch.
+- RED check: pre-existing tests pass (paper-core 30 unit + 12 init + 33 save + 13 snapshot,
+  paper-git 16 unit + 18 repo); fmt and clippy clean.
