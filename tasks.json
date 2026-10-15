@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "id": "7228ac91",
+      "title": "Scaffold cargo workspace, toolchain, CI, licenses",
+      "description": "",
+      "status": "done",
+      "priority": "high",
+      "sprint": "v0.1",
+      "created_at": "2026-09-25T12:32:57Z",
+      "updated_at": "2026-09-25T12:33:48Z"
+    },
+    {
+      "id": "3bf286db",
+      "title": "ChangeId: generate, k-z encoding, parse, shortest unique prefix",
+      "description": "",
+      "status": "done",
+      "priority": "high",
+      "sprint": "v0.1",
+      "created_at": "2026-09-25T12:32:57Z",
+      "updated_at": "2026-09-28T10:55:55Z"
+    },
+    {
+      "id": "1f224e7c",
+      "title": "Point parser: @, last, last~N, date:, names, hashes",
+      "description": "",
+      "status": "done",
+      "priority": "high",
+      "sprint": "v0.1",
+      "created_at": "2026-09-25T12:32:57Z",
+      "updated_at": "2026-09-28T10:55:55Z"
+    },
+    {
+      "id": "3010e412",
+      "title": "View model (current line, lines: tip+draft) persisted in .git/paper/view.json",
+      "description": "",
+      "status": "done",
+      "priority": "high",
+      "sprint": "v0.1",
+      "created_at": "2026-09-25T12:32:57Z",
+      "updated_at": "2026-09-28T13:41:20Z"
+    },
+    {
+      "id": "ec4a59b8",
+      "title": "paper-git Store trait + gix impl: blobs, trees, commits w/ change-id header, refs",
+      "description": "",
+      "status": "done",
+      "priority": "high",
+      "sprint": "v0.1",
+      "created_at": "2026-09-25T12:32:57Z",
+      "updated_at": "2026-09-30T10:11:25Z"
+    },
+    {
+      "id": "d57d2e91",
+      "title": "Profile ignores: idempotent .gitignore block merge + auto-detect",
+      "description": "",
+      "status": "todo",
+      "priority": "medium",
+      "sprint": "v0.1",
+      "created_at": "2026-09-25T12:32:57Z",
+      "updated_at": "2026-09-25T12:32:57Z"
+    },
+    {
+      "id": "52d93bc2",
+      "title": "init: new project + adopt existing git repo",
+      "description": "",
+      "status": "todo",
+      "priority": "high",
+      "sprint": "v0.1",
+      "created_at": "2026-09-25T12:32:57Z",
+      "updated_at": "2026-09-25T12:32:57Z"
+    },
+    {
+      "id": "d6863905",
+      "title": "Snapshot: worktree walk, ignores, stat cache, draft amend",
+      "description": "",
+      "status": "in_progress",
+      "priority": "high",
+      "sprint": "v0.1",
+      "created_at": "2026-09-25T12:32:57Z",
+      "updated_at": "2026-09-30T10:11:25Z"
+    },
+    {
+      "id": "add3aa7c",
+      "title": "save (whole + paths) and git mirror: HEAD, branch, index",
+      "description": "",
+      "status": "todo",
+      "priority": "high",
+      "sprint": "v0.1",
+      "created_at": "2026-09-25T12:32:57Z",
+      "updated_at": "2026-09-25T12:32:57Z"
+    },
+    {
+      "id": "ec7e9d3b",
+      "title": "history, show, diff --lines, restore, status",
+      "description": "",
+      "status": "todo",
+      "priority": "high",
+      "sprint": "v0.1",
+      "created_at": "2026-09-25T12:32:57Z",
+      "updated_at": "2026-09-25T12:32:57Z"
+    },
+    {
+      "id": "21434090",
+      "title": "CLI: clap, human + --json rendering, 3-part errors, exit codes, insta tests",
+      "description": "",
+      "status": "todo",
+      "priority": "high",
+      "sprint": "v0.1",
+      "created_at": "2026-09-25T12:32:57Z",
+      "updated_at": "2026-09-25T12:32:57Z"
+    },
+    {
+      "id": "9a6b3b7c",
+      "title": "config get/set/list + identity",
+      "description": "",
+      "status": "todo",
+      "priority": "medium",
+      "sprint": "v0.1",
+      "created_at": "2026-09-25T12:32:57Z",
+      "updated_at": "2026-09-25T12:32:57Z"
+    },
+    {
+      "id": "c6026c86",
+      "title": "Release pipeline (cargo-dist) + v0.1.0 acceptance run",
+      "description": "",
+      "status": "todo",
+      "priority": "medium",
+      "sprint": "v0.1",
+      "created_at": "2026-09-25T12:32:57Z",
+      "updated_at": "2026-09-25T12:32:57Z"
+    }
+  ]
+}

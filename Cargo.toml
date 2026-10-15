@@ -1,0 +1,44 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0-dev"
+edition = "2024"
+rust-version = "1.97"
+license = "Apache-2.0 OR MIT"
+repository = "https://github.com/lbAntoine/paper-vcs"
+authors = ["lbAntoine <rainreport.dev@proton.me>"]
+
+[workspace.dependencies]
+paper-core = { path = "crates/paper-core" }
+paper-git = { path = "crates/paper-git" }
+paper-diff = { path = "crates/paper-diff" }
+
+gix = { version = "0.88", default-features = false, features = ["sha1"] }
+ignore = "0.4"
+jiff = "0.2"
+rand = "0.10"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tempfile = "3.27"
+thiserror = "2.0"
+
+# Add third-party deps here when a task first needs them, then use `dep.workspace = true` in the crate.
+# Planned: gix 0.88, clap 4.6, thiserror 2, anyhow 1, serde 1, serde_json 1, toml 1, rand 0.10,
+#          ignore 0.4, fd-lock 4, imara-diff 0.2, tempfile 3, assert_cmd 2, insta 1
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
