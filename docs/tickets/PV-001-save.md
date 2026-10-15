@@ -134,3 +134,11 @@ and wrapped `GitError` / `SnapshotError` / `ViewError` / I/O errors, in the styl
 - MINOR: no test for saving an executable-bit change.
 - NIT: symlink gap unreachable today → `debug_assert!` or comment. NIT: `init` drops the `SnapshotOptions` it was given. NIT: comment the `change_id` fallback.
 - Coordinator decision: fix all MINOR and NIT items in one review round.
+
+### GREEN (review round 1) · rust-engineer · 2026-10-16
+- `save` write order: draft ref, index, line ref (commit point), view; comment on the deliberate window until the v0.2 activity log.
+- `saved` and `remaining` now come from `diff_trees` on the built trees. A selection that flips a path between file and directory pulls the conflicting change in (`close_over_conflicts`); removals are applied before upserts. Tests for both directions.
+- Split the error: `OutOfSyncWithGit { line }` is now only for commits made with plain git; new `HeadOnAnotherBranch { line, found }` says `git switch <line>`. The head test's variant match was updated accordingly (assertion otherwise unchanged, plus a message check). `02-cli.md` updated.
+- Added fsck to three tests, plus a unix test for executable-bit saves (full and partial, mode 100755).
+- Nits: `debug_assert!` on symlinks, change-ID fallback comment, `init` keeps the `SnapshotOptions` it was given.
+- Found while testing the flips: `snapshot` applied removals after upserts (wiping a new `notes/` directory when `notes` the file was removed) and treated NotADirectory as an error. It now removes first and treats NotADirectory as deleted.

@@ -69,8 +69,19 @@ pub enum SaveError {
     MissingMessage,
     #[error("none of these paths has unsaved changes: {}", paths.join(", "))]
     NoChangesAt { paths: Vec<String> },
-    #[error("git moved the line '{line}' since paper last saw it")]
+    #[error(
+        "the line '{line}' has new commits made with plain git; saving on top of them isn't supported yet"
+    )]
     OutOfSyncWithGit { line: LineName },
+    #[error(
+        "git is on {} instead of the line '{line}'; switch back with `git switch {line}`",
+        found.as_ref().map_or("no branch (detached HEAD)".to_owned(), |b| format!("branch '{b}'"))
+    )]
+    HeadOnAnotherBranch {
+        line: LineName,
+        /// The branch HEAD points at; `None` when HEAD is detached.
+        found: Option<String>,
+    },
     #[error(transparent)]
     Git(#[from] GitError),
     #[error(transparent)]
@@ -154,35 +165,48 @@ impl Project {
         }
 
         let state = self.snapshot()?;
-        let (saved, remaining) = select(&request.paths, state.changes)?;
-        if saved.is_empty() {
+        let (selected, _) = select(&request.paths, state.changes.clone())?;
+        if selected.is_empty() {
             return Ok(SaveOutcome::NothingToSave);
         }
+        let selected = close_over_conflicts(selected, &state.changes);
 
         let line = self.view.current().clone();
         let draft = self.repo.read_commit(&line.draft)?;
-        let save_tree = if remaining.is_empty() {
+        let tip_tree = self.repo.read_commit(&line.tip)?.tree;
+        let save_tree = if selected.len() == state.changes.len() {
             draft.tree.clone()
         } else {
-            let tip_tree = self.repo.read_commit(&line.tip)?.tree;
             let files = self.repo.tree_files(&draft.tree)?;
-            let edits: Vec<TreeEdit> = saved
+            // Removals first, so a file turning into a directory (or back) edits cleanly.
+            let (removed, kept): (Vec<_>, Vec<_>) = selected.iter().partition(|change| {
+                change.kind == ChangeKind::Deleted || !files.contains_key(&change.path)
+            });
+            let edits: Vec<TreeEdit> = removed
                 .iter()
-                .map(|change| match files.get(&change.path) {
-                    Some(file) if change.kind != ChangeKind::Deleted => TreeEdit::Upsert {
+                .map(|change| TreeEdit::Remove {
+                    path: change.path.clone(),
+                })
+                .chain(kept.iter().map(|change| {
+                    let file = &files[&change.path];
+                    // Snapshots never record symlinks, so the executable flag is enough.
+                    debug_assert_ne!(file.kind, FileKind::Symlink);
+                    TreeEdit::Upsert {
                         path: change.path.clone(),
                         blob: file.blob.clone(),
                         executable: file.kind == FileKind::Executable,
-                    },
-                    _ => TreeEdit::Remove {
-                        path: change.path.clone(),
-                    },
-                })
+                    }
+                }))
                 .collect();
             self.repo.edit_tree(&tip_tree, &edits)?
         };
+        // Derived from the trees, so the outcome is true by construction.
+        let saved = diff_trees(&self.repo, &tip_tree, &save_tree)?;
+        let remaining = diff_trees(&self.repo, &save_tree, &draft.tree)?;
 
         let signature = signature_now(&self.identity);
+        // Drafts written by paper always carry a change ID; a missing one means the commit
+        // came from elsewhere, so the save gets a fresh ID.
         let change_id = draft.change_id.unwrap_or_else(ChangeId::random);
         let save = self.repo.write_commit(&NewCommit {
             tree: save_tree.clone(),
@@ -194,11 +218,14 @@ impl Project {
         })?;
         let new_draft = write_draft(&self.repo, &draft.tree, &save, &signature)?;
 
-        self.repo
-            .set_ref(&line_ref(&line_name), &save, "paper: save")?;
+        // The line ref is the commit point: until it moves, plain git sees no save.
         self.repo
             .set_ref(&draft_ref(&line_name), &new_draft, "paper: save")?;
         self.repo.reset_index_to(&save_tree)?;
+        self.repo
+            .set_ref(&line_ref(&line_name), &save, "paper: save")?;
+        // The window between the line ref and the view is deliberate until the v0.2
+        // activity log makes the writes recoverable.
         let view = self.view.with_line(
             line_name.clone(),
             Line {
@@ -220,14 +247,17 @@ impl Project {
 
     /// Refuses to go on when plain git moved the line or switched branches.
     fn check_in_sync(&self, line: &LineName) -> Result<(), SaveError> {
-        let tip_matches =
-            self.repo.find_ref(&line_ref(line))?.as_ref() == Some(&self.view.current().tip);
-        let head_matches = self.repo.head_branch()?.as_deref() == Some(line.as_str());
-        if tip_matches && head_matches {
-            Ok(())
-        } else {
-            Err(SaveError::OutOfSyncWithGit { line: line.clone() })
+        let head = self.repo.head_branch()?;
+        if head.as_deref() != Some(line.as_str()) {
+            return Err(SaveError::HeadOnAnotherBranch {
+                line: line.clone(),
+                found: head,
+            });
         }
+        if self.repo.find_ref(&line_ref(line))?.as_ref() != Some(&self.view.current().tip) {
+            return Err(SaveError::OutOfSyncWithGit { line: line.clone() });
+        }
+        Ok(())
     }
 }
 
@@ -261,4 +291,32 @@ fn matches(selected: &str, file: &str) -> bool {
         || file
             .strip_prefix(selected)
             .is_some_and(|rest| rest.starts_with('/'))
+}
+
+/// Pulls in every change that can't be left out once `selected` is saved: a file and a
+/// directory of the same name can't both exist, so saving one side takes the other along.
+fn close_over_conflicts(selected: Vec<Change>, all: &[Change]) -> Vec<Change> {
+    let mut selected = selected;
+    loop {
+        let extra: Vec<Change> = all
+            .iter()
+            .filter(|c| !selected.iter().any(|s| s.path == c.path))
+            .filter(|c| {
+                selected
+                    .iter()
+                    .any(|s| is_inside(&s.path, &c.path) || is_inside(&c.path, &s.path))
+            })
+            .cloned()
+            .collect();
+        if extra.is_empty() {
+            return selected;
+        }
+        selected.extend(extra);
+    }
+}
+
+/// `path` is strictly inside the directory `dir`.
+fn is_inside(path: &str, dir: &str) -> bool {
+    path.strip_prefix(dir)
+        .is_some_and(|rest| rest.starts_with('/'))
 }

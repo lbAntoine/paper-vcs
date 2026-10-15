@@ -90,9 +90,11 @@ Other states it reports:
 - A path with no unsaved changes is an error that lists every such path
   (`None of these paths has unsaved changes: …`), and nothing is written. This catches
   typos, in `--all-but` too.
-- If git moved the line since paper last saw it (a plain `git commit`, or HEAD switched to
-  another branch), `save` refuses and writes nothing. Importing changes made with plain git
-  comes later.
+- A file that becomes a directory (or the reverse) can't be saved in halves: selecting one
+  side also saves the other (`notes` deleted along with `notes/a.tex` added).
+- If a plain `git commit` added saves to the line since paper last saw it, `save` refuses and
+  writes nothing: saving on top of commits made with plain git isn't supported yet. If git
+  is on another branch (or detached), it refuses too and says to run `git switch <line>`.
 - An empty draft means a no-op: `Nothing to save.` (exit 0).
 - If conflict markers are still present in files being saved: warn, and require `--with-conflicts`.
 - **Effect:** the draft becomes a save on the current line, the line advances, a new empty

@@ -202,6 +202,7 @@ fn snapshot_reports_changes_relative_to_the_last_save() {
 
     let state = project.snapshot().unwrap();
     assert_eq!(state.changes, vec![change("b.tex", ChangeKind::Modified)]);
+    fsck(dir.path());
 }
 
 #[cfg(unix)]
@@ -453,6 +454,7 @@ fn a_directory_path_only_matches_whole_path_components() {
 
     assert!(matches!(err, SaveError::NoChangesAt { .. }), "{err:?}");
     assert_eq!(stored(dir.path(), &project), before);
+    fsck(dir.path());
 }
 
 #[test]
@@ -610,7 +612,11 @@ fn head_attached_to_another_branch_is_refused() {
         .save(&request("On the wrong branch", PathSelection::All))
         .unwrap_err();
 
-    assert!(matches!(err, SaveError::OutOfSyncWithGit { .. }), "{err:?}");
+    assert!(
+        matches!(&err, SaveError::HeadOnAnotherBranch { found: Some(b), .. } if b == "side"),
+        "{err:?}"
+    );
+    assert!(err.to_string().contains("git switch main"), "{err}");
     assert_eq!(stored(dir.path(), &project), before);
     fsck(dir.path());
 }
@@ -681,5 +687,118 @@ fn a_reopened_project_can_save_again() {
         "Second\nFirst\nStart project\n"
     );
     assert_eq!(git(dir.path(), &["status", "--porcelain"]), "");
+    fsck(dir.path());
+}
+
+#[test]
+fn a_file_turning_into_a_directory_takes_its_deletion_along() {
+    let (dir, mut project) = project_with(&[("notes", "text"), ("x.tex", "x")]);
+    fs::remove_file(dir.path().join("notes")).unwrap();
+    write(dir.path(), "notes/a.tex", "a");
+    write(dir.path(), "x.tex", "x2");
+
+    let result = saved(
+        project
+            .save(&request(
+                "Notes become a folder",
+                PathSelection::Only(paths(&["notes/a.tex"])),
+            ))
+            .unwrap(),
+    );
+
+    assert_eq!(
+        result.saved,
+        vec![
+            change("notes", ChangeKind::Deleted),
+            change("notes/a.tex", ChangeKind::Added),
+        ]
+    );
+    assert_eq!(
+        result.remaining,
+        vec![change("x.tex", ChangeKind::Modified)]
+    );
+    assert_eq!(
+        git(dir.path(), &["ls-tree", "-r", "--name-only", "main"]),
+        "notes/a.tex\nx.tex\n"
+    );
+    assert_eq!(git(dir.path(), &["status", "--porcelain"]), " M x.tex\n");
+    fsck(dir.path());
+}
+
+#[test]
+fn a_directory_turning_into_a_file_takes_its_deletions_along() {
+    let (dir, mut project) = project_with(&[("notes/a.tex", "a"), ("x.tex", "x")]);
+    fs::remove_dir_all(dir.path().join("notes")).unwrap();
+    write(dir.path(), "notes", "text");
+    write(dir.path(), "x.tex", "x2");
+
+    let result = saved(
+        project
+            .save(&request(
+                "Notes become a file",
+                PathSelection::AllBut(paths(&["notes/a.tex", "x.tex"])),
+            ))
+            .unwrap(),
+    );
+
+    assert_eq!(
+        result.saved,
+        vec![
+            change("notes", ChangeKind::Added),
+            change("notes/a.tex", ChangeKind::Deleted),
+        ]
+    );
+    assert_eq!(
+        result.remaining,
+        vec![change("x.tex", ChangeKind::Modified)]
+    );
+    assert_eq!(
+        git(dir.path(), &["ls-tree", "-r", "--name-only", "main"]),
+        "notes\nx.tex\n"
+    );
+    assert_eq!(git(dir.path(), &["status", "--porcelain"]), " M x.tex\n");
+    fsck(dir.path());
+}
+
+#[cfg(unix)]
+#[test]
+fn saving_an_executable_bit_change_keeps_mode_100755() {
+    use std::os::unix::fs::PermissionsExt;
+    let chmod = |dir: &Path, path: &str| {
+        let file = dir.join(path);
+        let mut perms = fs::metadata(&file).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(file, perms).unwrap();
+    };
+
+    // Fully.
+    let (dir, mut project) = project_with(&[("build.sh", "make"), ("b.tex", "b")]);
+    chmod(dir.path(), "build.sh");
+    let result = save_all(&mut project, "Make it executable");
+    assert_eq!(result.saved, vec![change("build.sh", ChangeKind::Modified)]);
+    assert!(git(dir.path(), &["ls-tree", "main"]).contains("100755 blob"));
+    assert_eq!(git(dir.path(), &["status", "--porcelain"]), "");
+    fsck(dir.path());
+
+    // Partially.
+    let (dir, mut project) = project_with(&[("build.sh", "make"), ("b.tex", "b")]);
+    chmod(dir.path(), "build.sh");
+    write(dir.path(), "b.tex", "b2");
+    let result = saved(
+        project
+            .save(&request(
+                "Executable only",
+                PathSelection::Only(paths(&["build.sh"])),
+            ))
+            .unwrap(),
+    );
+    assert_eq!(result.saved, vec![change("build.sh", ChangeKind::Modified)]);
+    assert_eq!(
+        git(dir.path(), &["ls-tree", "main", "build.sh"])
+            .split_whitespace()
+            .next(),
+        Some("100755")
+    );
+    assert_eq!(git(dir.path(), &["status", "--porcelain"]), " M b.tex\n");
     fsck(dir.path());
 }
