@@ -77,6 +77,23 @@ If one name matches several kinds, the order of precedence is `@`/`last`, then m
 then line, then change ID, then hash. When an ambiguity is resolved this way, the CLI
 prints which kind it matched.
 
+Details of the lookup:
+
+- **Change ID prefix:** one or more letters `k`–`z`, searched over every save and draft
+  reachable from any line (so `@`'s change ID resolves too). Several commits sharing one
+  change ID resolve to the newest.
+- **Commit hash prefix:** at least 4 hex characters (shorter is never a hash), searched over
+  the same set.
+- **Ambiguity:** several *different* matches are an error that lists the candidates (short ID
+  and message); nothing matching is an "unknown point" error.
+- **`date:`** compares the save's *committer* time with the end of the given day or minute,
+  read in the computer's local time zone, following the current line's first parents.
+- **Short IDs** shown by `history` and `show` are the shortest change-ID prefix that is
+  unique in the project (at least 4 letters). Saves made by plain git have no change ID and
+  show the first 7 characters of their hash.
+- Milestones join the precedence order in v0.5; their slot (after `@`/`last`, before lines)
+  is reserved until then.
+
 ## Researcher-facing wording rules
 
 - Never show "HEAD", "index", "stage", "commit", "rebase", "detached" or "ref" in normal

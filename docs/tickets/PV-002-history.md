@@ -138,3 +138,17 @@ says how many saves the line has.
   this branch.
 - RED check: pre-existing tests pass (paper-core 30 unit + 12 init + 33 save + 13 snapshot,
   paper-git 16 unit + 18 repo); fmt and clippy clean.
+
+### GREEN · rust-engineer · 2026-10-16
+
+- `GitRepo::ancestors`: collects reachable commits with a seen-set, sorts by committer time
+  desc then commit id.
+- `Project::resolve` (resolve.rs), `history` and `show` (history.rs), with shared helpers
+  `known()` (ancestors of every tip and draft) and `current_line_chain()`.
+- Interpretations followed as recorded by RED. `HistoryEntry.time` is the committer time (as the
+  test checks `%ct`); `author` is the author identity. Candidate lists for change-ID ambiguity
+  hold the newest commit per distinct change ID.
+- `date:` converts the cutoff with the system zone and takes the first commit on the
+  first-parent chain at or before it (`expect` on an unrepresentable civil time; documented).
+- Specs: 01-concepts.md § Points and 02-cli.md (`history`, `show`) updated.
+- fmt, clippy and the full suite pass.

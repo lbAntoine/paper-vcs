@@ -117,11 +117,17 @@ tqlpvn  yesterday     Add ablation figure         ◆ arxiv-v1
 zzvoko  2026-09-10    Start project
 ```
 
-`<path>` restricts the list to saves touching that path. `--all` shows every line, and `--graph` draws the lines.
+`<path>` restricts the list to saves touching that file or anything under that directory
+(whole path components; a trailing `/` is optional). `-n` limits the number of saves. `--all` shows
+every line's saves, each once, and `--graph` draws the lines. The draft is not a save and is
+not listed. IDs are the shortest unique change-ID prefix (min 4 letters), or 7 hash characters
+for saves made with plain git.
 
 ### `paper show <point>` (since v0.1)
 
-Metadata for the save (author, date, change ID, message, milestones) followed by its diff against its first parent.
+Metadata for the save (author, date, change ID, message, milestones) followed by its diff against its first parent (the first save shows every file as added).
+`paper show @` shows the draft's unsaved changes against `last`. `<point>` follows the
+[points](01-concepts.md#points-how-you-name-a-state) rules.
 
 ### `paper diff [<from>] [<to>] [<paths>…] [--lines|--words] [--stat]` (since v0.1, words in v0.3)
 
