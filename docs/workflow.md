@@ -86,8 +86,8 @@ The coordinator:
    rust-engineer (via `SendMessage` if the agent is still available) with the failing log.
 5. Merges with a merge commit, so the RED and GREEN commits stay visible as proof of TDD:
    `gh pr merge --merge --delete-branch`.
-6. Cleans up: `git worktree remove ../paper-vcs.wt/PV-NNN`, then `git pull --ff-only` in
-   the main checkout.
+6. Cleans up: `gh pr merge --delete-branch` also removes the local branch and its worktree.
+   Then `git worktree prune` and `git pull --ff-only` in the main checkout.
 
 ## Communication
 
