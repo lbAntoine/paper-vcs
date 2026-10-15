@@ -99,3 +99,13 @@ can happen.
 - Note: `AllBut(["notes"])` would also exclude `notes/a.tex` (directory match), so the forced-exclusion
   test excludes `notes/b.tex` instead. The deleted-branch test gets the same path only once the
   implementation stops saying "new commits" (the variant is already `OutOfSyncWithGit`).
+
+### GREEN · rust-engineer · 2026-10-16
+
+- `save.rs`: `close_over_conflicts` is now one-way and single-pass. Only selected additions or
+  modifications force deletions: ancestors by exact lookup in a `BTreeMap`, descendants by a
+  key range (`"p/"..."p0"`). O(n log n), no pairwise scan. `save` skips the closure when the
+  selection already covers every change (so always for `All`).
+- `OutOfSyncWithGit` message reworded per scope 4 (no claim of new commits).
+- `02-cli.md` § `paper save` describes the one-way rule and the new out-of-sync wording.
+- No existing tests changed; no deviations.
