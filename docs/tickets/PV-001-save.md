@@ -124,3 +124,13 @@ and wrapped `GitError` / `SnapshotError` / `ViewError` / I/O errors, in the styl
 - Snapshot rewrites the draft keeping author, message, parents and change ID; committer is now. The stat cache is saved on every snapshot.
 - Partial saves apply the selected changes to the tip's tree; a symlink entry would be written as a regular file (snapshot never records symlinks).
 - Spec: `02-cli.md` § `paper save` documents path selection, `NoChangesAt` and the git-moved refusal. No ADR changes, no deviations.
+
+### Review · reviewer · 2026-10-16
+- Verdict: APPROVE (no blocker/major). Checks: tests pass, clippy pass.
+- MINOR: write order in `save` → draft ref, index, line ref (the single commit point), view; comment that the line-ref → view window stays until the v0.2 activity log.
+- MINOR: `remaining` computed before the tree edit is wrong when a path flips between file and directory (the editor replaces the blob/tree, saving an unselected deletion) → derive `remaining` from `diff_trees(save_tree, draft_tree)` and test it.
+- MINOR: `OutOfSyncWithGit` lacks why/what-next and conflates "HEAD on another branch" with "commit made with git" → split or add guidance.
+- MINOR: three repository-writing tests lack `git fsck --strict`.
+- MINOR: no test for saving an executable-bit change.
+- NIT: symlink gap unreachable today → `debug_assert!` or comment. NIT: `init` drops the `SnapshotOptions` it was given. NIT: comment the `change_id` fallback.
+- Coordinator decision: fix all MINOR and NIT items in one review round.
