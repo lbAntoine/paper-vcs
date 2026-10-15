@@ -5,22 +5,10 @@ merges. Every ticket goes through the same six phases, and agents communicate on
 the ticket file and short reports, never through conversation transcripts.
 
 ```
-groom → isolate → RED (test-author) → GREEN (rust-engineer) → review (reviewer) → PR → merge
+isolate → groom → RED (test-author) → GREEN (rust-engineer) → review (reviewer) → PR → merge
 ```
 
-## 1. Groom
-
-The coordinator writes `docs/tickets/PV-NNN-<slug>.md` from [the template](tickets/TEMPLATE.md)
-and adds `PV-NNN: <title>` to `tasks.json`.
-
-- **Groom one ticket ahead**, not the whole backlog: tickets rot when the code under them moves.
-- **Context is pointers, not copies:** link spec sections and existing code instead of pasting them.
-- **Conflict check:** compare the new ticket's `Touches` list and acceptance criteria with every
-  open ticket. Two tickets touching the same file are sequenced (`Depends on`), never parallel.
-  Two tickets defining the same behaviour are merged or one is rewritten before dispatch.
-- A ticket is `Ready` only when every acceptance criterion is testable.
-
-## 2. Isolate
+## 1. Isolate
 
 The coordinator creates the worktree itself, with an explicit branch name, from fresh `origin/main`:
 
@@ -38,6 +26,21 @@ cargo's lock, which is acceptable.
 
 **Parallelism:** at most two tickets at once, only with disjoint `Touches` lists, each in its
 own worktree.
+
+## 2. Groom
+
+In the worktree, the coordinator writes `docs/tickets/PV-NNN-<slug>.md` from
+[the template](tickets/TEMPLATE.md), sets the task to in progress in `tasks.json`, and commits
+both as the branch's first commit: `docs: groom PV-NNN`. A pull request then contains the
+whole story (ticket, RED, GREEN, review fixes, close) and `main` gets no grooming commits.
+
+- **Context is pointers, not copies:** link spec sections and existing code instead of pasting them.
+- **Conflict check:** compare the new ticket's `Touches` list and acceptance criteria with every
+  open ticket branch. Two tickets touching the same file are sequenced (`Depends on`), never
+  parallel. Two tickets defining the same behaviour are merged or one is rewritten before dispatch.
+- A ticket is `Ready` only when every acceptance criterion is testable.
+- Tickets are groomed when their work starts, not in advance: tickets rot when the code under
+  them moves.
 
 ## 3. RED: test-author
 
