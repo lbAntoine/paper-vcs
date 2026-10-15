@@ -6,6 +6,7 @@ pub mod name;
 pub mod point;
 pub mod project;
 pub mod snapshot;
+pub mod tree_diff;
 pub mod view;
 
 pub use paper_git::{ChangeId, CommitId};

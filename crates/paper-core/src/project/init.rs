@@ -161,7 +161,15 @@ fn adopt(
         large: snap.large,
         skipped_branches,
     };
-    finish(repo, identity, paper_dir, view, &snap.cache, initialized)
+    finish(
+        repo,
+        identity,
+        *options,
+        paper_dir,
+        view,
+        &snap.cache,
+        initialized,
+    )
 }
 
 /// First save for a repository without commits: everything in the folder becomes
@@ -193,7 +201,15 @@ fn start_fresh(
         skipped_branches: Vec::new(),
     };
     let view = View::new(line, Line { tip: save, draft });
-    finish(repo, identity, paper_dir, view, &snap.cache, initialized)
+    finish(
+        repo,
+        identity,
+        *options,
+        paper_dir,
+        view,
+        &snap.cache,
+        initialized,
+    )
 }
 
 fn first_save(
@@ -215,6 +231,7 @@ fn first_save(
 fn finish(
     repo: GitRepo,
     identity: Identity,
+    options: SnapshotOptions,
     paper_dir: PathBuf,
     view: View,
     cache: &StatCache,
@@ -232,6 +249,7 @@ fn finish(
         paper_dir,
         view,
         identity,
+        options,
     };
     Ok((project, initialized))
 }

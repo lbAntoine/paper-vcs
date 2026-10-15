@@ -145,7 +145,15 @@ pub fn snapshot(
         }
         let absolute = repo.workdir().join(path);
         match fs::symlink_metadata(&absolute) {
-            Err(err) if err.kind() == io::ErrorKind::NotFound => state.remove(path),
+            // NotADirectory: a parent that was a directory is now a file.
+            Err(err)
+                if matches!(
+                    err.kind(),
+                    io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+                ) =>
+            {
+                state.remove(path);
+            }
             Err(source) => {
                 return Err(SnapshotError::Io {
                     path: absolute,
@@ -170,7 +178,15 @@ pub fn snapshot(
     let tree = if state.edits.is_empty() {
         base.clone()
     } else {
-        repo.edit_tree(base, &state.edits)?
+        // Removals first: a file turning into a directory (or back) must not have its new
+        // entries wiped by the removal of the old path.
+        let (removals, upserts): (Vec<_>, Vec<_>) = state
+            .edits
+            .iter()
+            .cloned()
+            .partition(|edit| matches!(edit, TreeEdit::Remove { .. }));
+        let ordered: Vec<TreeEdit> = removals.into_iter().chain(upserts).collect();
+        repo.edit_tree(base, &ordered)?
     };
     let mut changes = state.changes;
     changes.sort_by(|a, b| a.path.cmp(&b.path));

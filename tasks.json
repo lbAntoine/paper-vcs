@@ -85,11 +85,11 @@
       "id": "add3aa7c",
       "title": "PV-001: save (whole + paths) and git mirror: HEAD, branch, index",
       "description": "",
-      "status": "todo",
+      "status": "done",
       "priority": "high",
       "sprint": "v0.1",
       "created_at": "2026-09-25T12:32:57Z",
-      "updated_at": "2026-10-15T23:27:41Z"
+      "updated_at": "2026-10-15T23:42:12Z"
     },
     {
       "id": "ec7e9d3b",
@@ -130,6 +130,16 @@
       "sprint": "v0.1",
       "created_at": "2026-09-25T12:32:57Z",
       "updated_at": "2026-10-15T23:27:41Z"
+    },
+    {
+      "id": "156f45b9",
+      "title": "PV-007: save/snapshot hardening from PV-001 review (one-way conflict closure, All fast path, snapshot flip tests, error wording)",
+      "description": "",
+      "status": "todo",
+      "priority": "high",
+      "sprint": "v0.1",
+      "created_at": "2026-10-15T23:42:12Z",
+      "updated_at": "2026-10-15T23:42:12Z"
     }
   ]
 }
