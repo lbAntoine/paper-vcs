@@ -15,7 +15,7 @@ paper-core = { path = "crates/paper-core" }
 paper-git = { path = "crates/paper-git" }
 paper-diff = { path = "crates/paper-diff" }
 
-gix = { version = "0.88", default-features = false, features = ["sha1"] }
+gix = { version = "0.88", default-features = false, features = ["index", "sha1"] }
 ignore = "0.4"
 jiff = "0.2"
 rand = "0.10"

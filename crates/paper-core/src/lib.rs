@@ -4,6 +4,7 @@
 mod fs_util;
 pub mod name;
 pub mod point;
+pub mod project;
 pub mod snapshot;
 pub mod view;
 

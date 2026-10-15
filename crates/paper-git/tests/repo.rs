@@ -299,3 +299,61 @@ fn tree_files_lists_every_file_recursively_with_its_kind() {
         ]
     );
 }
+
+#[test]
+fn local_branches_lists_every_branch_with_its_commit() {
+    let (_dir, repo) = fresh_repo();
+    let first = repo
+        .write_commit(&new_commit(repo.empty_tree().unwrap(), vec![], None))
+        .unwrap();
+    let second = repo
+        .write_commit(&new_commit(
+            repo.empty_tree().unwrap(),
+            vec![first.clone()],
+            None,
+        ))
+        .unwrap();
+    repo.set_ref("refs/heads/main", &second, "test").unwrap();
+    repo.set_ref("refs/heads/try/intro", &first, "test")
+        .unwrap();
+    repo.set_ref("refs/paper/draft/main", &first, "test")
+        .unwrap();
+
+    assert_eq!(
+        repo.local_branches().unwrap(),
+        vec![("main".to_owned(), second), ("try/intro".to_owned(), first),]
+    );
+}
+
+#[test]
+fn reset_index_to_makes_git_status_clean() {
+    let (dir, repo) = fresh_repo();
+    std::fs::write(dir.path().join("main.tex"), "hello").unwrap();
+    let tree = tree_with(&repo, &[("main.tex", b"hello")]);
+    let id = repo
+        .write_commit(&new_commit(tree.clone(), vec![], None))
+        .unwrap();
+    repo.set_ref("refs/heads/main", &id, "test").unwrap();
+    repo.set_head_branch("main", "test").unwrap();
+
+    repo.reset_index_to(&tree).unwrap();
+    assert_eq!(git(dir.path(), &["status", "--porcelain"]), "");
+}
+
+#[test]
+fn enclosing_workdir_finds_the_repository_root_from_a_subfolder() {
+    let (dir, _repo) = fresh_repo();
+    let nested = dir.path().join("sections/figures");
+    std::fs::create_dir_all(&nested).unwrap();
+    let found = GitRepo::enclosing_workdir(&nested).unwrap();
+    assert_eq!(
+        found.canonicalize().unwrap(),
+        dir.path().canonicalize().unwrap()
+    );
+}
+
+#[test]
+fn enclosing_workdir_is_none_outside_any_repository() {
+    let dir = tempfile::tempdir().unwrap();
+    assert_eq!(GitRepo::enclosing_workdir(dir.path()), None);
+}
