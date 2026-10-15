@@ -109,3 +109,16 @@ can happen.
 - `OutOfSyncWithGit` message reworded per scope 4 (no claim of new commits).
 - `02-cli.md` § `paper save` describes the one-way rule and the new out-of-sync wording.
 - No existing tests changed; no deviations.
+
+### Review · reviewer · 2026-10-16
+- Verdict: APPROVE. Checks: tests pass, clippy pass. All acceptance criteria implemented and tested.
+- Confirmed: the closure matches the one-way rule, and a single pass is sufficient (a forced
+  deletion can never force anything). The `"p/"..="p0"` range is exact for every UTF-8 path,
+  since '/' and '0' are adjacent bytes. The fast path is exact, and the closure is O(n log n).
+- MINOR: the `OutOfSyncWithGit` message says what happened but not what to do next (rule 6).
+- NIT: `a_deleted_line_branch_is_out_of_sync_with_git` doesn't assert that nothing was written.
+- NIT: a broken line wrap in `02-cli.md` around line 101.
+- Note for later: `select` still compares every path with every change (paths × changes),
+  which is outside this ticket's scope.
+- Coordinator decision: fix all three in one small round, verified by the coordinator without
+  a new review (wording, one assertion, re-wrap).
