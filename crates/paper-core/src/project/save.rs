@@ -1,6 +1,8 @@
 //! `paper save`: turn the draft (or part of it) into a save (02-cli.md § paper save).
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::io;
+use std::ops::Bound;
 use std::path::PathBuf;
 
 use paper_git::{ChangeId, CommitId, FileKind, GitError, NewCommit, TreeEdit};
@@ -70,7 +72,7 @@ pub enum SaveError {
     #[error("none of these paths has unsaved changes: {}", paths.join(", "))]
     NoChangesAt { paths: Vec<String> },
     #[error(
-        "the line '{line}' has new commits made with plain git; saving on top of them isn't supported yet"
+        "the line '{line}' was changed with plain git since paper last saw it; paper can't save on top of that yet (a later version will). Nothing was saved or changed. Run `git log {line}` to see what changed"
     )]
     OutOfSyncWithGit { line: LineName },
     #[error(
@@ -169,7 +171,12 @@ impl Project {
         if selected.is_empty() {
             return Ok(SaveOutcome::NothingToSave);
         }
-        let selected = close_over_conflicts(selected, &state.changes);
+        // A selection that already covers every change (always so for `All`) needs no closure.
+        let selected = if selected.len() == state.changes.len() {
+            selected
+        } else {
+            close_over_conflicts(selected, &state.changes)
+        };
 
         let line = self.view.current().clone();
         let draft = self.repo.read_commit(&line.draft)?;
@@ -293,30 +300,39 @@ fn matches(selected: &str, file: &str) -> bool {
             .is_some_and(|rest| rest.starts_with('/'))
 }
 
-/// Pulls in every change that can't be left out once `selected` is saved: a file and a
-/// directory of the same name can't both exist, so saving one side takes the other along.
-fn close_over_conflicts(selected: Vec<Change>, all: &[Change]) -> Vec<Change> {
-    let mut selected = selected;
-    loop {
-        let extra: Vec<Change> = all
-            .iter()
-            .filter(|c| !selected.iter().any(|s| s.path == c.path))
-            .filter(|c| {
-                selected
-                    .iter()
-                    .any(|s| is_inside(&s.path, &c.path) || is_inside(&c.path, &s.path))
-            })
-            .cloned()
-            .collect();
-        if extra.is_empty() {
-            return selected;
+/// Pulls in the deletions a valid tree needs once `selected` is saved. Only a selected
+/// addition or modification forces anything: a file `a/b/c` forces the deletion of its
+/// ancestors `a` and `a/b`, and a file `p` forces the deletion of every file under `p/`.
+/// Forced changes are deletions, which force nothing, so one pass is enough.
+///
+/// Lookups use a sorted map (ancestors by exact key, descendants by key range), so the cost
+/// is O(n log n) rather than a scan of every pair.
+fn close_over_conflicts<'a>(selected: Vec<Change>, all: &'a [Change]) -> Vec<Change> {
+    let by_path: BTreeMap<&str, &Change> = all.iter().map(|c| (c.path.as_str(), c)).collect();
+    let taken: BTreeSet<&str> = selected.iter().map(|c| c.path.as_str()).collect();
+    let mut forced: BTreeMap<&str, &Change> = BTreeMap::new();
+    let mut force = |change: &'a Change| {
+        if change.kind == ChangeKind::Deleted && !taken.contains(change.path.as_str()) {
+            forced.insert(change.path.as_str(), change);
         }
-        selected.extend(extra);
+    };
+    for change in selected.iter().filter(|c| c.kind != ChangeKind::Deleted) {
+        let path = change.path.as_str();
+        for (slash, _) in path.match_indices('/') {
+            if let Some(above) = by_path.get(&path[..slash]) {
+                force(above);
+            }
+        }
+        // "p/" up to "p0": '0' is the character right after '/'.
+        let (low, high) = (format!("{path}/"), format!("{path}0"));
+        for (_, below) in by_path.range::<str, _>((
+            Bound::Included(low.as_str()),
+            Bound::Excluded(high.as_str()),
+        )) {
+            force(below);
+        }
     }
-}
-
-/// `path` is strictly inside the directory `dir`.
-fn is_inside(path: &str, dir: &str) -> bool {
-    path.strip_prefix(dir)
-        .is_some_and(|rest| rest.starts_with('/'))
+    let mut selected = selected;
+    selected.extend(forced.into_values().cloned());
+    selected
 }

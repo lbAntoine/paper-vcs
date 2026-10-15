@@ -241,6 +241,59 @@ fn new_symlinks_are_skipped_and_reported() {
     );
 }
 
+/// `git ls-tree -r --name-only <tree>`, run with the real `git` binary.
+fn ls_tree(project: &Project, tree: &TreeId) -> String {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(project.dir.path())
+        .args(["ls-tree", "-r", "--name-only", &tree.to_string()])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    String::from_utf8(output.stdout).unwrap()
+}
+
+#[test]
+fn a_tracked_file_replaced_by_a_folder_leaves_only_the_folder_in_the_tree() {
+    let project = Project::new();
+    project.write("notes", "text");
+    let first = project.snap(&project.empty_tree(), &StatCache::default());
+    project.remove("notes");
+    project.write("notes/a.tex", "a");
+
+    let second = project.snap(&first.tree, &first.cache);
+
+    assert_eq!(ls_tree(&project, &second.tree), "notes/a.tex\n");
+    assert_eq!(
+        second.changes,
+        [
+            change("notes", ChangeKind::Deleted),
+            change("notes/a.tex", ChangeKind::Added),
+        ]
+    );
+}
+
+#[test]
+fn a_tracked_folder_replaced_by_a_file_leaves_only_the_file_in_the_tree() {
+    let project = Project::new();
+    project.write("notes/a.tex", "a");
+    let first = project.snap(&project.empty_tree(), &StatCache::default());
+    project.remove("notes/a.tex");
+    fs::remove_dir(project.dir.path().join("notes")).unwrap();
+    project.write("notes", "text");
+
+    let second = project.snap(&first.tree, &first.cache);
+
+    assert_eq!(ls_tree(&project, &second.tree), "notes\n");
+    assert_eq!(
+        second.changes,
+        [
+            change("notes", ChangeKind::Added),
+            change("notes/a.tex", ChangeKind::Deleted),
+        ]
+    );
+}
+
 /// Round-trips the cache through JSON with its start time pushed an hour into the future.
 fn age(cache: &StatCache) -> StatCache {
     let dir = tempfile::tempdir().unwrap();

@@ -90,11 +90,18 @@ Other states it reports:
 - A path with no unsaved changes is an error that lists every such path
   (`None of these paths has unsaved changes: …`), and nothing is written. This catches
   typos, in `--all-but` too.
-- A file that becomes a directory (or the reverse) can't be saved in halves: selecting one
-  side also saves the other (`notes` deleted along with `notes/a.tex` added).
-- If a plain `git commit` added saves to the line since paper last saw it, `save` refuses and
-  writes nothing: saving on top of commits made with plain git isn't supported yet. If git
-  is on another branch (or detached), it refuses too and says to run `git switch <line>`.
+- A file that becomes a directory (or the reverse) can't be saved in halves, but the rule is
+  one-way. Selecting an *added or modified* file also saves the deletions a valid tree needs:
+  `notes/a.tex` added takes the deletion of the file `notes`; `notes` added takes the
+  deletion of every file under `notes/`. Selecting a deletion forces nothing, and the
+  additions stay in the draft. Files excluded with `--all-but` that are forced this way are
+  saved too, and the result lists them.
+- If the line changed with plain git since paper last saw it (new commits, a `git reset`, or
+  a deleted branch), `save` refuses and writes nothing: saving on top of that isn't
+  supported yet, and a later version will. The error names the line and points to
+  `git log <line>` to see what changed; it never suggests a command that could drop git
+  commits. If git is on another branch (or detached), it refuses too and says to run
+  `git switch <line>`.
 - An empty draft means a no-op: `Nothing to save.` (exit 0).
 - If conflict markers are still present in files being saved: warn, and require `--with-conflicts`.
 - **Effect:** the draft becomes a save on the current line, the line advances, a new empty
