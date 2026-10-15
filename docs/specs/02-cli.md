@@ -83,6 +83,16 @@ Other states it reports:
   stays in the new draft. This replaces the staging area.
 - If `<message>` is missing and stdin is a TTY, prompt with one line (`Describe this save:`).
   Otherwise it is an error. No `$EDITOR` by default. `paper config set editor …` opts in.
+- A path selects the file with exactly that path, or every file under it when it names a
+  directory (`sections` and `sections/` are the same). Only whole path components match:
+  `sec` does not select `sections/intro.tex`. `--all-but` saves everything except the
+  matches.
+- A path with no unsaved changes is an error that lists every such path
+  (`None of these paths has unsaved changes: …`), and nothing is written. This catches
+  typos, in `--all-but` too.
+- If git moved the line since paper last saw it (a plain `git commit`, or HEAD switched to
+  another branch), `save` refuses and writes nothing. Importing changes made with plain git
+  comes later.
 - An empty draft means a no-op: `Nothing to save.` (exit 0).
 - If conflict markers are still present in files being saved: warn, and require `--with-conflicts`.
 - **Effect:** the draft becomes a save on the current line, the line advances, a new empty

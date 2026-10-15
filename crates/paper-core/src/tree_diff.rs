@@ -2,7 +2,7 @@
 
 use paper_git::{GitError, GitRepo, TreeId};
 
-use crate::snapshot::Change;
+use crate::snapshot::{Change, ChangeKind};
 
 /// The files that differ between `from` and `to`, sorted by path.
 ///
@@ -11,8 +11,31 @@ use crate::snapshot::Change;
 /// # Errors
 ///
 /// [`GitError`] if either tree can't be read.
-pub fn diff_trees(_repo: &GitRepo, _from: &TreeId, _to: &TreeId) -> Result<Vec<Change>, GitError> {
-    todo!("PV-001: compare the tree_files maps")
+pub fn diff_trees(repo: &GitRepo, from: &TreeId, to: &TreeId) -> Result<Vec<Change>, GitError> {
+    let old = repo.tree_files(from)?;
+    let new = repo.tree_files(to)?;
+    let mut changes = Vec::new();
+    for (path, file) in &new {
+        match old.get(path) {
+            None => changes.push(Change {
+                path: path.clone(),
+                kind: ChangeKind::Added,
+            }),
+            Some(before) if before != file => changes.push(Change {
+                path: path.clone(),
+                kind: ChangeKind::Modified,
+            }),
+            Some(_) => {}
+        }
+    }
+    for path in old.keys().filter(|path| !new.contains_key(*path)) {
+        changes.push(Change {
+            path: path.clone(),
+            kind: ChangeKind::Deleted,
+        });
+    }
+    changes.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(changes)
 }
 
 #[cfg(test)]
@@ -20,7 +43,6 @@ mod tests {
     use paper_git::{Identity, TreeEdit};
 
     use super::*;
-    use crate::snapshot::ChangeKind;
 
     fn repo() -> (tempfile::TempDir, GitRepo) {
         let dir = tempfile::tempdir().unwrap();

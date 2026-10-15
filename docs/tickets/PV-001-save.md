@@ -118,3 +118,9 @@ and wrapped `GitError` / `SnapshotError` / `ViewError` / I/O errors, in the styl
 - Stubs: `tree_diff::diff_trees`, `Project::snapshot`, `Project::save`, `DraftState`, `SaveRequest`, `PathSelection`, `SaveOutcome`, `Saved`, `SaveError` (all in `project/save.rs`, re-exported from `project`); `pub mod tree_diff` in lib.rs. The `SnapshotOptions` field on `Project` is left to GREEN (an unread field would trip dead_code).
 - Interpretations to confirm: `DraftState` fields are `changes`, `skipped`, `large`. `NoChangesAt` lists every unmatched path of `Only` and `AllBut` (tests compare sorted). A path matches a directory only at a component boundary (`sec` does not match `sections/...`). The message check runs before looking for changes, so a blank message is `MissingMessage` even with nothing to save. HEAD attached to another branch is `OutOfSyncWithGit`. Tests that expect an unchanged store after `NoChangesAt` or `NothingToSave` call `project.snapshot()` first, because save snapshots before selecting.
 - Questions: none
+
+### GREEN · rust-engineer · 2026-10-16
+- Implemented `diff_trees`, `Project::snapshot`, `Project::save` (sync check, message check, snapshot, select, write), and the `options: SnapshotOptions` field on `Project` (default, set by `open` and `init`).
+- Snapshot rewrites the draft keeping author, message, parents and change ID; committer is now. The stat cache is saved on every snapshot.
+- Partial saves apply the selected changes to the tip's tree; a symlink entry would be written as a regular file (snapshot never records symlinks).
+- Spec: `02-cli.md` § `paper save` documents path selection, `NoChangesAt` and the git-moved refusal. No ADR changes, no deviations.

@@ -232,6 +232,7 @@ fn finish(
         paper_dir,
         view,
         identity,
+        options: SnapshotOptions::default(),
     };
     Ok((project, initialized))
 }

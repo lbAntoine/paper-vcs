@@ -12,6 +12,7 @@ use paper_git::{
 };
 
 use crate::name::LineName;
+use crate::snapshot::SnapshotOptions;
 use crate::view::{View, ViewError};
 
 pub use init::{InitError, Initialized};
@@ -30,6 +31,7 @@ pub struct Project {
     paper_dir: PathBuf,
     view: View,
     identity: Identity,
+    options: SnapshotOptions,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -90,6 +92,7 @@ impl Project {
             paper_dir,
             view,
             identity,
+            options: SnapshotOptions::default(),
         })
     }
 
