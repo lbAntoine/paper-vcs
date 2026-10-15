@@ -79,3 +79,10 @@ these; word diff (v0.3) builds on the same structure later.
 - Failing on: todo!() in `classify` and `diff_files`/`to_unified` (16 lib tests, 7 integration tests); `default_context_is_three` passes (Default is implemented in the stub)
 - Stubs: Content, BINARY_SNIFF_LEN, classify, LineDiffOptions (+Default), LineKind, DiffLine, Hunk, TextDiff, FileDiff, diff_files, to_unified. `similar` not added (GREEN).
 - Questions: none. The dependency-free criterion (no gix/paper-git/paper-core) has no test; check Cargo.toml in review.
+
+### GREEN · rust-engineer · 2026-10-16
+- Implemented `classify`, `diff_files`, `to_unified` in `crates/paper-diff/src/lib.rs` with `similar` 2.7 (`Algorithm::Patience`, `grouped_ops`). Added `similar` to workspace deps; paper-diff has no gix/paper-git/paper-core dependency.
+- Deviation: `Hunk` gained a `section: Option<String>` field. git prints its function-context heading (nearest earlier old line starting with a letter, `_` or `$`, max 80 bytes) after `@@`, and the cross-check tests compare it. Documented in 04-content.md.
+- `None` vs `Some(b"")` yields a `Text` diff with no hunks (a change, but nothing to show); only equal inputs are `Identical`.
+- Specs: 03-architecture.md and 04-content.md (new "Line diff" section, patience instead of imara-diff for word diff).
+- Follow-up: `similar` 3.x exists; 2.7 kept for now.

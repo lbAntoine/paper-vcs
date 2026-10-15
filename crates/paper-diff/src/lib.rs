@@ -2,6 +2,8 @@
 //!
 //! Pure functions over byte slices: no git, no file access.
 
+use similar::{Algorithm, ChangeTag};
+
 /// How many leading bytes are scanned for a NUL byte when classifying content.
 pub const BINARY_SNIFF_LEN: usize = 8 * 1024;
 
@@ -16,8 +18,12 @@ pub enum Content<'a> {
 
 /// Decide whether `bytes` are text or binary (04-content.md, File classes).
 #[must_use]
-pub fn classify(_bytes: &[u8]) -> Content<'_> {
-    todo!("PV-009: classify")
+pub fn classify(bytes: &[u8]) -> Content<'_> {
+    let head = &bytes[..bytes.len().min(BINARY_SNIFF_LEN)];
+    if head.contains(&0) {
+        return Content::Binary;
+    }
+    std::str::from_utf8(bytes).map_or(Content::Binary, Content::Text)
 }
 
 /// Options for [`diff_files`].
@@ -69,6 +75,30 @@ pub struct Hunk {
     pub new_len: usize,
     /// The lines of the hunk, in order.
     pub lines: Vec<DiffLine>,
+    /// Git's "function context": the nearest earlier old line that starts with a
+    /// letter, `_` or `$`, shown after the `@@` header. `None` when there is none.
+    pub section: Option<String>,
+}
+
+/// Longest section heading git prints, in bytes.
+const SECTION_MAX_LEN: usize = 80;
+
+fn section_before(old: &str, old_idx: usize) -> Option<String> {
+    let before: Vec<&str> = old
+        .split_inclusive('\n')
+        .take(old_idx)
+        .map(|l| l.strip_suffix('\n').unwrap_or(l))
+        .collect();
+    let line = before.into_iter().rfind(|l| {
+        l.bytes()
+            .next()
+            .is_some_and(|b| b.is_ascii_alphabetic() || b == b'_' || b == b'$')
+    })?;
+    let mut end = line.len().min(SECTION_MAX_LEN);
+    while !line.is_char_boundary(end) {
+        end -= 1;
+    }
+    Some(line[..end].trim_end().to_owned())
 }
 
 /// A line diff of two text versions.
@@ -98,21 +128,125 @@ pub enum FileDiff {
     Text(TextDiff),
 }
 
+fn text_of(bytes: Option<&[u8]>) -> Option<&str> {
+    match bytes.map(classify) {
+        None => Some(""),
+        Some(Content::Text(t)) => Some(t),
+        Some(Content::Binary) => None,
+    }
+}
+
 /// Compare two versions of a file. `None` means the file does not exist on
 /// that side (added or deleted).
 #[must_use]
-pub fn diff_files(
-    _old: Option<&[u8]>,
-    _new: Option<&[u8]>,
-    _options: &LineDiffOptions,
-) -> FileDiff {
-    todo!("PV-009: diff_files")
+pub fn diff_files(old: Option<&[u8]>, new: Option<&[u8]>, options: &LineDiffOptions) -> FileDiff {
+    if old == new {
+        return FileDiff::Identical;
+    }
+    let (Some(old_text), Some(new_text)) = (text_of(old), text_of(new)) else {
+        return FileDiff::Binary {
+            old_size: old.map(|b| b.len() as u64),
+            new_size: new.map(|b| b.len() as u64),
+        };
+    };
+    FileDiff::Text(line_diff(old_text, new_text, options.context))
+}
+
+fn line_diff(old: &str, new: &str, context: usize) -> TextDiff {
+    let diff = similar::TextDiff::configure()
+        .algorithm(Algorithm::Patience)
+        .diff_lines(old, new);
+    let mut added = 0;
+    let mut removed = 0;
+    let mut hunks = Vec::new();
+    for group in diff.grouped_ops(context) {
+        let mut lines = Vec::new();
+        let (mut old_len, mut new_len) = (0, 0);
+        let first = group
+            .first()
+            .map(|op| (op.old_range().start, op.new_range().start));
+        for op in &group {
+            for change in diff.iter_changes(op) {
+                let kind = match change.tag() {
+                    ChangeTag::Equal => {
+                        old_len += 1;
+                        new_len += 1;
+                        LineKind::Context
+                    }
+                    ChangeTag::Delete => {
+                        old_len += 1;
+                        removed += 1;
+                        LineKind::Removed
+                    }
+                    ChangeTag::Insert => {
+                        new_len += 1;
+                        added += 1;
+                        LineKind::Added
+                    }
+                };
+                let value = change.value();
+                lines.push(DiffLine {
+                    kind,
+                    text: value.strip_suffix('\n').unwrap_or(value).to_owned(),
+                    missing_newline: !value.ends_with('\n'),
+                });
+            }
+        }
+        let (old_idx, new_idx) = first.unwrap_or((0, 0));
+        hunks.push(Hunk {
+            old_start: if old_len == 0 { old_idx } else { old_idx + 1 },
+            old_len,
+            new_start: if new_len == 0 { new_idx } else { new_idx + 1 },
+            new_len,
+            lines,
+            section: section_before(old, old_idx),
+        });
+    }
+    TextDiff {
+        hunks,
+        added,
+        removed,
+    }
 }
 
 /// Render a text diff in git's unified format.
 #[must_use]
-pub fn to_unified(_diff: &TextDiff, _old_label: &str, _new_label: &str) -> String {
-    todo!("PV-009: to_unified")
+pub fn to_unified(diff: &TextDiff, old_label: &str, new_label: &str) -> String {
+    use std::fmt::Write as _;
+
+    fn range(start: usize, len: usize) -> String {
+        if len == 1 {
+            start.to_string()
+        } else {
+            format!("{start},{len}")
+        }
+    }
+
+    let mut out = format!("--- {old_label}\n+++ {new_label}\n");
+    for h in &diff.hunks {
+        let _ = writeln!(
+            out,
+            "@@ -{} +{} @@{}",
+            range(h.old_start, h.old_len),
+            range(h.new_start, h.new_len),
+            h.section
+                .as_ref()
+                .map_or_else(String::new, |t| format!(" {t}"))
+        );
+        for line in &h.lines {
+            out.push(match line.kind {
+                LineKind::Context => ' ',
+                LineKind::Added => '+',
+                LineKind::Removed => '-',
+            });
+            out.push_str(&line.text);
+            out.push('\n');
+            if line.missing_newline {
+                out.push_str("\\ No newline at end of file\n");
+            }
+        }
+    }
+    out
 }
 
 #[cfg(test)]
