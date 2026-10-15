@@ -64,6 +64,7 @@ The tests use the `git` binary to check that everything paper writes is valid pl
 | [`paper-cli`](crates/paper-cli) | The `paper` command |
 
 Design documents and decision records are in [`docs/specs`](docs/specs/README.md).
+Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
