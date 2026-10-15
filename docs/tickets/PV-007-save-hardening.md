@@ -81,3 +81,21 @@ can happen.
 ## Summary
 
 ## Handoff log
+
+### RED · test-author · 2026-10-16
+
+- `crates/paper-core/tests/save.rs`: 6 new tests (section "PV-007 hardening").
+  - FAIL now (4): `saving_a_deletion_inside_a_folder_that_became_a_file_forces_nothing`,
+    `saving_one_file_of_a_new_folder_takes_only_the_old_file_it_replaces` (symmetric closure
+    pulls in too much), `a_git_reset_of_the_line_is_refused_without_claiming_new_commits`,
+    `a_deleted_line_branch_is_out_of_sync_with_git` (message says "new commits").
+  - Already PASS (2, coverage only): `saving_the_file_that_replaced_a_folder_takes_every_deletion_under_it`,
+    `all_but_still_saves_an_excluded_path_that_a_selected_change_forces`.
+- `crates/paper-core/tests/snapshot.rs`: 2 flip tests (file to folder, folder to file) via
+  `snapshot()` and `git ls-tree -r --name-only`. Both already PASS, as expected.
+- Existing tests changed: none. The two PV-001 flip tests still hold under the one-way rule
+  (`notes` is an ancestor of a selected addition; `notes/a.tex` is under a selected added `notes`).
+- No stubs needed. Fast-path and O(n log n) left to review; no timing test.
+- Note: `AllBut(["notes"])` would also exclude `notes/a.tex` (directory match), so the forced-exclusion
+  test excludes `notes/b.tex` instead. The deleted-branch test gets the same path only once the
+  implementation stops saying "new commits" (the variant is already `OutOfSyncWithGit`).

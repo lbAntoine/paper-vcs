@@ -760,6 +760,179 @@ fn a_directory_turning_into_a_file_takes_its_deletions_along() {
     fsck(dir.path());
 }
 
+// ---------------------------------------------------------------- PV-007 hardening
+
+fn ls_main(dir: &Path) -> String {
+    git(dir, &["ls-tree", "-r", "--name-only", "main"])
+}
+
+#[test]
+fn saving_a_deletion_inside_a_folder_that_became_a_file_forces_nothing() {
+    let (dir, mut project) =
+        project_with(&[("notes/a.tex", "a"), ("notes/b.tex", "b"), ("x.tex", "x")]);
+    fs::remove_dir_all(dir.path().join("notes")).unwrap();
+    write(dir.path(), "notes", "text");
+
+    let result = saved(
+        project
+            .save(&request(
+                "Drop a",
+                PathSelection::Only(paths(&["notes/a.tex"])),
+            ))
+            .unwrap(),
+    );
+
+    assert_eq!(
+        result.saved,
+        vec![change("notes/a.tex", ChangeKind::Deleted)]
+    );
+    assert_eq!(
+        result.remaining,
+        vec![
+            change("notes", ChangeKind::Added),
+            change("notes/b.tex", ChangeKind::Deleted),
+        ]
+    );
+    assert_eq!(ls_main(dir.path()), "notes/b.tex\nx.tex\n");
+    fsck(dir.path());
+}
+
+#[test]
+fn saving_the_file_that_replaced_a_folder_takes_every_deletion_under_it() {
+    let (dir, mut project) =
+        project_with(&[("notes/a.tex", "a"), ("notes/b.tex", "b"), ("x.tex", "x")]);
+    fs::remove_dir_all(dir.path().join("notes")).unwrap();
+    write(dir.path(), "notes", "text");
+
+    let result = saved(
+        project
+            .save(&request(
+                "Notes file",
+                PathSelection::Only(paths(&["notes"])),
+            ))
+            .unwrap(),
+    );
+
+    assert_eq!(
+        result.saved,
+        vec![
+            change("notes", ChangeKind::Added),
+            change("notes/a.tex", ChangeKind::Deleted),
+            change("notes/b.tex", ChangeKind::Deleted),
+        ]
+    );
+    assert_eq!(result.remaining, vec![]);
+    assert_eq!(ls_main(dir.path()), "notes\nx.tex\n");
+    fsck(dir.path());
+}
+
+#[test]
+fn saving_one_file_of_a_new_folder_takes_only_the_old_file_it_replaces() {
+    let (dir, mut project) = project_with(&[("notes", "text")]);
+    fs::remove_file(dir.path().join("notes")).unwrap();
+    write(dir.path(), "notes/a.tex", "a");
+    write(dir.path(), "notes/b.tex", "b");
+
+    let result = saved(
+        project
+            .save(&request(
+                "First note",
+                PathSelection::Only(paths(&["notes/a.tex"])),
+            ))
+            .unwrap(),
+    );
+
+    assert_eq!(
+        result.saved,
+        vec![
+            change("notes", ChangeKind::Deleted),
+            change("notes/a.tex", ChangeKind::Added),
+        ]
+    );
+    assert_eq!(
+        result.remaining,
+        vec![change("notes/b.tex", ChangeKind::Added)]
+    );
+    assert_eq!(ls_main(dir.path()), "notes/a.tex\n");
+    fsck(dir.path());
+}
+
+#[test]
+fn all_but_still_saves_an_excluded_path_that_a_selected_change_forces() {
+    let (dir, mut project) =
+        project_with(&[("notes/a.tex", "a"), ("notes/b.tex", "b"), ("x.tex", "x")]);
+    fs::remove_dir_all(dir.path().join("notes")).unwrap();
+    write(dir.path(), "notes", "text");
+    write(dir.path(), "x.tex", "x2");
+
+    let result = saved(
+        project
+            .save(&request(
+                "Notes file",
+                PathSelection::AllBut(paths(&["notes/b.tex", "x.tex"])),
+            ))
+            .unwrap(),
+    );
+
+    assert_eq!(
+        result.saved,
+        vec![
+            change("notes", ChangeKind::Added),
+            change("notes/a.tex", ChangeKind::Deleted),
+            change("notes/b.tex", ChangeKind::Deleted),
+        ]
+    );
+    assert_eq!(
+        result.remaining,
+        vec![change("x.tex", ChangeKind::Modified)]
+    );
+    assert_eq!(ls_main(dir.path()), "notes\nx.tex\n");
+    fsck(dir.path());
+}
+
+#[test]
+fn a_git_reset_of_the_line_is_refused_without_claiming_new_commits() {
+    let (dir, mut project) = project_with(&[("a.tex", "a")]);
+    write(dir.path(), "a.tex", "a2");
+    save_all(&mut project, "Second");
+    git(dir.path(), &["reset", "--quiet", "--hard", "HEAD~1"]);
+    write(dir.path(), "b.tex", "b");
+    let before = stored(dir.path(), &project);
+
+    let err = project
+        .save(&request("After reset", PathSelection::All))
+        .unwrap_err();
+
+    assert!(
+        matches!(&err, SaveError::OutOfSyncWithGit { line: l } if *l == line("main")),
+        "{err:?}"
+    );
+    let message = err.to_string();
+    assert!(!message.contains("new commits"), "{message}");
+    assert!(message.contains("main"), "{message}");
+    assert_eq!(stored(dir.path(), &project), before);
+    fsck(dir.path());
+}
+
+#[test]
+fn a_deleted_line_branch_is_out_of_sync_with_git() {
+    let (dir, mut project) = project_with(&[("a.tex", "a")]);
+    git(dir.path(), &["update-ref", "-d", "refs/heads/main"]);
+    write(dir.path(), "a.tex", "a2");
+
+    let err = project
+        .save(&request("No branch", PathSelection::All))
+        .unwrap_err();
+
+    assert!(
+        matches!(&err, SaveError::OutOfSyncWithGit { line: l } if *l == line("main")),
+        "{err:?}"
+    );
+    let message = err.to_string();
+    assert!(!message.contains("new commits"), "{message}");
+    assert!(message.contains("main"), "{message}");
+}
+
 #[cfg(unix)]
 #[test]
 fn saving_an_executable_bit_change_keeps_mode_100755() {
