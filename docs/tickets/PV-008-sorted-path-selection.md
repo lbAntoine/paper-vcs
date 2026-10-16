@@ -65,3 +65,20 @@ paths, with exactly the same results as today.
 ## Summary
 
 ## Handoff log
+
+### RED · test-author · 2026-10-16
+
+Characterisation tests: all PASS against today's code by design (behaviour-preserving refactor).
+
+- `crates/paper-core/tests/save.rs`: 13 new tests (section "PV-008 path selection"), through
+  `Project::save` on real `generic`-profile repos, cross-checked with `git fsck --strict`.
+  Cover `""`, `/`, trailing `/`, whole-component matching, unmatched paths in given order
+  (duplicates kept), duplicate and overlapping selections, `Only` and `AllBut`, and the sort
+  neighbours (`a b`, `a-b`, `a.b`, `a/b`, `a0`, `ab`), plus added/deleted changes.
+- `crates/paper-core/src/project/save.rs` (`#[cfg(test)]`): 3 new pure tests: differential vs a naive
+  reference (4000 rounds x 3 selections, xorshift seed fixed, asserts both Ok and Err outcomes
+  are well represented), sort-neighbour sweep, and a 20 000-change / 2 000-path test.
+  No timing assertions. The reference does not call `matches`.
+- Stubs added: none; no production code changed (`select` is reachable from the child test module).
+- Note: "a b/" and "a.b/" match (trailing `/` ignored); tests reflect that.
+- Questions: none.
