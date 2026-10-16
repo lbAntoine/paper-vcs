@@ -1,0 +1,131 @@
+# PV-005: config get/set/list and identity
+
+- **Status:** In progress
+- **Branch:** `feat/PV-005-config`
+- **Depends on:** PV-003, PV-011 (merged). Runs alone.
+- **Touches:** `crates/paper-core/src/config/` (new), `crates/paper-core/src/lib.rs`,
+  `crates/paper-core/src/error.rs`, `crates/paper-core/src/project/mod.rs`,
+  `crates/paper-core/src/project/init.rs`, `crates/paper-core/tests/config.rs` (new),
+  `crates/paper-core/Cargo.toml`, `crates/paper-cli/**`, root `Cargo.toml`, `Cargo.lock`,
+  `docs/specs/02-cli.md` (§ Global behaviour, § `paper init`, § `paper config`),
+  `docs/specs/03-architecture.md` (§ Configuration)
+- **Specs:** `03-architecture.md` § Configuration (precedence, the two files);
+  `02-cli.md` § `paper config`, § `paper init` (identity prompt), § Global behaviour (`--color`);
+  `04-content.md` § Large files; CLAUDE.md rule 8 (no personal data in the repo)
+
+## Goal
+
+A researcher can tell paper who they are and change its settings with
+`paper config get|set|list [--project]`, without touching git config. Settings take effect:
+identity in saves, the colour default, and the large-file thresholds.
+
+## Context
+
+- Identity today: `paper_git::configured_identity(path)` (git config only), called from
+  `crates/paper-cli/src/commands.rs` (`identity()`); `PaperError::no_identity` suggests
+  `git config --global …`.
+- `Project` holds `SnapshotOptions` (`warn_file_bytes`, `max_file_bytes`), always the default
+  (`Project::open`, `Project::init`). Nothing reads `paper.toml` yet, and `init` doesn't write it.
+- `--color` has a clap default (`default_value_t = Auto`), so the CLI can't tell whether the user
+  passed it.
+- `toml` is in the planned dependency list. Use `toml_edit` for writing, so `set` keeps the user's
+  comments and layout.
+
+## Decisions (coordinator, 2026-10-16)
+
+- **Keys in v0.1.** Each key has a type and a home:
+
+  | Key | Values | Home | Effect in v0.1 |
+  |---|---|---|---|
+  | `user.name` | non-empty text | user only | author of saves |
+  | `user.email` | text containing `@` | user only | author of saves |
+  | `ui.color` | `auto` / `always` / `never` | user only | default for `--color` |
+  | `large_files.warn_mb` | integer ≥ 1 | project or user | snapshot warning threshold |
+  | `large_files.max_mb` | integer ≥ 1, ≥ `warn_mb` | project or user | snapshot skip threshold |
+  | `diff.default` | `lines` (`words` rejected "not yet, v0.3") | project or user | none yet beyond validation |
+  | `profile` | the six profile names | project only | stored; used by PV-004 |
+
+  `ui.editor` and any other key: a user error naming the known keys (`editor` arrives later).
+- **Where `set` writes.** User config by default; `--project` writes `paper.toml` at the project
+  root. `user.*` and `ui.*` with `--project` are refused: identity must never be committed to a
+  shared (often public) repository. `profile` without `--project` is refused (it describes the
+  project).
+- **Precedence** (03-architecture): CLI flag > `PAPER_*` env > `paper.toml` > user config > git
+  config (identity only) > default. Env names: `PAPER_` + key upper-cased with `.` → `_`
+  (`PAPER_USER_NAME`, `PAPER_LARGE_FILES_MAX_MB`).
+- **User config path:** `$XDG_CONFIG_HOME/paper/config.toml`, else `~/.config/paper/config.toml`
+  (Linux and macOS); `%APPDATA%\paper\config.toml` on Windows. Created on the first `set`.
+- **`paper.toml`** is created by the first `config set --project`. It is an ordinary project file,
+  so it shows in the draft and gets saved like any other file.
+- **Identity prompt** (02-cli § init): when no identity is found and stdin is a terminal, `init`
+  (and any command that needs an identity) asks `Your name:` and `Your email:` once, stores them in
+  the user config, says where, and continues. Not a terminal → the existing three-part error, now
+  suggesting `paper config set user.name …` first and the git config commands second.
+
+## Scope
+
+1. **paper-core `config` module** (pure where possible; never prints or prompts):
+   - `Key` (the table above) with parse, type, home and env name; `Value` typed per key; validation
+     errors that teach (rule 6).
+   - `ConfigFile::load(path)` / `with(key, value)` / `write(path)` on top of `toml_edit`, preserving
+     comments and unknown tables; a missing file loads as empty; a malformed file is an error
+     naming the file and line.
+   - `Settings::resolve(sources)` where `Sources { env: impl Fn(&str) -> Option<String>,
+     project: ConfigFile, user: ConfigFile, git_identity: Option<Identity> }` → every key's
+     effective value and its source (`Env`, `Project`, `User`, `Git`, `Default`), plus
+     `Settings::identity()` and `Settings::snapshot_options()`.
+   - `ConfigError` with `PaperError` conversions.
+2. **Project uses the settings:** `Project::open` and `Project::init` take the `SnapshotOptions`
+   from the caller (or the resolved settings) instead of always the default.
+3. **CLI `paper config`:**
+   - `get <key>`: prints the effective value (exit 0); a key with no value (identity unset) →
+     exit 1 with a three-part error.
+   - `set <key> <value> [--project]`: validates, writes, prints `Set <key> = <value> in <file>`.
+   - `list`: every key, its value and its source, in a table; `--json` with `"schema": 1`.
+   - Works outside a project for user keys; `--project` or project keys need a project
+     (the not-a-project error otherwise).
+4. **CLI uses the settings:** identity from settings (env, user config, then git); `ui.color`
+   when `--color` isn't given (make the flag optional); large-file options passed to `Project`.
+   The identity prompt above, with injected input like `prompt.rs`.
+5. **Specs:** `02-cli.md` § `paper config` (keys table, homes, `--project`, sources),
+   § `paper init` (prompt), § Global behaviour (`--color` falls back to `ui.color`);
+   `03-architecture.md` § Configuration (remove the "*Today:*" note; precedence with env names;
+   paths per OS).
+6. **PV-014 item absorbed:** rewrite the CLI's large-file `status` test to lower `max_mb` through
+   config (env or `paper.toml`) with a 2 MB file instead of the 10 MB default.
+
+## Out of scope
+
+- `ui.editor` and `$EDITOR` for save messages; `config unset`; profiles' effect (PV-004);
+  `diff.default = words` (v0.3); a GUI.
+
+## Acceptance criteria
+
+- [ ] `config set user.name/user.email` writes the user config at the OS path (honouring `XDG_CONFIG_HOME` / `APPDATA` in tests), and the next `paper save` is authored with them (checked with `git log --format=%an/%ae`).
+- [ ] Identity precedence: env > user config > git config; each step tested.
+- [ ] `config set` keeps existing comments and other keys in the file byte-for-byte.
+- [ ] `config set --project large_files.max_mb 1` writes `paper.toml`; a 2 MB file is then skipped by `status`/`save`; `PAPER_LARGE_FILES_MAX_MB` overrides it; user config applies when the project doesn't set it.
+- [ ] Invalid values (`ui.color purple`, `large_files.max_mb 0`, `max_mb` < `warn_mb`, `user.email nobody`, `diff.default words`, an unknown key, `ui.editor`) → exit 1, three-part error, nothing written.
+- [ ] `user.name --project` and `profile` without `--project` are refused with a reason.
+- [ ] `config get` prints the effective value; an unset identity → exit 1.
+- [ ] `config list` shows every key with value and source; `--json` has `"schema": 1` and a fixed key set; snapshot-tested.
+- [ ] A malformed `paper.toml` or user config → exit 1 naming the file and line.
+- [ ] `ui.color always` colours output without `--color`; `--color never` still wins.
+- [ ] No identity and no terminal → three-part error suggesting `paper config set user.name …`; the prompt path is unit-tested with injected input and stores both values.
+- [ ] The large-file status test uses config and a 2 MB file.
+- [ ] Specs updated.
+- [ ] fmt, clippy (`-D warnings`) and the full suite pass (CI on Linux, macOS, Windows).
+
+## Test plan
+
+- `crates/paper-core/tests/config.rs` and unit tests in `src/config/`: parsing, validation,
+  precedence with an injected env function, comment-preserving writes on temp files.
+- `crates/paper-cli/tests/config.rs` plus additions to `status.rs`, `save.rs`, `basics.rs`, using
+  the isolated env from `tests/common/mod.rs`; add `XDG_CONFIG_HOME` and `APPDATA` to the
+  isolation so the developer's real config is never read or written.
+- Cross-check identity with `git log`, and that `paper.toml` is an ordinary tracked file
+  (`git status --porcelain` after a save).
+
+## Summary
+
+## Handoff log
