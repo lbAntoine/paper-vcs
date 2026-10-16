@@ -523,7 +523,12 @@ fn a_bad_environment_value_names_the_variable() {
     let run = env.paper_in(&env.work, &[("PAPER_UI_COLOR", "purple")], &["status"]);
     run.assert_three_part_error(1);
     assert!(run.stderr.contains("PAPER_UI_COLOR"), "{run:#?}");
-    assert!(run.stderr.contains("unset PAPER_UI_COLOR"), "{run:#?}");
+    let expected = if cfg!(windows) {
+        "Remove-Item Env:PAPER_UI_COLOR"
+    } else {
+        "unset PAPER_UI_COLOR"
+    };
+    assert!(run.stderr.contains(expected), "{run:#?}");
 }
 
 #[test]

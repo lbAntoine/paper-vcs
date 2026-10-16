@@ -199,3 +199,7 @@ Deviations to review:
 
 ### Close · coordinator · 2026-10-16
 - Post-approval commit checked: the diff is the comparison and the comment only; both new tests panic on the previous `file.rs`. fmt and clippy clean; 20/20 full-suite runs, 0 failures.
+
+### GREEN (CI fix) · rust-engineer · 2026-10-16
+
+Two older PV-005 tests now expect the platform's unset form (`Remove-Item Env:` on Windows); no product change.

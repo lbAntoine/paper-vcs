@@ -771,7 +771,12 @@ fn a_bad_env_value_names_the_variable_and_says_to_unset_it() {
     .unwrap_err();
     let shown = PaperError::from(error);
     assert!(shown.message.contains("PAPER_UI_COLOR"), "{shown:?}");
-    assert_eq!(shown.next[0].command, "unset PAPER_UI_COLOR");
+    let expected = if cfg!(windows) {
+        "Remove-Item Env:PAPER_UI_COLOR"
+    } else {
+        "unset PAPER_UI_COLOR"
+    };
+    assert_eq!(shown.next[0].command, expected);
 }
 
 #[test]
