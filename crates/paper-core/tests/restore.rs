@@ -16,7 +16,6 @@ fn identity() -> Identity {
     }
 }
 
-#[cfg(unix)]
 fn skipped(path: &str, reason: RestoreSkip) -> SkippedPath {
     SkippedPath {
         path: path.to_owned(),

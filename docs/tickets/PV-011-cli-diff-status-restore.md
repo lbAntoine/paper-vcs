@@ -239,3 +239,7 @@ All findings fixed.
 - NIT, deferred: long doc-comment lines in `paper-git/src/config.rs`.
 - The 10 MB large-file test is acceptable on CI; lower the threshold through config once PV-005 exists.
 - Escalated to the maintainer (two rounds without approval). Decision: the same engineer removes the `cfg`, no third review round; the coordinator checks the diff, and windows-latest CI verifies. Deferred items go to PV-014.
+
+### GREEN (review round 2) · rust-engineer · 2026-10-16
+
+Removed `#[cfg(unix)]` from the `skipped` helper in `crates/paper-core/tests/restore.rs` (an ungated test calls it); the other gated items in the changed files are self-contained.
