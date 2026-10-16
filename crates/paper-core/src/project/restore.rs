@@ -49,7 +49,7 @@ impl SkippedPath {
 }
 
 /// Why restore left a file alone.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RestoreSkip {
     /// The saved version is a symbolic link, which paper doesn't restore.
     SavedSymlink,
@@ -65,6 +65,12 @@ pub enum RestoreSkip {
     NonUtf8Path,
     /// Something paper doesn't track (an ignored file, say) is in the way.
     Blocked,
+    /// The draft has a file that differs from this one only in letter case, and the
+    /// restore wasn't asked to replace it (name both spellings to do so).
+    CaseAlias { other: String },
+    /// The file was kept because the folder or file it stood in the way of couldn't be
+    /// restored (`target`): a file/folder swap is all or nothing.
+    KeptForSwap { target: String },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -160,7 +166,7 @@ impl Project {
         skipped.extend(
             plan.blocked
                 .iter()
-                .map(|path| SkippedPath::new(path, RestoreSkip::Blocked)),
+                .map(|(path, reason)| SkippedPath::new(path, reason.clone())),
         );
         skipped.sort_by(|a, b| a.path.cmp(&b.path));
         let mut writes = Vec::new();

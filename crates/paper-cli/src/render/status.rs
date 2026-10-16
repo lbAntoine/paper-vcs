@@ -75,16 +75,23 @@ pub fn restore(restored: &Restored) -> String {
     if !restored.skipped.is_empty() {
         out.push_str("\nSkipped (left as they are):\n");
         for item in &restored.skipped {
-            let why = match item.reason {
+            let why = match &item.reason {
                 RestoreSkip::SavedSymlink => "the saved version is a symbolic link".to_owned(),
                 RestoreSkip::Symlink => "a symbolic link".to_owned(),
                 RestoreSkip::SymlinkedFolder => "inside a symbolic link to a folder".to_owned(),
                 RestoreSkip::TooLarge { bytes } => {
-                    format!("too large to track, {}", size(bytes))
+                    format!("too large to track, {}", size(*bytes))
                 }
                 RestoreSkip::NestedRepository => "inside a separate git repository".to_owned(),
                 RestoreSkip::NonUtf8Path => "its name can't be read as text".to_owned(),
                 RestoreSkip::Blocked => "a file paper doesn't track is in the way".to_owned(),
+                RestoreSkip::CaseAlias { other } => format!(
+                    "differs only in letter case from {other}; run `paper restore {} {other}`",
+                    item.path
+                ),
+                RestoreSkip::KeptForSwap { target } => {
+                    format!("kept because {target} can't be restored")
+                }
             };
             let _ = writeln!(out, "  {}  ({why})", item.path);
         }

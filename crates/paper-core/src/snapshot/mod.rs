@@ -7,6 +7,7 @@ mod cache;
 mod walk;
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::ffi::{OsStr, OsString};
 use std::fs::{self, Metadata};
 use std::io;
 use std::path::{Path, PathBuf};
@@ -152,20 +153,21 @@ pub fn snapshot(
     }
 
     // Tracked files the walk didn't produce: deleted, ignored-but-tracked, or skipped kinds.
+    let mut listings = Listings::default();
     for (path, tracked) in &base_files {
         if seen.contains(path.as_str()) {
             continue;
         }
         let absolute = repo.workdir().join(path);
-        match fs::symlink_metadata(&absolute).and_then(|meta| {
-            // On a filesystem that ignores case, `Notes.tex` finds a file spelled `notes.tex`:
-            // the draft records the spelling the walk sees, so that is not this file.
-            if has_exact_name(repo.workdir(), path)? {
-                Ok(meta)
-            } else {
+        // On a filesystem that ignores case, `Notes.tex` finds a file spelled `notes.tex`:
+        // the draft records the spelling the walk sees, so that is not this file.
+        let found = match fs::symlink_metadata(&absolute) {
+            Ok(_) if !listings.spelled_exactly(repo.workdir(), path) => {
                 Err(io::ErrorKind::NotFound.into())
             }
-        }) {
+            other => other,
+        };
+        match found {
             // NotADirectory: a parent that was a directory is now a file.
             Err(err)
                 if matches!(
@@ -314,19 +316,35 @@ impl State<'_> {
     }
 }
 
-/// Whether every part of `path` (relative to `root`) is listed with exactly that spelling.
-fn has_exact_name(root: &Path, path: &str) -> io::Result<bool> {
-    let mut folder = root.to_owned();
-    for part in path.split('/') {
-        if !fs::read_dir(&folder)?
-            .flatten()
-            .any(|e| e.file_name() == part)
-        {
-            return Ok(false);
+/// Folder listings, each read at most once per snapshot.
+#[derive(Default)]
+struct Listings {
+    /// `None` when the folder can't be listed.
+    folders: BTreeMap<PathBuf, Option<BTreeSet<OsString>>>,
+}
+
+impl Listings {
+    /// Whether every part of `path` (relative to `root`) is listed with exactly that
+    /// spelling. A folder that can't be listed counts as matching, as it did before
+    /// spelling was checked.
+    fn spelled_exactly(&mut self, root: &Path, path: &str) -> bool {
+        let mut folder = root.to_owned();
+        for part in path.split('/') {
+            let names = self.folders.entry(folder.clone()).or_insert_with(|| {
+                fs::read_dir(&folder)
+                    .ok()
+                    .map(|entries| entries.flatten().map(|e| e.file_name()).collect())
+            });
+            if names
+                .as_ref()
+                .is_some_and(|n| !n.contains(OsStr::new(part)))
+            {
+                return false;
+            }
+            folder.push(part);
         }
-        folder.push(part);
+        true
     }
-    Ok(true)
 }
 
 fn metadata(path: &Path) -> Result<Metadata, SnapshotError> {

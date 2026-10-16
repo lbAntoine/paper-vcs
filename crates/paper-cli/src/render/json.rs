@@ -38,6 +38,12 @@ pub(super) struct SkippedFile {
     path: String,
     reason: &'static str,
     bytes: Option<u64>,
+    /// `case_alias` (restore): the draft file that differs only in letter case.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    other: Option<String>,
+    /// `kept_for_swap` (restore): the path that couldn't be restored.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    target: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -116,6 +122,8 @@ pub(super) fn skipped(skipped: &Skipped) -> SkippedFile {
         path: skipped.path.clone(),
         reason,
         bytes,
+        other: None,
+        target: None,
     }
 }
 
@@ -152,7 +160,19 @@ impl SkippedFile {
             path,
             reason,
             bytes,
+            other: None,
+            target: None,
         }
+    }
+
+    pub(super) fn with_other(mut self, other: String) -> Self {
+        self.other = Some(other);
+        self
+    }
+
+    pub(super) fn with_target(mut self, target: String) -> Self {
+        self.target = Some(target);
+        self
     }
 }
 

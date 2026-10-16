@@ -136,3 +136,14 @@ case) as on Linux, and never leaves a file/folder swap half done.
   - The flip's dropped deletions get their own reason naming the blocked target.
   - Document the case-folding limitation rather than implementing full Unicode simple folding.
   - Adding tests is authorised; don't weaken any.
+
+### GREEN (review round 1) · rust-engineer · 2026-10-17
+
+- Performance: snapshot checks spelling with folder listings read at most once per snapshot (`Listings`), only after `symlink_metadata` succeeded; an unreadable folder counts as matching (old behaviour). Release timing, 3 003 tracked-but-ignored files, `paper status`: about 40 ms (36-45 ms over three runs; target 100 ms). New test `thousands_of_tracked_ignored_files_are_all_kept_by_a_snapshot` (no timing assertion).
+- Case-renamed folder with an obstacle: `obstacle` now blocks when a folder prefix is an alias (different spelling) that the restore doesn't empty; both sides stay and are reported. Test: `a_case_renamed_folder_that_still_holds_an_ignored_file_is_kept_and_reported` (listings, draft tree, skipped, draft-matches; Linux branch asserts the separate-folders outcome, chosen with a test-only case probe).
+- New `RestoreSkip::CaseAlias { other }` (draft file differing only in case, not targeted) and `RestoreSkip::KeptForSwap { target }`; `RestoreSkip` is no longer `Copy`. CLI human text and JSON (`case_alias` + `other`, `kept_for_swap` + `target`; fields omitted otherwise). On Linux the write still happens (test branch).
+- Existing flip test: its expected reason for `chap/one.tex` changed from `Blocked` to `KeptForSwap { target: "chap" }` (decision 4); nothing weakened.
+- `to_lowercase` limitation documented on `actual_spelling`; settle's fixpoint commented.
+- New tests: snapshot-only case rename (file and folder), tracked-ignored file and tracked symlink (unix) whose case changed.
+- Spec 02-cli § restore rewritten: "on every filesystem" dropped, platform behaviour, `case_alias`, `kept_for_swap`, folder-with-obstacle documented.
+- Checks: fmt, clippy -D warnings, full suite green on macOS (case-insensitive).

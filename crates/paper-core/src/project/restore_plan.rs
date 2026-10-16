@@ -5,6 +5,7 @@ use std::fs;
 use std::path::Path;
 
 use super::Project;
+use super::restore::RestoreSkip;
 
 /// The outcome of [`Project::settle`].
 pub(super) struct Plan<'a> {
@@ -12,9 +13,9 @@ pub(super) struct Plan<'a> {
     pub deletes: Vec<&'a String>,
     /// Files to write after the deletions.
     pub writes: Vec<&'a String>,
-    /// Paths left alone because something paper doesn't track is in the way: the writes
-    /// that can't happen, and the deletions that only existed to make room for them.
-    pub blocked: Vec<String>,
+    /// Paths left alone, with why: the writes that can't happen, and the deletions that
+    /// only existed to make room for them.
+    pub blocked: Vec<(String, RestoreSkip)>,
 }
 
 impl Project {
@@ -28,11 +29,14 @@ impl Project {
     ) -> Plan<'a> {
         let mut writes = candidates;
         let mut blocked = Vec::new();
+        // Dropping a deletion can turn an obstacle that was about to be removed into one
+        // that stays, which blocks other writes, so repeat until nothing changes.
         loop {
             let doomed: BTreeSet<&str> = deletes.iter().map(|p| p.as_str()).collect();
-            let Some(at) = writes
+            let Some((at, reason)) = writes
                 .iter()
-                .position(|path| self.blocked(path, in_draft(path), &doomed))
+                .enumerate()
+                .find_map(|(at, path)| Some((at, self.obstacle(path, &in_draft, &doomed)?)))
             else {
                 break;
             };
@@ -43,11 +47,14 @@ impl Project {
             deletes.retain(|gone| {
                 let room_for_it = names.iter().any(|name| makes_room(gone, name));
                 if room_for_it {
-                    blocked.push((*gone).clone());
+                    let kept = RestoreSkip::KeptForSwap {
+                        target: path.clone(),
+                    };
+                    blocked.push(((*gone).clone(), kept));
                 }
                 !room_for_it
             });
-            blocked.push(path.clone());
+            blocked.push((path.clone(), reason));
         }
         Plan {
             deletes,
@@ -56,14 +63,20 @@ impl Project {
         }
     }
 
-    /// Whether writing `path` would clobber or escape through something paper doesn't track:
-    /// a symlinked parent, an untracked (ignored or oversize) file or directory in the way,
-    /// or a parent that is a file the restore isn't removing.
+    /// What stops `path` from being written, if anything: a symlinked parent, an untracked
+    /// (ignored or oversize) file or directory in the way, or a parent that is a file the
+    /// restore isn't removing.
     ///
     /// An entry that is the same name in another case (`notes.tex` where `Notes.tex` goes)
-    /// is in the way only if the restore isn't removing it. Entries are compared by
-    /// listing folders, so this never needs to know whether the filesystem ignores case.
-    fn blocked(&self, path: &str, in_draft: bool, doomed: &BTreeSet<&str>) -> bool {
+    /// is in the way only if the restore isn't removing it; when it is a draft file, the
+    /// reason names it. Entries are compared by listing folders, so this never needs to
+    /// know whether the filesystem ignores case.
+    fn obstacle(
+        &self,
+        path: &str,
+        in_draft: &impl Fn(&str) -> bool,
+        doomed: &BTreeSet<&str>,
+    ) -> Option<RestoreSkip> {
         let root = self.repo.workdir();
         let mut prefix = String::new();
         for part in path.split('/').take(path.matches('/').count()) {
@@ -71,31 +84,34 @@ impl Project {
                 prefix.push('/');
             }
             prefix.push_str(part);
-            match fs::symlink_metadata(root.join(&prefix)) {
-                Ok(meta) if meta.file_type().is_symlink() => return true,
-                Ok(meta) if meta.is_file() => {
-                    let real = actual_spelling(root, &prefix).unwrap_or_else(|| prefix.clone());
-                    if !doomed.contains(real.as_str()) {
-                        return true;
-                    }
-                }
-                _ => {}
+            let Ok(meta) = fs::symlink_metadata(root.join(&prefix)) else {
+                continue;
+            };
+            let real = actual_spelling(root, &prefix).unwrap_or_else(|| prefix.clone());
+            if meta.file_type().is_symlink()
+                || (meta.is_file() && !doomed.contains(real.as_str()))
+                // A folder spelled differently stays unless this restore empties it.
+                || (meta.is_dir() && real != prefix && !only_holds(root, &real, doomed))
+            {
+                return Some(RestoreSkip::Blocked);
             }
         }
-        if in_draft {
-            return false;
+        if in_draft(path) {
+            return None;
         }
-        match fs::symlink_metadata(root.join(path)) {
-            Ok(meta) => {
-                let real = actual_spelling(root, path).unwrap_or_else(|| path.to_owned());
-                if meta.is_dir() {
-                    !only_holds(root, &real, doomed)
-                } else {
-                    !doomed.contains(real.as_str())
-                }
-            }
-            Err(_) => false,
+        let meta = fs::symlink_metadata(root.join(path)).ok()?;
+        let real = actual_spelling(root, path).unwrap_or_else(|| path.to_owned());
+        if meta.is_dir() {
+            return (!only_holds(root, &real, doomed)).then_some(RestoreSkip::Blocked);
         }
+        if doomed.contains(real.as_str()) {
+            return None;
+        }
+        Some(if real != path && in_draft(&real) {
+            RestoreSkip::CaseAlias { other: real }
+        } else {
+            RestoreSkip::Blocked
+        })
     }
 }
 
@@ -112,6 +128,11 @@ fn makes_room(gone: &str, target: &str) -> bool {
 
 /// How `path` is really spelled on disk, found by listing each folder: an exact name wins,
 /// otherwise the entry with the same name ignoring case.
+///
+/// "Ignoring case" is `str::to_lowercase`, which lowercases fully rather than folding
+/// simply: `ß` and Turkish `İ` don't match the way a filesystem's own rules would. A
+/// spelling this misses is treated as a different file, so restore errs towards leaving
+/// things alone (a `Blocked` skip) rather than overwriting.
 fn actual_spelling(root: &Path, path: &str) -> Option<String> {
     let mut found = String::new();
     for part in path.split('/') {
