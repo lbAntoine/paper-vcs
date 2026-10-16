@@ -44,7 +44,7 @@ pub struct Candidate {
 pub enum ResolveError {
     /// `available` is the number of saves on the current line.
     #[error(
-        "the line '{line}' has only {available} {}, so 'last~{back}' goes too far back; try `paper history` to see them",
+        "the line '{line}' has only {available} {}, so 'last~{back}' goes too far back",
         if *available == 1 { "save" } else { "saves" }
     )]
     NotEnoughHistory {
@@ -52,14 +52,14 @@ pub enum ResolveError {
         back: u32,
         available: usize,
     },
-    #[error("no save was made on this line on or before {date}; try `paper history`")]
+    #[error("no save was made on this line on or before {date}")]
     NoSaveBefore { date: DateSpec },
     #[error("'{prefix}' could mean several saves; type more characters to pick one")]
     Ambiguous {
         prefix: String,
         candidates: Vec<Candidate>,
     },
-    #[error("'{name}' is not a line, save or date; try `paper history` or `paper lines`")]
+    #[error("'{name}' is not a line, save or date")]
     UnknownPoint { name: String },
     #[error(transparent)]
     Git(#[from] GitError),

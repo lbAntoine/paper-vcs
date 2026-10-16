@@ -1,0 +1,5 @@
+---
+source: crates/paper-cli/tests/diff.rs
+expression: env.redact(&run.stdout)
+---
+figures/plot.bin  changed  2 KB → 4 KB

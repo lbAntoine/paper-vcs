@@ -1,0 +1,53 @@
+---
+source: crates/paper-cli/tests/status.rs
+expression: env.redact_json(&run.stdout)
+---
+{
+  "changes": [
+    {
+      "added": null,
+      "binary": true,
+      "kind": "added",
+      "new_bytes": 2048,
+      "old_bytes": null,
+      "path": "figures/plot.bin",
+      "removed": null
+    },
+    {
+      "added": 0,
+      "binary": false,
+      "kind": "deleted",
+      "new_bytes": null,
+      "old_bytes": null,
+      "path": "related.tex",
+      "removed": 1
+    },
+    {
+      "added": 2,
+      "binary": false,
+      "kind": "modified",
+      "new_bytes": null,
+      "old_bytes": null,
+      "path": "sections/intro.tex",
+      "removed": 1
+    }
+  ],
+  "large": [],
+  "last": {
+    "author": {
+      "email": "mina@uni.example",
+      "name": "Mina Park"
+    },
+    "change_id": "[ID]",
+    "commit": "[HASH]",
+    "id": "[ID]",
+    "message": "Rewrite intro",
+    "time": "[TIME]",
+    "tip_of": [
+      "main"
+    ]
+  },
+  "line": "main",
+  "schema": 1,
+  "skipped": []
+}

@@ -28,8 +28,12 @@ impl Paths {
     ///
     /// # Errors
     ///
-    /// A user error if the path leads outside the project.
+    /// A user error if the path leads outside the project, or (on Windows) is root-relative
+    /// (`\a`) or drive-relative (`C:a`).
     pub fn project_path(&self, given: &str) -> Result<String, PaperError> {
+        if cfg!(windows) && is_root_or_drive_relative(given) {
+            return Err(rooted_path_error(given));
+        }
         let normalised = if cfg!(windows) {
             given.replace('\\', "/")
         } else {
@@ -66,6 +70,36 @@ impl Paths {
                 explanation: "run paper on the project, and name files inside it".to_owned(),
             }],
         }
+    }
+}
+
+/// True for the Windows forms that name neither a place under this folder nor a full path:
+/// root-relative (`\a`, no drive) and drive-relative (`C:a`, no separator after the colon).
+/// `C:\a`, `C:/a`, `\\server\share` and plain relative paths are false.
+pub fn is_root_or_drive_relative(given: &str) -> bool {
+    let bytes = given.as_bytes();
+    let separator = |b: u8| b == b'\\' || b == b'/';
+    // `\a` (but not the `\\server\share` form).
+    if bytes.first().copied().is_some_and(separator) {
+        return !bytes.get(1).copied().is_some_and(separator);
+    }
+    // `C:a` (but not `C:`, `C:\a` or `C:/a`).
+    bytes.len() > 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && !separator(bytes[2])
+}
+
+/// The user error for a root-relative or drive-relative path: tells the researcher to use a
+/// path relative to this folder or a full path.
+pub fn rooted_path_error(given: &str) -> PaperError {
+    PaperError {
+        kind: ErrorKind::User,
+        message: format!("{given} does not say where the file is"),
+        why: "It starts from the root of a drive, or names a drive without a folder, so paper \
+              can't tell which folder it is in."
+            .to_owned(),
+        next: vec![Suggestion {
+            command: "paper diff sections/intro.tex".to_owned(),
+            explanation: "use a path relative to this folder or a full path".to_owned(),
+        }],
     }
 }
 
@@ -156,5 +190,57 @@ mod tests {
             paths(&[]).project_path(".\\sections\\a.tex").unwrap(),
             "sections/a.tex"
         );
+    }
+
+    #[test]
+    fn root_relative_and_drive_relative_forms_are_recognised() {
+        for given in ["\\a", "\\a\\b.tex", "C:a", "c:sections\\a.tex", "C:a/b"] {
+            assert!(is_root_or_drive_relative(given), "{given}");
+        }
+    }
+
+    #[test]
+    fn ordinary_and_full_paths_are_not_root_or_drive_relative() {
+        for given in [
+            "a.tex",
+            "./a.tex",
+            "../a.tex",
+            "sections/a.tex",
+            "C:\\a",
+            "C:/a",
+            "C:",
+            "\\\\server\\share\\a",
+            "",
+            ".",
+        ] {
+            assert!(!is_root_or_drive_relative(given), "{given}");
+        }
+    }
+
+    #[test]
+    fn a_root_or_drive_relative_path_is_a_three_part_user_error() {
+        let error = rooted_path_error("\\a");
+        assert_eq!(error.kind, ErrorKind::User);
+        assert!(error.message.contains("\\a"), "{error:?}");
+        assert!(!error.why.is_empty() && !error.next.is_empty(), "{error:?}");
+        let text = format!("{} {} {:?}", error.message, error.why, error.next);
+        assert!(
+            text.contains("use a path relative to this folder or a full path"),
+            "{error:?}"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn project_path_refuses_root_relative_and_drive_relative_paths() {
+        for given in ["\\a", "C:a"] {
+            let error = paths(&[]).project_path(given).unwrap_err();
+            assert_eq!(error.kind, ErrorKind::User, "{given}");
+            let text = format!("{} {} {:?}", error.message, error.why, error.next);
+            assert!(
+                text.contains("use a path relative to this folder or a full path"),
+                "{given}: {error:?}"
+            );
+        }
     }
 }

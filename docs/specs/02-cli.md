@@ -20,9 +20,12 @@ repo has no `.git/paper/` yet, commands other than `init` and `clone` fail with:
 Every command except `init`, `--help` and `--version` records the working files first
 (I1), unless `--no-snapshot`. `save` does so as part of saving.
 
-**Paths** on the command line (`save`, `history`) are relative to where you run paper (or to
-`-C`), so `paper history intro.tex` works from `sections/`. `./` and `\` (on Windows) are
-accepted, `.` means that folder, and a path outside the project is a user error.
+**Paths** on the command line (`save`, `history`, `diff`, `restore`)
+are relative to where you run paper (or to `-C`), so `paper history intro.tex` works from
+`sections/`. `./` and `\` (on Windows) are accepted, `.` means that folder, and a path
+outside the project is a user error. On Windows, a root-relative path (`\a`) or a
+drive-relative one (`C:a`) is a user error too ("use a path relative to this folder or a full
+path"), because it names no folder paper can place.
 
 The identity (`user.name`, `user.email`) comes from git config for now. If it is missing,
 the command fails with the two `git config --global user.…` commands to run; asking
@@ -54,12 +57,29 @@ error: nothing to keep — you are on "main", which is not a try
 Errors go to stderr. With `--json`, an error is one object on stdout with the same exit
 code: `{"schema":1,"error":{"kind":"user","message":…,"why":…,"next":[{"command":…,"explanation":…}]}}`,
 where `kind` is `user`, `needs_attention` or `project`. Argument errors under `--json` use the
-same object (exit 1). Every error has all three parts: errors of kind `project` suggest
-reporting the problem at the issue tracker.
+same object (exit 1); the `--json` flag is looked for only before a `--` argument. Every error
+has all three parts: errors of kind `project` suggest reporting the problem at the issue
+tracker. A suggestion's `command` is usually a command to run, but it may be a URL (the issue
+tracker), and the `explanation` then carries the prose ("report it, including what you ran and
+the message above").
 
 **JSON output:** one object per command on stdout, with `"schema": 1`. Times are RFC 3339
 in the author's UTC offset. Change kinds are `added`, `modified` or `deleted`. Every key is always present, with `null`
 when a value doesn't apply (e.g. the ID of a save that wasn't made).
+
+*File diffs* (`diff`, and `files` in `show`) share one shape, an array of
+`{path, kind, binary, added, removed, old_bytes, new_bytes, hunks}`. For a text file `added`
+and `removed` are line counts, the byte sizes are `null` and `hunks` lists
+`{old_start, old_len, new_start, new_len, lines}`, each line being
+`{kind: "context"|"added"|"removed", text, missing_newline}` (`missing_newline` marks the
+file's last line when it has no trailing newline). For a binary file `added` and `removed`
+are `null`, the byte sizes are set (`null` for an absent side) and `hunks` is `[]`.
+`paper diff --json` prints `{schema, files}` (also with `--stat`), `paper show --json`
+adds `files` beside `save` and `changes`, and `paper status --json` prints
+`{schema, line, last, changes, skipped, large}`, where `last` has the shape of a save in
+`history` and each change has the file-diff keys without `hunks`.
+`paper restore --json` prints `{schema, from, changes: [{path, kind}], skipped: [{path, reason, bytes}]}`,
+with `from` the commit the files were restored from.
 
 ---
 
@@ -93,7 +113,7 @@ On main · last save kmrwxq "Rewrite related work" (2 hours ago)
 Draft (unsaved):
   modified  sections/intro.tex        +42 words −17 words
   new       figures/ablation.pdf      (318 KB)
-  deleted   notes/old-outline.md
+  deleted   notes/old-outline.md      +0 −85 lines
 
 Skipped (too large to track, see `paper help large-files`):
   data/raw_scans.h5                   (2.1 GB)
@@ -107,8 +127,10 @@ Other states it reports:
 - Office files kept at their previous version because they were being written;
 - an empty draft (`Nothing unsaved.`).
 
-Until word diffs arrive (v0.3), each change shows line counts (`+12 −3 lines`) for text and
-sizes for binary files, taken from the line diff. `paper status` snapshots first (I1);
+Until word diffs arrive (v0.3), each change shows line counts (`+12 −3 lines`, also for a deleted
+text file: `+0 −85 lines`) for text and
+sizes for binary files (`(318 KB)` for a new or deleted one, `318 KB → 331 KB` for a changed
+one), taken from the line diff. `paper status` snapshots first (I1);
 `--no-snapshot` reads the stored draft instead and lists no skipped or large files.
 
 ### `paper save [<message>] [<paths>…] [--all-but <paths>…]` (since v0.1)
@@ -165,14 +187,15 @@ for saves made with plain git.
 
 ### `paper show <point>` (since v0.1)
 
-Metadata for the save (author, date, change ID, message, milestones) followed by its diff against its first parent (the first save shows every file as added).
-*Today:* the metadata and the list of changed files with their kind (`added`, `modified`,
-`deleted`); the file diffs come later. The date reads like `history` times; `--json` has the
-exact timestamp.
+Metadata for the save (author, date, change ID, message, milestones), the list of changed
+files with their kind (`added`, `modified`, `deleted`), then the diff of each file against the
+save's first parent in the same format as `paper diff` (the first save shows every file as
+added). `--stat` prints the per-file counts, as `paper diff --stat` does, instead of the list
+and the diffs. The date reads like `history` times; `--json` has the exact timestamp.
 `paper show @` shows the draft's unsaved changes against `last`. `<point>` follows the
 [points](01-concepts.md#points-how-you-name-a-state) rules.
 
-### `paper diff [<from>] [<to>] [<paths>…] [--lines|--words] [--stat]` (since v0.1, words in v0.3)
+### `paper diff [<from>] [<to>] [<paths>…] [--lines|--words] [--stat] [--since <point>]` (since v0.1, words in v0.3)
 
 | Invocation | Compares |
 |---|---|
@@ -181,7 +204,19 @@ exact timestamp.
 | `paper diff <A> <B>` | `A` → `B` |
 | `paper diff --since neurips-submission` | Alias for `paper diff neurips-submission @`. This is the PI command |
 
-Text defaults to `--words` from v0.3 on. From v0.7, `.docx` gets a text diff, and
+**Points or paths?** Up to two leading arguments are points if they resolve as points; the
+first one that doesn't, and everything after it, are paths. A word that is clearly a mistyped
+point (`last~x`, `HEAD~1`) is an error, and a first word that is neither a point nor a file
+is reported as "not a save, line, date or file". A name that is both a point and a
+file is a point; `--` forces everything after it to be paths (`paper diff -- last` diffs the
+file called `last`). `--since <point>` can't be combined with points.
+
+Text defaults to `--words` from v0.3 on. Until then the comparison is by line (`--lines`, the
+default) and `--words` fails with a user error saying it is not yet available. The output
+is git's unified diff with `a/<path>` and `b/<path>` labels (`/dev/null` for an added or
+deleted file), in path order, coloured red and green only on a colour terminal; it applies
+with `git apply`. A binary file is one line: `figures/plot.bin  changed  318 KB → 331 KB`
+(`new` or `deleted` with `(318 KB)`). No differences print nothing (exit 0). From v0.7, `.docx` gets a text diff, and
 `.xlsx`/`.xls`/`.ods`/`.csv`/`.tsv` get a cell diff. Other binary files show a one-line
 summary (see [04-content](04-content.md#diff)). `--lines` on an Office file shows the line
 diff of the extracted text, which is handy for piping.
@@ -189,7 +224,8 @@ diff of the extracted text, which is handy for piping.
 Paths restrict the output to those files, or to everything under a directory (whole path
 components). A path that names no file in either save is an error listing every such path,
 so a typo never looks like "no differences"; a path that exists but is unchanged prints
-nothing. `--stat` summarises with the line counts of each file's diff. The front-end
+nothing. `--stat` prints one line per file, `+12 −3` or the binary sizes, then a total
+(`2 files changed, +13 −3`). The front-end
 snapshots before comparing against `@`.
 
 ### `paper restore <paths>… [--from <point>]` (since v0.1)
@@ -207,7 +243,12 @@ directories are removed, and a file can be restored over a directory of the same
 back). Files `paper` never records (symlinks, over-size files, nested repositories, ignored files)
 are never overwritten or deleted, nor is anything reached through a symlinked folder; they
 are listed as skipped. Git's index and HEAD are untouched, so
-plain `git status` shows the restored files as unstaged changes.
+plain `git status` shows the restored files as unstaged changes. It prints the files
+restored or deleted, then the skipped ones with the reason for each (a symbolic link, a
+folder that is a symbolic link, too large to track, inside a separate git repository, a file
+paper doesn't track in the way, …). In `--json`, `skipped` is a list of `{path, reason, bytes}`
+like `init`'s, with the reasons `saved_symlink`, `symlink`, `symlinked_folder`, `too_large`,
+`nested_repository`, `non_utf8_path` and `blocked`.
 
 ### `paper undo` / `paper redo` / `paper activity [-n <N>]` (since v0.2)
 

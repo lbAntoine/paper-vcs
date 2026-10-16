@@ -1,0 +1,10 @@
+---
+source: crates/paper-cli/tests/diff.rs
+expression: env.redact(&run.stdout)
+---
+--- a/sections/intro.tex
++++ b/sections/intro.tex
+@@ -1 +1,2 @@
+-Intro v2
++Intro v3
++More text

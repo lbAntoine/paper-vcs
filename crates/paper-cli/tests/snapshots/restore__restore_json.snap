@@ -1,0 +1,19 @@
+---
+source: crates/paper-cli/tests/restore.rs
+expression: env.redact_json(&run.stdout)
+---
+{
+  "changes": [
+    {
+      "kind": "modified",
+      "path": "main.tex"
+    },
+    {
+      "kind": "modified",
+      "path": "sections/intro.tex"
+    }
+  ],
+  "from": "[HASH]",
+  "schema": 1,
+  "skipped": []
+}
