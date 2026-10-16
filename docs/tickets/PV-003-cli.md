@@ -141,3 +141,52 @@ exit codes. The CLI is the first real front-end over `paper-core`.
 ## Summary
 
 ## Handoff log
+
+### RED · test-author · 2026-10-16
+
+- Tests (all fail at RED; 93 failing, every pre-existing test still passes):
+  - `crates/paper-git/tests/config.rs`: 7 (6 real tests + `child_prints_identity`, the helper body
+    the tests re-run in a child process with isolated `GIT_CONFIG_GLOBAL`/`HOME`; it passes
+    vacuously). Fail on `todo!()`.
+  - `crates/paper-core/src/error.rs` unit tests: 15 (every enum's variants: kind, non-empty
+    message/why, `next` for user errors, io/git cause in `why`, `no_identity`, `not_a_project`).
+  - `crates/paper-cli/src/render/time.rs` (10) and `src/error.rs` (1) unit tests, `todo!()`.
+  - `crates/paper-cli/tests/{basics,init,save,history,show}.rs`: 16 + 10 + 12 + 9 + 8 = 55,
+    helpers in `tests/common/mod.rs`. They fail because `run::run()` is `todo!()` (wrong exit
+    code, 101). Snapshot tests (`insta::assert_snapshot!` with explicit names, 17 of them) have
+    no `.snap` files yet, so they fail on the missing snapshot as well; GREEN reviews and accepts
+    them (run with `INSTA_UPDATE=no` at RED to avoid stray `.snap.new` files).
+- Environment: every run is `env_clear`ed, then PATH (+ Windows basics), `HOME`, `USERPROFILE`,
+  `XDG_CACHE_HOME`, `LOCALAPPDATA`, `GIT_CONFIG_GLOBAL` (temp file with a test identity, or empty
+  for `Env::without_identity`), `GIT_CONFIG_NOSYSTEM=1`, `NO_COLOR=1`. Fixtures are built with
+  `paper-core` (not the CLI). Snapshots redact the temp root, change IDs (all prefixes >= 4),
+  commit hashes, relative times and dates; JSON times are blanked by key name (`*time*`, `*date*`).
+- Stubs: `paper-git::config::configured_identity` (re-exported), `paper-core::error`
+  (`PaperError`, `Suggestion`, `ErrorKind`, six `From` impls, `no_identity`, `not_a_project`;
+  re-exported from `lib.rs`), CLI skeleton (`cli.rs` clap derive, `run::run`, `error::exit_code`,
+  `render::time::relative_time`). New workspace deps: assert_cmd 2, clap 4.6 (derive), insta 1
+  (filters, json); paper-cli also gets paper-git, serde, serde_json, jiff.
+- Decisions the tests pin (change them in GREEN only with a spec/ticket reason):
+  - Kinds: `OutOfSyncWithGit`, `HeadOnAnotherBranch`, `NoChangesAt`, `MissingMessage`,
+    `UnknownPoint`, `Ambiguous`, `NoSaveBefore`, `NotEnoughHistory`, `NotAPaperProject` and the
+    five user-fixable `InitError`s are `User`; every Git/Io/Snapshot/View wrapper,
+    `UnsupportedFormat` and `Incomplete` are `Project`. No variant maps to `NeedsAttention` yet.
+  - Relative time: <1 min or future `just now`; `1 minute ago`/`N minutes ago`; `1 hour ago`/
+    `N hours ago`; 24h to <48h `yesterday`; else UTC `YYYY-MM-DD`. Signature
+    `relative_time(then: i64, now: i64) -> String` (epoch seconds) in `render/time.rs`.
+  - Crash report: `$XDG_CACHE_HOME/paper/crash-*.txt` (Windows `%LOCALAPPDATA%\paper`);
+    `PAPER_DEBUG_PANIC=1` panics early so `paper history` in a project exits 101; stderr names
+    the file name and contains `https://github.com/lbAntoine/paper-vcs/issues`.
+  - JSON field names: init `adopted`, `tracked_files`; save `saved` (bool), `message`,
+    `saved_files[{path,kind}]`, `remaining[{path,kind}]`; history `saves[{message,..}]`; show
+    `save{message,..}`, `changes[{path,kind}]` with kind `"modified"`. Every object has
+    `"schema": 1`.
+  - Human: init says `created`/`adopted` (case-insensitive) and the tracked count; save shows the
+    first 4 chars of the change ID and message, lists files left in the draft; `-v save` contains
+    `(commit <7-hex>)`; `-q` prints nothing on success; history lines start with the short ID and
+    the tip line is named on the newest line; `show` prints the author name, `added` for the first
+    save's files. A subfolder of a project is discovered by walking up.
+- Not covered (needs a pty): the `Describe this save:` prompt on a TTY. Colour on a TTY is only
+  checked negatively (piped and `--color never` have no escapes).
+- Questions: none blocking. Note `Project::open` takes the exact workdir, so GREEN must use
+  `GitRepo::enclosing_workdir` for discovery from `sections/`.

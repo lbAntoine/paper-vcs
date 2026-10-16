@@ -1,3 +1,10 @@
-fn main() {
-    println!("paper {}", env!("CARGO_PKG_VERSION"));
+//! The `paper` command-line interface: argument parsing, prompts and rendering over `paper-core`.
+
+mod cli;
+mod error;
+mod render;
+mod run;
+
+fn main() -> std::process::ExitCode {
+    run::run()
 }
