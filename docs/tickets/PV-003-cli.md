@@ -213,3 +213,17 @@ exit codes. The CLI is the first real front-end over `paper-core`.
 - Not done / follow-ups: paths for `save`/`history` are passed as given (relative to the
   repository root, not the current subfolder); the `Describe this save:` prompt is untested
   (needs a pty); core `Display` texts still mention `paper lines` (PV-011).
+
+### Review · reviewer · 2026-10-16
+- Verdict: CHANGES. Checks: tests, clippy and fmt pass on macOS (isolated target).
+- MAJOR: the `--json` error AC is untested (`error::json` never runs) → user-error and project/not-a-project cases: exit code, empty stderr, schema, snapshot.
+- MAJOR: `save`/`history` paths are read from the project root, not the current folder; `history intro.tex` from `sections/` silently says no saves; `sections\intro.tex` and `.\main.tex` fail on Windows.
+- MAJOR (unverified): `fs::canonicalize` gives `\\?\C:\…` on Windows in the test helpers (cwd, `git -C`, redaction root).
+- MINOR: `--all-but` with `num_args = 1..` swallows the message.
+- MINOR: clap argument errors ignore `--json`.
+- MINOR: project errors have an empty `next` (two parts only).
+- MINOR: save JSON drops keys on a no-op instead of `null`.
+- MINOR: `configured_identity` falls back to global config on any discovery error, contradicting its `# Errors` doc.
+- NITs: `NotEnoughHistory` wording; `-v show` double parentheses; crash report names collide within a second; panic test fails under `--release`.
+- Coordinator decisions: fix everything in this round. Paths are fixed here, not in PV-011. Strip the Windows verbatim prefix now rather than waiting for CI. `--all-but` repeats (`--all-but a --all-but b`). Argument errors under `--json` are JSON too. Project errors suggest reporting at the issue tracker. JSON keys always present (`null` when absent). Adding tests is authorised; don't weaken any.
+- Coordinator: main (PV-010) merged into the branch as 8f32d38 before this round; no conflicts.
