@@ -92,6 +92,37 @@ The coordinator:
 6. Cleans up: `gh pr merge --delete-branch` also removes the local branch and its worktree.
    Then `git worktree prune` and `git pull --ff-only` in the main checkout.
 
+## Releasing
+
+Releases are built by [cargo-dist](https://axodotdev.github.io/cargo-dist/) (`dist`), pinned
+in `dist-workspace.toml` (`cargo-dist-version`). `.github/workflows/release.yml` is generated
+by `dist generate`: never edit it by hand. A release publishes a GitHub Release with archives
+for five targets (macOS Intel and Apple silicon, Linux x86_64 and aarch64, Windows x86_64),
+the shell and PowerShell installers and SHA-256 checksums. There is no Homebrew tap, MSI or
+crates.io publish yet.
+
+Every pull request runs `dist plan` through `release.yml`, so a broken config fails review.
+A tag that looks like a version starts the build and publishes the release. Only the
+maintainer approves a release.
+
+1. Bump `version` in the root `Cargo.toml`, run `cargo build` to update `Cargo.lock`, and
+   add a `## X.Y.Z` section to `CHANGELOG.md` (cargo-dist uses it as the release body).
+2. Run `dist plan` (and `dist generate --check` if `dist-workspace.toml` changed). Merge the
+   pull request once CI is green.
+3. Get the maintainer's approval to publish.
+4. On an up-to-date `main`: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+5. Watch the Release workflow: `gh run watch`. It builds the five targets, then creates the
+   release.
+6. Pre-releases only: cargo-dist marks a release as a pre-release only when the version has
+   a suffix such as `-rc.1`. v0.1.0 is a pre-release without one, so right after publishing
+   run `gh release edit v0.1.0 --prerelease`.
+7. Smoke-test an installer on a clean machine or folder: run the README one-liner, then
+   `paper --version`, `paper init`, `paper save "x"`, `paper history`.
+
+To upgrade cargo-dist, install the new version (`cargo install cargo-dist --locked --version X`),
+run `dist init --yes` and review the regenerated `release.yml`. Use a version at least two
+weeks old.
+
 ## Communication
 
 **Handoff log.** Each ticket ends with an append-only log. Every phase adds one entry:

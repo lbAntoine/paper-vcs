@@ -278,8 +278,20 @@ Reference repo: 5,000 files, 500 MB, 2,000 saves, on a 2022 laptop with an SSD.
 
 ## Distribution
 
-- `cargo-dist` produces GitHub Releases, a shell installer, a Homebrew tap and a Windows installer.
-- The crates are published to crates.io (`paper-core` is public so other front-ends can reuse it).
+**Ships now (v0.1.0, a pre-release).** `cargo-dist` (pinned in `dist-workspace.toml`) generates
+`.github/workflows/release.yml`. A version tag builds archives for `x86_64-apple-darwin`,
+`aarch64-apple-darwin`, `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu` and
+`x86_64-pc-windows-msvc`, a shell installer, a PowerShell installer and SHA-256 checksums, and
+publishes them as a GitHub Release. Pull requests run `dist plan`. The package is named
+`paper-cli`, so the installers are `paper-cli-installer.sh` and `.ps1`; the binary is `paper`.
+See [workflow § Releasing](../workflow.md#releasing).
+
+**Later.**
+
+- A Homebrew tap (needs its own repository and token) and a Windows MSI installer.
+- Publishing the crates to crates.io (`paper-core` is public so other front-ends can reuse
+  it), once the binary name is settled, because crates.io names are permanent.
 - A **conda-forge** package ships in v0.6. Many researchers install their tools through conda.
+- Code signing and notarisation.
 - The `git` binary is required only for network commands (`clone`, `sync`), and a missing
   binary gets a clear error with install instructions.
