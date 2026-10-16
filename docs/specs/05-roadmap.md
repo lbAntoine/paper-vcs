@@ -10,7 +10,7 @@ own. Starting at v0.3, users can already share work by running `git push`.
 `init`, `status`, `save` (with paths), `history`, `show`, `diff --lines`, `restore`, `config`.
 
 - [x] Cargo workspace with 4 crates, CI on 3 OSes, `cargo-dist` release pipeline (GitHub Release, shell and PowerShell installers)
-- [x] `Store` trait with the gix implementation: read and write objects, trees, refs, commits with the `change-id` header
+- [x] `GitRepo` (gix): read and write objects, trees, refs, commits with the `change-id` header
 - [x] Draft model: `refs/paper/draft/main`, snapshot with stat cache, automatic tracking of new files
 - [x] Git mirror (I6): HEAD, branch and index kept in sync. `git log` and `git status` look sensible
 - [x] Adoption of an existing git repo

@@ -29,7 +29,7 @@ A single Cargo workspace in one repo (`paper-vcs`). Edition 2024, pinned via `ru
 | Crate | Responsibility | Key deps |
 |---|---|---|
 | `paper-core` | Public API used by every front-end. `Project::open/init`, one method per command, each returning a serialisable `Outcome`. Owns the invariants from [01-concepts](01-concepts.md#invariants) | `serde`, `thiserror`, `fd-lock`, `toml`, `tracing` |
-| `paper-git` | The `Store` trait and its gix implementation: objects, trees, refs, merge, checkout, status. Network ops (`fetch`, `push`, `clone`) shell out to the `git` binary | `gix`, `std::process` |
+| `paper-git` | `GitRepo`, the gix-backed repository handle: objects, trees, refs, merge, checkout, status. Network ops (`fetch`, `push`, `clone`) shell out to the `git` binary | `gix`, `std::process` |
 | `paper-diff` | Tokenise text (generic, LaTeX, Markdown, CJK-aware), word and line diffs, table diffs, binary detection. The `office` module extracts text and cells from Office files, and checks they're complete zips for snapshot | `similar` (patience algorithm), `unicode-segmentation`, `csv`, `zip`, `quick-xml`, `calamine` |
 | `paper-cli` | Argument parsing, prompts, human and `--json` rendering, exit codes | `clap`, `anstream`, `insta` (tests) |
 
@@ -40,7 +40,7 @@ what lets the GUI reuse the core unchanged.
 **Why gix plus the `git` binary?** See [ADR-0001](adr/0001-own-engine-on-gitoxide.md).
 Before starting each milestone, check which gix features are ready (tree merge, worktree
 checkout, status, index writing). Anything missing falls back to `git` subprocess calls
-behind the same `Store` trait, and the gap is written down in the ADR.
+behind `GitRepo`'s methods (a `Store` trait can be extracted if a second backend is ever needed), and the gap is written down in the ADR.
 
 ## Domain model
 
@@ -257,7 +257,7 @@ URL (in `command`, with the prose in `explanation`). The CLI's own failures use
 |---|---|---|
 | Transitions | plain unit tests | Each command's `View → View` logic, edge cases |
 | Invariants | `proptest`: random sequences of edits and commands | I1–I7. In particular, *undo after any command restores the exact view and the exact working files* |
-| Store | integration tests on temp repos | gix behaviour, keep-alive chain, crash recovery (kill between steps 6, 7 and 8 via fault injection) |
+| `GitRepo` | integration tests on temp repos | gix behaviour, keep-alive chain, crash recovery (kill between steps 6, 7 and 8 via fault injection) |
 | Git interop | tests driving the real `git` binary | Every row of the interop table |
 | Office extraction | A test set of real `.docx`/`.xlsx`/`.xls`/`.ods` files saved by Word, Excel, LibreOffice and Google Docs export, plus truncated (partly written) files | Text and cell extraction are stable, metadata-only re-saves show "no text changes", and truncated files are rejected by the completeness check |
 | CLI | `assert_cmd` + `insta` snapshots | Wording, exit codes, `--json` schema stability |
@@ -279,9 +279,9 @@ Reference repo: 5,000 files, 500 MB, 2,000 saves, on a 2022 laptop with an SSD.
 ## Distribution
 
 **Ships now (v0.1.0, a pre-release).** `cargo-dist` (pinned in `dist-workspace.toml`) generates
-`.github/workflows/release.yml`. A version tag builds archives for `x86_64-apple-darwin`,
+``.github/workflows/v-release.yml`. A tag matching `v**[0-9]+.[0-9]+.[0-9]+*` (`tag-namespace = "v"`) builds archives for `x86_64-apple-darwin`,
 `aarch64-apple-darwin`, `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu` and
-`x86_64-pc-windows-msvc`, a shell installer, a PowerShell installer and SHA-256 checksums, and
+`x86_64-pc-windows-msvc`, a shell installer, a PowerShell installer and SHA-256 checksums (no source tarball), and
 publishes them as a GitHub Release. Pull requests run `dist plan`. The package is named
 `paper-cli`, so the installers are `paper-cli-installer.sh` and `.ps1`; the binary is `paper`.
 See [workflow § Releasing](../workflow.md#releasing).

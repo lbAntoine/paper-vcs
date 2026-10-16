@@ -27,7 +27,7 @@ What doesn't work yet:
 
 - No undo or redo.
 - No lines (`try`, `keep`) and no milestones.
-- No sync with collaborators beyond plain `git push` and `git pull`.
+- No sync with collaborators. You can `git push` your saves, but bringing in other people's
+  work with `git pull` isn't supported yet: after a pull brings in commits, `paper save`
+  stops until a later version.
 - Diffs are by line, not by word.
-
-Install it from the [release page](https://github.com/lbAntoine/paper-vcs/releases/tag/v0.1.0).

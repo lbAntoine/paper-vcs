@@ -17,3 +17,7 @@ install-path = "CARGO_HOME"
 hosting = "github"
 # Whether to install an updater program
 install-updater = false
+# Only tags like "v0.1.0" start a release
+tag-namespace = "v"
+# Ship exactly the archives, checksums and installers (no source tarball)
+source-tarball = false

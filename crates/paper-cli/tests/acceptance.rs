@@ -20,6 +20,16 @@ fn git_init_bare(env: &Env, name: &str) -> std::path::PathBuf {
     bare
 }
 
+/// A history line ends with its subject, optionally followed by the `(main)` marker.
+fn ends_with_subject(line: &str, subject: &str) -> bool {
+    let line = line.trim_end();
+    line.strip_suffix("(main)")
+        .map_or(line, str::trim_end)
+        .ends_with(&format!("  {subject}"))
+}
+
+// One narrative scenario, on purpose: splitting it would hide the order of events.
+#[allow(clippy::too_many_lines)]
 #[test]
 fn a_researcher_can_init_save_restore_and_push_with_plain_git() {
     let env = Env::new();
@@ -63,14 +73,14 @@ fn a_researcher_can_init_save_restore_and_push_with_plain_git() {
     let lines: Vec<&str> = history.stdout.lines().collect();
     assert_eq!(lines.len(), 11, "{history:#?}");
     for (line, message) in lines.iter().zip(messages.iter().rev()) {
-        assert!(line.contains(message.as_str()), "{line} vs {message}");
+        assert!(ends_with_subject(line, message), "{line} vs {message}");
     }
     let short = env.paper(&["history", "-n", "3"]);
     short.assert_code(0);
     let lines: Vec<&str> = short.stdout.lines().collect();
     assert_eq!(lines.len(), 3, "{short:#?}");
-    assert!(lines[0].contains("Round 10"), "{short:#?}");
-    assert!(lines[2].contains("Round 8"), "{short:#?}");
+    assert!(ends_with_subject(lines[0], "Round 10"), "{short:#?}");
+    assert!(ends_with_subject(lines[2], "Round 8"), "{short:#?}");
 
     // restore from last~3 (the content saved in round 7), byte for byte.
     env.paper(&["restore", "sections/intro.tex", "--from", "last~3"])
@@ -100,12 +110,19 @@ fn a_researcher_can_init_save_restore_and_push_with_plain_git() {
     env.paper(&["save", "Restore intro"]).assert_code(0);
     assert_eq!(env.subjects().len(), 12);
     assert_eq!(env.subjects()[0], "Restore intro");
+    let porcelain = env.git_work(&["status", "--porcelain"]);
+    assert!(porcelain.trim().is_empty(), "git sees changes: {porcelain}");
 
     // Plain git: push to a bare repo, clone it, check refs and integrity.
     env.fsck();
     let bare = git_init_bare(&env, "origin.git");
     let bare_str = bare.to_string_lossy().into_owned();
     env.git_work(&["remote", "add", "origin", &bare_str]);
+    let local_refs = env.git_work(&["for-each-ref", "refs/paper"]);
+    assert!(
+        !local_refs.trim().is_empty(),
+        "paper keeps its refs locally, so the remote check below can fail"
+    );
     env.git_work(&["push", "-u", "origin", "main"]);
 
     let clone_dir = env.root.join("clone");
@@ -124,6 +141,7 @@ fn a_researcher_can_init_save_restore_and_push_with_plain_git() {
     assert_eq!(log.lines().last(), Some("Start project"));
 
     let remote_refs = env.git(&env.root, &["ls-remote", &bare_str]);
+    assert!(remote_refs.contains("refs/heads/main"), "{remote_refs}");
     assert!(!remote_refs.contains("refs/paper"), "{remote_refs}");
     env.git(&clone_dir, &["fsck", "--strict", "--no-progress"]);
     env.git(&bare, &["fsck", "--strict", "--no-progress"]);

@@ -27,7 +27,8 @@ Windows (PowerShell):
 > powershell -ExecutionPolicy Bypass -c "irm https://github.com/lbAntoine/paper-vcs/releases/download/v0.1.0/paper-cli-installer.ps1 | iex"
 ```
 
-Then check it with `paper --version`, which prints `paper 0.1.0`. You can also download an
+Then open a new terminal (the installer adds `~/.cargo/bin` to your PATH) and run
+`paper --version`, which prints `paper 0.1.0`. You can also download an
 archive and its `.sha256` checksum from the release page. To build from source instead, see
 [Building from source](#building-from-source).
 
