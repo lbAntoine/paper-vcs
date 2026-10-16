@@ -195,16 +195,23 @@ pub fn restore(restored: &Restored) -> String {
             .skipped
             .iter()
             .map(|item| {
-                let (reason, bytes) = match item.reason {
+                let (reason, bytes) = match &item.reason {
                     RestoreSkip::SavedSymlink => ("saved_symlink", None),
                     RestoreSkip::Symlink => ("symlink", None),
                     RestoreSkip::SymlinkedFolder => ("symlinked_folder", None),
-                    RestoreSkip::TooLarge { bytes } => ("too_large", Some(bytes)),
+                    RestoreSkip::TooLarge { bytes } => ("too_large", Some(*bytes)),
                     RestoreSkip::NestedRepository => ("nested_repository", None),
                     RestoreSkip::NonUtf8Path => ("non_utf8_path", None),
                     RestoreSkip::Blocked => ("blocked", None),
+                    RestoreSkip::CaseAlias { .. } => ("case_alias", None),
+                    RestoreSkip::KeptForSwap { .. } => ("kept_for_swap", None),
                 };
-                SkippedFile::new(item.path.clone(), reason, bytes)
+                let entry = SkippedFile::new(item.path.clone(), reason, bytes);
+                match &item.reason {
+                    RestoreSkip::CaseAlias { other } => entry.with_other(other.clone()),
+                    RestoreSkip::KeptForSwap { target } => entry.with_target(target.clone()),
+                    _ => entry,
+                }
             })
             .collect(),
     })

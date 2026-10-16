@@ -264,13 +264,34 @@ stays (your unsaved edits are recorded), but no working file is changed. Files t
 directories are removed, and a file can be restored over a directory of the same name (and
 back). Files `paper` never records (symlinks, over-size files, nested repositories, ignored files)
 are never overwritten or deleted, nor is anything reached through a symlinked folder; they
-are listed as skipped. Git's index and HEAD are untouched, so
-plain `git status` shows the restored files as unstaged changes. It prints the files
-restored or deleted, then the skipped ones with the reason for each (a symbolic link, a
-folder that is a symbolic link, too large to track, inside a separate git repository, a file
-paper doesn't track in the way, …). In `--json`, `skipped` is a list of `{path, reason, bytes}`
-like `init`'s, with the reasons `saved_symlink`, `symlink`, `symlinked_folder`, `too_large`,
-`nested_repository`, `non_utf8_path` and `blocked`.
+are listed as skipped.
+
+**Letter case.** On a filesystem that ignores case (the default on macOS and Windows), a
+file or folder that differs from the save only in case ends with the save's spelling when
+both spellings are named (`paper restore Notes.tex notes.tex`). Naming only the saved
+spelling leaves the draft's file alone and lists the saved one as skipped (`case_alias`,
+"differs only in letter case from notes.tex; run `paper restore Notes.tex notes.tex`").
+On a filesystem that tells the spellings apart (Linux), both can exist, so the saved
+spelling is simply written. A case-renamed folder that still holds something paper doesn't
+track (an ignored file, say) is kept as it is and listed as skipped (`blocked`). Case is
+compared by lowercasing whole names, so a few letters (`ß`, Turkish `İ`) aren't treated as
+the same name in two cases; paper leaves such files alone rather than overwrite them. The
+draft records the spelling that the folder lists, never an alias of it.
+
+**All or nothing.** If something paper doesn't track blocks a write, restore also leaves
+alone the deletions that were only there to make room for it, so a blocked file/folder
+swap changes neither side. The write is listed as skipped (`blocked`) and the files kept
+for it as `kept_for_swap` ("kept because chap can't be restored"). Unrelated deletions in
+the same restore still happen.
+
+Git's index and HEAD are untouched, so plain `git status` shows the restored files as
+unstaged changes. It prints the files restored or deleted, then the skipped ones with the
+reason for each (a symbolic link, a folder that is a symbolic link, too large to track,
+inside a separate git repository, a file paper doesn't track in the way, …). In `--json`,
+`skipped` is a list of `{path, reason, bytes}` like `init`'s, with the reasons
+`saved_symlink`, `symlink`, `symlinked_folder`, `too_large`, `nested_repository`,
+`non_utf8_path`, `blocked`, `case_alias` (plus `other`, the draft's spelling) and
+`kept_for_swap` (plus `target`, the path that couldn't be restored).
 
 ### `paper undo` / `paper redo` / `paper activity [-n <N>]` (since v0.2)
 

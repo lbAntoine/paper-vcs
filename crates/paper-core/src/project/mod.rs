@@ -6,6 +6,7 @@ mod init;
 mod init_profile;
 mod resolve;
 mod restore;
+mod restore_plan;
 mod save;
 mod status;
 

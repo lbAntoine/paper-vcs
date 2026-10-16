@@ -451,3 +451,345 @@ fn restore_never_touches_files_under_a_nested_repository() {
         vec![skipped("vendor/lib.tex", RestoreSkip::NestedRepository)]
     );
 }
+
+// ---- PV-012: case-only renames and all-or-nothing flips ----
+//
+// Case-only tests assert an end state that is the same on case-sensitive and
+// case-insensitive filesystems, and check it by listing directory entries
+// (`Path::exists` ignores case on macOS and Windows).
+
+/// The sorted names of the entries directly inside `dir/sub`, ignoring dot-entries.
+fn names(dir: &Path, sub: &str) -> Vec<String> {
+    let mut found: Vec<String> = fs::read_dir(dir.join(sub))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|name| !name.starts_with('.'))
+        .collect();
+    found.sort();
+    found
+}
+
+/// Replaces `from` with `to` on disk as a separate delete and create, so the result is
+/// the same on every filesystem.
+fn rename_on_disk(dir: &Path, from: &str, to: &str) {
+    let content = fs::read_to_string(dir.join(from)).unwrap();
+    fs::remove_file(dir.join(from)).unwrap();
+    write(dir, to, &content);
+}
+
+/// The stored draft already records the working files: a fresh snapshot changes nothing.
+fn assert_draft_records_working_files(project: &mut Project) {
+    let stored = project.status(&StatusOptions { snapshot: false }).unwrap();
+    let fresh = project.status(&StatusOptions { snapshot: true }).unwrap();
+    assert_eq!(stored.changes, fresh.changes, "draft matches");
+}
+
+/// Restores `only`, then checks what every case-only scenario must keep true.
+/// `tree` is the exact file list the draft must record afterwards.
+fn restore_and_check_untouched_history(
+    dir: &Path,
+    project: &mut Project,
+    only: &[&str],
+    tree: &[&str],
+) {
+    let head = git(dir, &["rev-parse", "HEAD"]);
+    let index = git(dir, &["ls-files", "--stage"]);
+
+    restore(project, only, None).unwrap();
+
+    assert_eq!(git(dir, &["rev-parse", "HEAD"]), head);
+    assert_eq!(git(dir, &["ls-files", "--stage"]), index);
+    assert_draft_records_working_files(project);
+    // Only the save's spelling is recorded in the draft, and status reports nothing
+    // for the other one.
+    let draft = git(dir, &["rev-parse", "refs/paper/draft/main"]);
+    let recorded = git(dir, &["ls-tree", "-r", "--name-only", draft.trim()]);
+    assert_eq!(recorded.lines().collect::<Vec<_>>(), tree);
+    let status = project.status(&StatusOptions { snapshot: true }).unwrap();
+    assert_eq!(status.changes, vec![], "nothing differs from the save");
+    fsck(dir);
+}
+
+#[test]
+fn restore_gives_the_saved_spelling_when_only_the_case_of_a_file_changed() {
+    let (dir, mut project) = project_with(&[("Notes.tex", "saved\n")]);
+    save_all(&mut project, "one");
+    rename_on_disk(dir.path(), "Notes.tex", "notes.tex");
+    fs::write(dir.path().join("notes.tex"), "edited\n").unwrap();
+    project.snapshot().unwrap();
+
+    restore_and_check_untouched_history(
+        dir.path(),
+        &mut project,
+        &["Notes.tex", "notes.tex"],
+        &[".gitignore", "Notes.tex", "paper.toml"],
+    );
+
+    assert_eq!(names(dir.path(), ""), vec!["Notes.tex", "paper.toml"]);
+    assert_eq!(read(dir.path(), "Notes.tex"), "saved\n");
+}
+
+#[test]
+fn restore_gives_the_saved_spelling_for_the_reverse_case_only_rename() {
+    let (dir, mut project) = project_with(&[("notes.tex", "saved\n")]);
+    save_all(&mut project, "one");
+    rename_on_disk(dir.path(), "notes.tex", "Notes.tex");
+    fs::write(dir.path().join("Notes.tex"), "edited\n").unwrap();
+    project.snapshot().unwrap();
+
+    restore_and_check_untouched_history(
+        dir.path(),
+        &mut project,
+        &["Notes.tex", "notes.tex"],
+        &[".gitignore", "notes.tex", "paper.toml"],
+    );
+
+    assert_eq!(names(dir.path(), ""), vec!["notes.tex", "paper.toml"]);
+    assert_eq!(read(dir.path(), "notes.tex"), "saved\n");
+}
+
+#[test]
+fn restore_gives_the_saved_spelling_when_only_the_case_of_a_folder_changed() {
+    let (dir, mut project) = project_with(&[("Sections/a.tex", "saved\n")]);
+    save_all(&mut project, "one");
+    fs::remove_dir_all(dir.path().join("Sections")).unwrap();
+    write(dir.path(), "sections/a.tex", "edited\n");
+    project.snapshot().unwrap();
+
+    restore_and_check_untouched_history(
+        dir.path(),
+        &mut project,
+        &["Sections", "sections"],
+        &[".gitignore", "Sections/a.tex", "paper.toml"],
+    );
+
+    assert_eq!(names(dir.path(), ""), vec!["Sections", "paper.toml"]);
+    assert_eq!(names(dir.path(), "Sections"), vec!["a.tex"]);
+    assert_eq!(read(dir.path(), "Sections/a.tex"), "saved\n");
+}
+
+#[test]
+fn a_blocked_file_folder_swap_leaves_both_sides_alone_but_still_does_an_unrelated_deletion() {
+    let (dir, mut project) = project_with(&[
+        (".gitignore", "*.log\n"),
+        ("chap", "a file\n"),
+        ("keep.tex", "keep\n"),
+    ]);
+    save_all(&mut project, "one");
+    // The draft turns `chap` into a folder holding a tracked file and an ignored one.
+    fs::remove_file(dir.path().join("chap")).unwrap();
+    write(dir.path(), "chap/one.tex", "1\n");
+    write(dir.path(), "chap/cache.log", "ignored\n");
+    write(dir.path(), "extra.tex", "extra\n");
+    project.snapshot().unwrap();
+    let head = git(dir.path(), &["rev-parse", "HEAD"]);
+    let index = git(dir.path(), &["ls-files", "--stage"]);
+
+    let restored = restore(&mut project, &["chap", "extra.tex"], None).unwrap();
+
+    assert_eq!(names(dir.path(), "chap"), vec!["cache.log", "one.tex"]);
+    assert_eq!(read(dir.path(), "chap/one.tex"), "1\n");
+    assert_eq!(read(dir.path(), "chap/cache.log"), "ignored\n");
+    assert_eq!(
+        restored.skipped,
+        vec![
+            skipped("chap", RestoreSkip::Blocked),
+            skipped(
+                "chap/one.tex",
+                RestoreSkip::KeptForSwap {
+                    target: "chap".to_owned()
+                }
+            ),
+        ]
+    );
+    let changes: Vec<(String, ChangeKind)> = restored
+        .changes
+        .iter()
+        .map(|change| (change.path.clone(), change.kind))
+        .collect();
+    assert_eq!(changes, vec![("extra.tex".to_owned(), ChangeKind::Deleted)]);
+    assert_eq!(
+        names(dir.path(), ""),
+        vec!["chap", "keep.tex", "paper.toml"]
+    );
+    assert_eq!(git(dir.path(), &["rev-parse", "HEAD"]), head);
+    assert_eq!(git(dir.path(), &["ls-files", "--stage"]), index);
+    assert_draft_records_working_files(&mut project);
+    fsck(dir.path());
+}
+
+// ---- PV-012 review round 1 ----
+
+/// Whether the filesystem under `dir` treats `a` and `A` as the same name. Tests only:
+/// the product never asks.
+fn ignores_case(dir: &Path) -> bool {
+    write(dir, "case-probe", "");
+    let same = dir.join("CASE-PROBE").exists();
+    fs::remove_file(dir.join("case-probe")).unwrap();
+    same
+}
+
+fn draft_files(dir: &Path) -> Vec<String> {
+    let draft = git(dir, &["rev-parse", "refs/paper/draft/main"]);
+    git(dir, &["ls-tree", "-r", "--name-only", draft.trim()])
+        .lines()
+        .map(str::to_owned)
+        .collect()
+}
+
+#[test]
+fn a_case_renamed_folder_that_still_holds_an_ignored_file_is_kept_and_reported() {
+    let (dir, mut project) =
+        project_with(&[(".gitignore", "*.log\n"), ("Sections/a.tex", "saved\n")]);
+    save_all(&mut project, "one");
+    fs::remove_dir_all(dir.path().join("Sections")).unwrap();
+    write(dir.path(), "sections/a.tex", "edited\n");
+    write(dir.path(), "sections/cache.log", "ignored\n");
+    project.snapshot().unwrap();
+    let insensitive = ignores_case(dir.path());
+
+    let restored = restore(&mut project, &["Sections", "sections"], None).unwrap();
+
+    assert_draft_records_working_files(&mut project);
+    fsck(dir.path());
+    if insensitive {
+        // Both sides stay as they were, and both are reported.
+        assert_eq!(names(dir.path(), ""), vec!["paper.toml", "sections"]);
+        assert_eq!(names(dir.path(), "sections"), vec!["a.tex", "cache.log"]);
+        assert_eq!(read(dir.path(), "sections/a.tex"), "edited\n");
+        assert_eq!(
+            restored.skipped,
+            vec![
+                skipped("Sections/a.tex", RestoreSkip::Blocked),
+                skipped(
+                    "sections/a.tex",
+                    RestoreSkip::KeptForSwap {
+                        target: "Sections/a.tex".to_owned()
+                    }
+                ),
+            ]
+        );
+        assert_eq!(restored.changes, vec![]);
+        assert!(draft_files(dir.path()).contains(&"sections/a.tex".to_owned()));
+        assert!(!draft_files(dir.path()).contains(&"Sections/a.tex".to_owned()));
+    } else {
+        assert_eq!(read(dir.path(), "Sections/a.tex"), "saved\n");
+        assert_eq!(names(dir.path(), "sections"), vec!["cache.log"]);
+        assert_eq!(restored.skipped, vec![]);
+    }
+}
+
+#[test]
+fn naming_only_the_saved_spelling_leaves_a_case_variant_in_the_draft_alone_and_says_so() {
+    let (dir, mut project) = project_with(&[("Notes.tex", "saved\n")]);
+    save_all(&mut project, "one");
+    rename_on_disk(dir.path(), "Notes.tex", "notes.tex");
+    fs::write(dir.path().join("notes.tex"), "edited\n").unwrap();
+    project.snapshot().unwrap();
+    let insensitive = ignores_case(dir.path());
+
+    let restored = restore(&mut project, &["Notes.tex"], None).unwrap();
+
+    assert_draft_records_working_files(&mut project);
+    fsck(dir.path());
+    if insensitive {
+        assert_eq!(
+            restored.skipped,
+            vec![skipped(
+                "Notes.tex",
+                RestoreSkip::CaseAlias {
+                    other: "notes.tex".to_owned()
+                }
+            )]
+        );
+        assert_eq!(names(dir.path(), ""), vec!["notes.tex", "paper.toml"]);
+        assert_eq!(read(dir.path(), "notes.tex"), "edited\n");
+    } else {
+        // Both spellings can exist here, so the saved one is simply written.
+        assert_eq!(restored.skipped, vec![]);
+        assert_eq!(
+            names(dir.path(), ""),
+            vec!["Notes.tex", "notes.tex", "paper.toml"]
+        );
+        assert_eq!(read(dir.path(), "Notes.tex"), "saved\n");
+    }
+}
+
+#[test]
+fn a_snapshot_alone_records_only_the_spelling_the_folder_lists() {
+    let (dir, mut project) = project_with(&[("Notes.tex", "saved\n"), ("Dir/b.tex", "b\n")]);
+    save_all(&mut project, "one");
+    rename_on_disk(dir.path(), "Notes.tex", "notes.tex");
+    fs::remove_dir_all(dir.path().join("Dir")).unwrap();
+    write(dir.path(), "dir/b.tex", "b\n");
+
+    project.snapshot().unwrap();
+
+    assert_eq!(
+        draft_files(dir.path()),
+        vec![".gitignore", "dir/b.tex", "notes.tex", "paper.toml"]
+    );
+}
+
+#[test]
+fn a_tracked_ignored_file_whose_case_changed_is_not_found_under_its_old_spelling() {
+    let (dir, mut project) = project_with(&[("cache.tmp", "x\n"), ("a.tex", "a\n")]);
+    save_all(&mut project, "one");
+    let ignore = read(dir.path(), ".gitignore");
+    fs::write(dir.path().join(".gitignore"), format!("{ignore}*.tmp\n")).unwrap();
+    project.snapshot().unwrap();
+    assert!(draft_files(dir.path()).contains(&"cache.tmp".to_owned()));
+
+    rename_on_disk(dir.path(), "cache.tmp", "CACHE.tmp");
+    project.snapshot().unwrap();
+
+    // The new spelling is ignored, and the old one no longer exists.
+    assert!(!draft_files(dir.path()).contains(&"cache.tmp".to_owned()));
+    assert!(!draft_files(dir.path()).contains(&"CACHE.tmp".to_owned()));
+}
+
+#[cfg(unix)]
+#[test]
+fn a_tracked_symlink_whose_case_changed_is_not_found_under_its_old_spelling() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "a.tex", "a\n");
+    git(dir.path(), &["init", "-q", "-b", "main"]);
+    std::os::unix::fs::symlink("a.tex", dir.path().join("link")).unwrap();
+    git(dir.path(), &["add", "."]);
+    git(dir.path(), &["commit", "-qm", "start"]);
+    let (mut project, _) = Project::init_with_profile(
+        dir.path(),
+        identity(),
+        &SnapshotOptions::default(),
+        Profile::builtin("generic"),
+    )
+    .unwrap();
+    fs::remove_file(dir.path().join("link")).unwrap();
+    std::os::unix::fs::symlink("a.tex", dir.path().join("LINK")).unwrap();
+
+    project.snapshot().unwrap();
+
+    let files = draft_files(dir.path());
+    assert!(!files.contains(&"link".to_owned()), "{files:?}");
+    assert!(!files.contains(&"LINK".to_owned()), "{files:?}");
+}
+
+#[test]
+fn thousands_of_tracked_ignored_files_are_all_kept_by_a_snapshot() {
+    let mut files: Vec<(String, &str)> = (0..3000)
+        .map(|n| (format!("cache/d{}/f{n}.tmp", n % 30), "x\n"))
+        .collect();
+    files.push(("a.tex".to_owned(), "a\n"));
+    let listed: Vec<(&str, &str)> = files.iter().map(|(p, c)| (p.as_str(), *c)).collect();
+    let (dir, mut project) = project_with(&listed);
+    let ignore = read(dir.path(), ".gitignore");
+    fs::write(dir.path().join(".gitignore"), format!("{ignore}*.tmp\n")).unwrap();
+
+    project.snapshot().unwrap();
+
+    let kept = draft_files(dir.path())
+        .iter()
+        .filter(|path| path.contains("/f"))
+        .count();
+    assert_eq!(kept, 3000);
+}

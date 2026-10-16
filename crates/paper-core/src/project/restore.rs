@@ -49,7 +49,7 @@ impl SkippedPath {
 }
 
 /// Why restore left a file alone.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RestoreSkip {
     /// The saved version is a symbolic link, which paper doesn't restore.
     SavedSymlink,
@@ -65,6 +65,12 @@ pub enum RestoreSkip {
     NonUtf8Path,
     /// Something paper doesn't track (an ignored file, say) is in the way.
     Blocked,
+    /// The draft has a file that differs from this one only in letter case, and the
+    /// restore wasn't asked to replace it (name both spellings to do so).
+    CaseAlias { other: String },
+    /// The file was kept because the folder or file it stood in the way of couldn't be
+    /// restored (`target`): a file/folder swap is all or nothing.
+    KeptForSwap { target: String },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -154,19 +160,20 @@ impl Project {
                 candidates.push(path);
             }
         }
-        let doomed: BTreeSet<&str> = deletes.iter().map(|p| p.as_str()).collect();
-
         // Decide everything, and read every blob, before the first byte on disk changes.
+        let plan = self.settle(candidates, deletes, |p| draft_files.contains_key(p));
+        let deletes = plan.deletes;
+        skipped.extend(
+            plan.blocked
+                .iter()
+                .map(|(path, reason)| SkippedPath::new(path, reason.clone())),
+        );
+        skipped.sort_by(|a, b| a.path.cmp(&b.path));
         let mut writes = Vec::new();
-        for path in candidates {
+        for path in plan.writes {
             let file = &from_files[path];
-            if self.blocked(path, draft_files.contains_key(path), &doomed) {
-                skipped.push(SkippedPath::new(path, RestoreSkip::Blocked));
-                continue;
-            }
             writes.push((path, file.kind, self.repo.read_blob(&file.blob)?));
         }
-        skipped.sort_by(|a, b| a.path.cmp(&b.path));
 
         let mut changes: Vec<Change> = deletes
             .iter()
@@ -210,33 +217,6 @@ impl Project {
             changes,
             skipped,
         })
-    }
-
-    /// Whether writing `path` would clobber or escape through something paper doesn't track:
-    /// a symlinked parent, an untracked (ignored or oversize) file or directory in the way,
-    /// or a parent that is a file the restore isn't removing.
-    fn blocked(&self, path: &str, in_draft: bool, doomed: &BTreeSet<&str>) -> bool {
-        let root = self.repo.workdir();
-        let mut prefix = String::new();
-        for part in path.split('/').take(path.matches('/').count()) {
-            if !prefix.is_empty() {
-                prefix.push('/');
-            }
-            prefix.push_str(part);
-            match fs::symlink_metadata(root.join(&prefix)) {
-                Ok(meta) if meta.file_type().is_symlink() => return true,
-                Ok(meta) if meta.is_file() && !doomed.contains(prefix.as_str()) => return true,
-                _ => {}
-            }
-        }
-        if in_draft {
-            return false;
-        }
-        match fs::symlink_metadata(root.join(path)) {
-            Ok(meta) if meta.is_dir() => !only_holds(root, path, doomed),
-            Ok(_) => true,
-            Err(_) => false,
-        }
     }
 
     /// Whether the path, or any directory above it, is a symlink on disk.
@@ -285,21 +265,6 @@ impl Project {
         }
         Ok(())
     }
-}
-
-/// Whether every file under the directory `dir` is about to be removed by this restore.
-fn only_holds(root: &Path, dir: &str, doomed: &BTreeSet<&str>) -> bool {
-    let Ok(entries) = fs::read_dir(root.join(dir)) else {
-        return false;
-    };
-    entries.flatten().all(|entry| {
-        let child = format!("{dir}/{}", entry.file_name().to_string_lossy());
-        match entry.file_type() {
-            Ok(kind) if kind.is_dir() => only_holds(root, &child, doomed),
-            Ok(kind) if kind.is_file() => doomed.contains(child.as_str()),
-            _ => false,
-        }
-    })
 }
 
 /// Why the snapshot left `path` out (or something above it, like a nested repository).
