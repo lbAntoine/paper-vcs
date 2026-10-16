@@ -1,6 +1,6 @@
 # PV-002: resolve points, history and show
 
-- **Status:** Ready
+- **Status:** Done
 - **Branch:** `feat/PV-002-history`
 - **Depends on:** none. Runs in parallel with PV-009 (paper-diff only, disjoint files).
 - **Touches:** `crates/paper-git/src/repo.rs`, `crates/paper-git/tests/repo.rs`,
@@ -107,6 +107,20 @@ says how many saves the line has.
 
 ## Summary
 
+`GitRepo::ancestors` (paper-git), plus `Project::resolve`, `Project::history` and `Project::show`
+(paper-core).
+
+- Points resolve in the order of 01-concepts.md: `@`/`last~N`, then `date:`, line name, change-ID
+  prefix (`k`–`z`) and hash prefix (≥ 4 hex characters).
+- Ambiguity lists candidates with readable short ids. Plain-git commits use the shortest unique
+  hash prefix, minimum 7 characters.
+- `date:` uses committer time in the local zone and never panics: past the timestamp range
+  means "no limit", before it means `NoSaveBefore`.
+- `history` supports a path filter (sharing `save`'s path rules), `--all` and a limit. `show`
+  lists a save's changes against its parent.
+
+Deviations: none. Review fixed a panic reachable from user input (`date:9999-12-31`) before merge.
+
 ## Handoff log
 
 ### RED · test-author · 2026-10-16
@@ -186,3 +200,10 @@ says how many saves the line has.
   `history --all` filters the single `known` walk by reachability from the tips.
 - `history` uses `save::matches` (now `pub(super)`) instead of its own copy.
 - NIT done: the inclusive end uses the later occurrence in a DST fold.
+
+### Review round 2 · reviewer · 2026-10-16
+- Verdict: APPROVE. Tests, clippy and fmt pass (isolated target). The blocker and every minor
+  finding are fixed and verified.
+- NITs, skipped: the extreme-date test reaches the before-min branch only east of about
+  UTC-2 (CI runs in UTC); no message test for the singular "1 save"; no test for the DST-fold
+  choice (it depends on the system zone).
