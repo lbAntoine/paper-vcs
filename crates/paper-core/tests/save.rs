@@ -250,6 +250,25 @@ fn saving_with_no_changes_returns_nothing_to_save_and_writes_nothing() {
 }
 
 #[test]
+fn selecting_the_whole_folder_of_a_clean_project_finds_no_changes_and_writes_nothing() {
+    let (dir, mut project) = project_with(&[("main.tex", "one")]);
+    let before = stored(dir.path(), &project);
+    let head = git(dir.path(), &["rev-parse", "HEAD"]);
+
+    let err = project
+        .save(&request("Nothing", PathSelection::Only(paths(&[""]))))
+        .unwrap_err();
+
+    assert!(
+        matches!(&err, SaveError::NoChangesAt { paths } if *paths == vec![String::new()]),
+        "{err:?}"
+    );
+    assert_eq!(stored(dir.path(), &project), before);
+    assert_eq!(git(dir.path(), &["rev-parse", "HEAD"]), head);
+    fsck(dir.path());
+}
+
+#[test]
 fn saving_everything_creates_one_commit_on_the_line() {
     let (dir, mut project) = project_with(&[("main.tex", "one")]);
     let old = project.view().current().clone();

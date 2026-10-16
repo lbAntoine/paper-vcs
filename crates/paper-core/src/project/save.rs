@@ -279,8 +279,8 @@ fn select(
         PathSelection::Only(paths) => (paths, true),
         PathSelection::AllBut(paths) => (paths, false),
     };
-    // Complexity: O((P + C) log C) for P selected paths and C changes (times the path depth,
-    // which is small). Each selected path is looked up in the sorted change paths by binary
+    // Complexity: O((P + C) log(P + C)) comparisons for P selected paths and C changes, times
+    // the path depth (which is small). Each selected path is looked up in the sorted change paths by binary
     // search, and each change is tested against the set of selected paths through its own
     // ancestors, so no path is ever compared with every change. Results match `matches`.
     let mut sorted: Vec<&str> = changes.iter().map(|change| change.path.as_str()).collect();
@@ -420,7 +420,7 @@ mod tests {
     }
 
     /// Names that are neighbours in sort order, so nesting exercises `/` against ` -.`.
-    const COMPONENTS: [&str; 8] = ["a", "a b", "a-b", "a.b", "b", "ab", "a0", "a/b"];
+    const COMPONENTS: [&str; 9] = ["a", "a b", "a-b", "a.b", "b", "ab", "a0", "a/b", "é"];
 
     fn kind(rng: &mut Rng) -> ChangeKind {
         *rng.pick(&[ChangeKind::Added, ChangeKind::Modified, ChangeKind::Deleted])
@@ -469,12 +469,31 @@ mod tests {
                     }
                     _ => random_path(rng),
                 };
-                if rng.below(4) == 0 {
-                    path.push('/');
+                match rng.below(8) {
+                    0 | 1 => path.push('/'),
+                    2 => path.push_str("//"),
+                    _ => {}
                 }
                 path
             })
             .collect()
+    }
+
+    /// A selected path with its slash-trimmed form and that form plus `/`, built once.
+    struct Prepared {
+        trimmed: String,
+        dir: String,
+    }
+
+    fn prepare(path: &str) -> Prepared {
+        let trimmed = path.trim_end_matches('/').to_owned();
+        let dir = format!("{trimmed}/");
+        Prepared { trimmed, dir }
+    }
+
+    /// The rule, read literally: the empty path, the file itself, or a file under the directory.
+    fn covers(path: &Prepared, file: &str) -> bool {
+        path.trimmed.is_empty() || file == path.trimmed || file.starts_with(&path.dir)
     }
 
     /// The obvious reading of the rules: every path against every change.
@@ -487,14 +506,12 @@ mod tests {
             PathSelection::Only(paths) => (paths, true),
             PathSelection::AllBut(paths) => (paths, false),
         };
-        let covers = |path: &str, file: &str| {
-            let path = path.trim_end_matches('/');
-            path.is_empty() || file == path || file.starts_with(&format!("{path}/"))
-        };
+        let prepared: Vec<Prepared> = paths.iter().map(|path| prepare(path)).collect();
         let unmatched: Vec<String> = paths
             .iter()
-            .filter(|path| changes.iter().all(|change| !covers(path, &change.path)))
-            .cloned()
+            .zip(&prepared)
+            .filter(|(_, path)| changes.iter().all(|change| !covers(path, &change.path)))
+            .map(|(original, _)| original.clone())
             .collect();
         if !unmatched.is_empty() {
             return Err(unmatched);
@@ -502,7 +519,7 @@ mod tests {
         let mut chosen = Vec::new();
         let mut rest = Vec::new();
         for change in changes {
-            let hit = paths.iter().any(|path| covers(path, &change.path));
+            let hit = prepared.iter().any(|path| covers(path, &change.path));
             if hit == keep_matches {
                 chosen.push(change.clone());
             } else {
@@ -533,7 +550,10 @@ mod tests {
             // Mostly selections that match, so both outcomes are well covered.
             let mut paths = random_selection(&mut rng, &changes, wanted);
             if rng.below(3) != 0 {
-                paths.retain(|p| changes.iter().any(|c| reference_hit(p, &c.path)));
+                paths.retain(|p| {
+                    let p = prepare(p);
+                    changes.iter().any(|c| covers(&p, &c.path))
+                });
             }
             for selection in [
                 PathSelection::All,
@@ -556,11 +576,6 @@ mod tests {
             selected_ok > 3000 && refused > 500,
             "{selected_ok}/{refused}"
         );
-    }
-
-    fn reference_hit(path: &str, file: &str) -> bool {
-        let path = path.trim_end_matches('/');
-        path.is_empty() || file == path || file.starts_with(&format!("{path}/"))
     }
 
     #[test]
@@ -589,13 +604,12 @@ mod tests {
     #[test]
     fn select_agrees_with_the_reference_on_a_large_input() {
         let mut rng = Rng(0xDEAD_BEEF_CAFE_F00D);
-        let changes: Vec<Change> = (0..20_000)
+        let mut changes: Vec<Change> = (0..20_000)
             .map(|i| Change {
                 path: format!("d{:03}/s{}/f{i:05}.tex", i % 200, i % 7),
                 kind: kind(&mut rng),
             })
-            .collect::<Vec<_>>();
-        let mut changes = changes;
+            .collect();
         changes.sort_by(|x, y| x.path.cmp(&y.path));
 
         // 2 000 paths that all match: files, whole folders, with and without a trailing slash.

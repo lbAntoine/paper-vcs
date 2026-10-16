@@ -90,3 +90,7 @@ Characterisation tests: all PASS against today's code by design (behaviour-prese
 - Unmatched check: change paths sorted once; each selected path is a binary search for the exact key plus the range `[path + "/", path + "0")` (so `a b`, `a-b`, `a.b`, `a0` are not matched). `""` selects everything; trailing `/` is trimmed.
 - Partition: each change is tested against a `BTreeSet` of the trimmed selected paths via itself and its ancestor directories.
 - `matches` is unchanged (still used by `close_over_conflicts` and the tests). No tests, specs, dependencies or manifests changed. All characterisation tests pass unchanged; fmt, clippy `-D warnings` and the full suite are green.
+
+### GREEN (post-approval) · rust-engineer · 2026-10-16
+
+Tightened tests per review: clean-project `Only([""])` integration test, faster shared reference, non-ASCII and `//` inputs; complexity comment corrected to O((P + C) log(P + C)).
