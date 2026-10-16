@@ -174,3 +174,16 @@ never touches the user's own lines, and records the choice in `paper.toml`.
 - Snapshots accepted: new `init__init_json_latex`; changed `init__init_created`, `init__init_adopted`,
   `init__init_json`, `config__config_list`, `config__config_list_json`. `init__init_twice` unchanged.
 - Follow-up ideas: JSON for `config set` could say whether `.gitignore` changed.
+
+### Review · reviewer · 2026-10-16
+- Verdict: CHANGES. Tests, clippy and fmt pass. Block merge probed with real files (CRLF without final newline, block in the middle, look-alike markers, stray end marker, doubled/unterminated blocks); detection order, ignore lists, conflict and adoption verified with git.
+- GREEN's edits to existing tests: none weakens anything (`--branches` is the right history check; the save/history/show_diff lists stay exact; the `restore` fixture change keeps the intent).
+- MAJOR: a damaged block during `config set --project profile` suggests re-running `paper init`, which fails there.
+- MINOR: a non-UTF-8 `.gitignore` gives a project error ("could not write", "report it") instead of a user error.
+- MINOR: adopting a repo with no commits says the files are unsaved, but they went into the first save.
+- MINOR: the broken-block `config set` test doesn't check `paper.toml` is unchanged.
+- MINOR: no test that a broken block during *adoption* writes nothing.
+- MINOR: the shared-lines test omits `*.swp`, `*.swo`, `*~`.
+- MINOR: unrelated test fixtures depend on detection (latex block from `.tex` fixtures).
+- NITs: conflict-error wording ("run it after init", "adopt"); the `generic (nothing more specific found)` line isn't in 02-cli; a duplicated help test; `.gitignore` written before `paper.toml` in `config set` (acceptable with atomic writes).
+- Coordinator decisions: fix everything in this round except the last NIT. A non-UTF-8 `.gitignore` is a three-part user error ("save .gitignore as UTF-8"), nothing written. Fixture helpers in save/restore/show_diff/history tests use an explicit `generic` profile; detection is tested in `profile.rs`. Adding tests is authorised; don't weaken any.
