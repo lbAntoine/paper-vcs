@@ -54,16 +54,7 @@ impl ProfilePlan {
                 (detect(&files).clone(), true, false)
             }
         };
-        let existing_gitignore = match std::fs::read_to_string(workdir.join(GITIGNORE_FILE)) {
-            Ok(text) => Some(text),
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
-            Err(source) => {
-                return Err(InitError::Io {
-                    path: workdir.join(GITIGNORE_FILE),
-                    source,
-                });
-            }
-        };
+        let existing_gitignore = gitignore::read(workdir)?;
         let gitignore = gitignore::apply(existing_gitignore.as_deref(), &profile)?;
         let paper_toml = if existing.is_some() {
             None

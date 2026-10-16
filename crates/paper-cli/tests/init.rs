@@ -176,14 +176,6 @@ fn init_with_profile_uses_it_and_reports_it_as_chosen() {
 }
 
 #[test]
-fn init_help_no_longer_says_the_profile_has_no_effect() {
-    let env = Env::new();
-    let run = env.paper(&["init", "--help"]);
-    run.assert_code(0);
-    assert!(!run.stdout.contains("no effect"), "{run:#?}");
-}
-
-#[test]
 fn init_json_has_profile_detected_written_and_tips() {
     let env = Env::new();
     env.write("main.tex", "\\documentclass{article}\n");
@@ -253,4 +245,51 @@ fn adopting_with_a_conflicting_profile_is_a_user_error_and_writes_nothing() {
     );
     assert!(!env.work.join(".gitignore").exists());
     assert!(!env.work.join(".git/paper").exists());
+}
+
+#[test]
+fn a_damaged_block_during_init_suggests_running_init_again() {
+    let env = Env::new();
+    env.write("a.txt", "a\n");
+    env.write(".gitignore", "# >>> paper-vcs profile: latex >>>\n*.aux\n");
+
+    let run = env.paper(&["init"]);
+
+    run.assert_three_part_error(1);
+    assert!(run.stderr.contains("paper init"), "{run:#?}");
+    assert!(!env.work.join("paper.toml").exists());
+}
+
+#[test]
+fn a_gitignore_that_is_not_utf8_is_a_user_error_and_nothing_is_written() {
+    let env = Env::new();
+    env.write("a.txt", "a\n");
+    std::fs::write(env.work.join(".gitignore"), b"caf\xe9\n").unwrap();
+
+    let run = env.paper(&["init"]);
+
+    run.assert_three_part_error(1);
+    assert!(run.stderr.contains("UTF-8"), "{run:#?}");
+    assert_eq!(
+        std::fs::read(env.work.join(".gitignore")).unwrap(),
+        b"caf\xe9\n"
+    );
+    assert!(!env.work.join("paper.toml").exists());
+    assert!(!env.work.join(".git/paper").exists());
+}
+
+#[test]
+fn adopting_a_repository_without_saves_puts_the_files_in_the_first_save() {
+    let env = Env::new();
+    env.git_work(&["init", "--quiet", "-b", "main"]);
+    env.write("a.txt", "a\n");
+
+    let run = env.paper(&["init"]);
+
+    run.assert_code(0);
+    assert!(!run.stdout.contains("unsaved"), "{run:#?}");
+    assert_eq!(env.git_work(&["status", "--porcelain"]), "");
+    settings().bind(|| {
+        insta::assert_snapshot!("init_adopted_no_commits", env.redact(&run.stdout));
+    });
 }

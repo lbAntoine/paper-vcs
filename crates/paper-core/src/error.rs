@@ -213,15 +213,15 @@ impl From<InitError> for PaperError {
                 vec![
                     Suggestion::new(
                         format!("paper init --profile {existing}"),
-                        "adopt the project with the profile it already has",
+                        "set the project up with the profile it already has",
                     ),
                     Suggestion::new(
                         format!("paper config set --project profile {requested}"),
-                        format!("or change the project to '{requested}' (run it after init)"),
+                        format!("or change the project to '{requested}'"),
                     ),
                 ],
             ),
-            InitError::Gitignore(error) => gitignore_error(&error),
+            InitError::Gitignore(error) => Self::from_gitignore(&error, "paper init"),
             InitError::Config(error) => Self::from_config(&error, Scope::Project),
             InitError::Git(_)
             | InitError::Snapshot(_)
@@ -231,33 +231,40 @@ impl From<InitError> for PaperError {
     }
 }
 
-/// A `.gitignore` the profile block can't be merged into (nothing was written), or couldn't be
-/// written.
-pub(crate) fn gitignore_error(error: &GitignoreError) -> PaperError {
-    match error {
-        GitignoreError::UnterminatedBlock { .. } | GitignoreError::DuplicateBlock { .. } => {
-            PaperError::user(
-                "The paper block in .gitignore is damaged",
+impl PaperError {
+    /// A `.gitignore` the profile block can't be merged into, or couldn't be written. Nothing
+    /// was changed. `retry` is the command that repeats the operation once the file is fixed.
+    pub fn from_gitignore(error: &GitignoreError, retry: &str) -> Self {
+        match error {
+            GitignoreError::UnterminatedBlock { .. } | GitignoreError::DuplicateBlock { .. } => {
+                Self::user(
+                    "The paper block in .gitignore is damaged",
+                    format!(
+                        "{error}. Paper keeps its lines between two marker lines, \
+                         `# >>> paper-vcs profile: <name> >>>` and `# <<< paper-vcs profile: <name> <<<`, \
+                         and needs exactly one such pair. Nothing was changed."
+                    ),
+                    vec![Suggestion::new(
+                        retry,
+                        "run it again after fixing .gitignore: delete the stray marker line, or the whole block",
+                    )],
+                )
+            }
+            GitignoreError::NotUtf8 { .. } => Self::user(
+                "Paper can't read .gitignore",
                 format!(
-                    "{error}. Paper keeps its lines between two marker lines, \
-                     `# >>> paper-vcs profile: <name> >>>` and `# <<< paper-vcs profile: <name> <<<`, \
-                     and needs exactly one such pair. Nothing was changed."
+                    "{error}, so paper can't add its block without risking your own lines. \
+                     Nothing was changed."
                 ),
                 vec![Suggestion::new(
-                    "paper init",
-                    "run it again after fixing .gitignore: delete the stray marker line, or the whole block",
+                    retry,
+                    "run it again after saving .gitignore as UTF-8 text in your editor",
                 )],
-            )
+            ),
+            GitignoreError::Io { .. } => {
+                Self::project_failure("Paper could not update .gitignore", error)
+            }
         }
-        GitignoreError::Io { .. } => {
-            PaperError::project_failure("Paper could not update .gitignore", error)
-        }
-    }
-}
-
-impl From<GitignoreError> for PaperError {
-    fn from(error: GitignoreError) -> Self {
-        gitignore_error(&error)
     }
 }
 

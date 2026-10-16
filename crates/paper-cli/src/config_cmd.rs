@@ -108,7 +108,11 @@ fn set(cli: &Cli, key: &str, text: &str, project: bool) -> Output {
     let gitignore_updated = match (&workdir, key, &value) {
         (Some(workdir), Key::Profile, Value::Text(name)) => Profile::builtin(name)
             .map(|profile| gitignore::apply_to_file(workdir, profile))
-            .transpose()?
+            .transpose()
+            .map_err(|error| {
+                let retry = format!("paper config set --project profile {name}");
+                PaperError::from_gitignore(&error, &retry)
+            })?
             .unwrap_or(false),
         _ => false,
     };

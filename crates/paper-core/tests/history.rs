@@ -6,6 +6,7 @@ use std::process::Command;
 
 use paper_core::name::LineName;
 use paper_core::point::Point;
+use paper_core::profile::Profile;
 use paper_core::project::{
     HistoryEntry, HistoryRequest, PathSelection, Project, SaveRequest, ShowError,
 };
@@ -64,8 +65,13 @@ fn thesis() -> (TempDir, Project) {
     let dir = tempfile::tempdir().unwrap();
     write(dir.path(), "main.tex", "main");
     write(dir.path(), "sections/intro.tex", "intro");
-    let (mut project, _) =
-        Project::init(dir.path(), identity(), &SnapshotOptions::default()).unwrap();
+    let (mut project, _) = Project::init_with_profile(
+        dir.path(),
+        identity(),
+        &SnapshotOptions::default(),
+        Profile::builtin("generic"),
+    )
+    .unwrap();
     save(
         &mut project,
         dir.path(),
@@ -299,8 +305,13 @@ impl Plain {
         for (path, content) in current_files {
             write(self.dir.path(), path, content);
         }
-        let (project, _) =
-            Project::init(self.dir.path(), identity(), &SnapshotOptions::default()).unwrap();
+        let (project, _) = Project::init_with_profile(
+            self.dir.path(),
+            identity(),
+            &SnapshotOptions::default(),
+            Profile::builtin("generic"),
+        )
+        .unwrap();
         (self.dir, project)
     }
 }

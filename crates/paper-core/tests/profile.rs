@@ -187,6 +187,28 @@ fn a_malformed_block_stops_init_and_writes_nothing() {
     assert!(!dir.path().join(".git/paper/version").exists());
 }
 
+#[test]
+fn a_gitignore_that_is_not_utf8_stops_init_and_writes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    latex_folder(dir.path());
+    fs::write(dir.path().join(".gitignore"), b"caf\xe9\n").unwrap();
+
+    let error = init(dir.path(), None).unwrap_err();
+
+    assert!(
+        matches!(
+            error,
+            InitError::Gitignore(gitignore::GitignoreError::NotUtf8 { .. })
+        ),
+        "{error:?}"
+    );
+    assert_eq!(
+        fs::read(dir.path().join(".gitignore")).unwrap(),
+        b"caf\xe9\n"
+    );
+    assert!(!dir.path().join("paper.toml").exists());
+}
+
 // ---- adoption ----
 
 fn committed_repo(dir: &Path) {
@@ -315,4 +337,21 @@ fn apply_to_file_keeps_git_happy_and_ignores_the_junk() {
     assert!(!text.contains(&block_start("latex")), "{text}");
     assert!(text.starts_with("mine.txt\n"));
     assert!(!gitignore::apply_to_file(dir.path(), typst).unwrap());
+}
+
+#[test]
+fn adoption_with_a_malformed_block_writes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    committed_repo(dir.path());
+    let broken = "# >>> paper-vcs profile: latex >>>\n*.aux\n";
+    write(dir.path(), ".gitignore", broken);
+    let status_before = git(dir.path(), &["status", "--porcelain"]);
+
+    let error = init(dir.path(), None).unwrap_err();
+
+    assert!(matches!(error, InitError::Gitignore(_)), "{error:?}");
+    assert_eq!(read(dir.path(), ".gitignore"), broken);
+    assert!(!dir.path().join("paper.toml").exists());
+    assert!(!dir.path().join(".git/paper/version").exists());
+    assert_eq!(git(dir.path(), &["status", "--porcelain"]), status_before);
 }

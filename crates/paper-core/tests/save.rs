@@ -5,6 +5,7 @@ use std::path::Path;
 use std::process::Command;
 
 use paper_core::name::LineName;
+use paper_core::profile::Profile;
 use paper_core::project::{PathSelection, Project, SaveError, SaveOutcome, SaveRequest, Saved};
 use paper_core::snapshot::{Change, ChangeKind, SnapshotOptions};
 use paper_core::view::View;
@@ -51,7 +52,13 @@ fn project_with(files: &[(&str, &str)]) -> (tempfile::TempDir, Project) {
     for (path, content) in files {
         write(dir.path(), path, content);
     }
-    let (project, _) = Project::init(dir.path(), identity(), &SnapshotOptions::default()).unwrap();
+    let (project, _) = Project::init_with_profile(
+        dir.path(),
+        identity(),
+        &SnapshotOptions::default(),
+        Profile::builtin("generic"),
+    )
+    .unwrap();
     (dir, project)
 }
 

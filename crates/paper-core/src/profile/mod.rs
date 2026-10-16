@@ -172,6 +172,9 @@ mod tests {
         let shared = [
             ".DS_Store",
             "Thumbs.db",
+            "*.swp",
+            "*.swo",
+            "*~",
             ".venv/",
             "__pycache__/",
             ".Rproj.user/",

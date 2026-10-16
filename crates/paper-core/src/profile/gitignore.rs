@@ -32,6 +32,12 @@ pub enum GitignoreError {
         /// 1-based line of the second start marker.
         line: usize,
     },
+    /// The file is not valid UTF-8, so paper can't edit it safely.
+    #[error("{path} is not valid UTF-8 text")]
+    NotUtf8 {
+        /// The `.gitignore` involved.
+        path: PathBuf,
+    },
     /// The file could not be read or written.
     #[error("could not update {path}")]
     Io {
@@ -147,30 +153,42 @@ fn render_block(profile: &Profile, eol: &str, terminated: bool) -> String {
     out
 }
 
+/// Reads the `.gitignore` in `workdir`: `None` when there is none.
+///
+/// # Errors
+///
+/// [`GitignoreError::NotUtf8`] or [`GitignoreError::Io`].
+///
+/// # Panics
+///
+/// Never.
+pub fn read(workdir: &Path) -> Result<Option<String>, GitignoreError> {
+    let path = workdir.join(".gitignore");
+    match fs::read(&path) {
+        Ok(bytes) => String::from_utf8(bytes)
+            .map(Some)
+            .map_err(|_| GitignoreError::NotUtf8 { path }),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(source) => Err(GitignoreError::Io { path, source }),
+    }
+}
+
 /// Applies `profile`'s block to the `.gitignore` in `workdir`, creating it if needed.
 /// Returns `true` when the file was written, `false` when it already had exactly this block.
 ///
 /// # Errors
 ///
-/// Everything [`apply`] reports, and [`GitignoreError::Io`].
+/// Everything [`apply`] and [`read`] report, and [`GitignoreError::Io`].
 ///
 /// # Panics
 ///
 /// Never.
 pub fn apply_to_file(workdir: &Path, profile: &Profile) -> Result<bool, GitignoreError> {
     let path = workdir.join(".gitignore");
-    let io_error = |source| GitignoreError::Io {
-        path: path.clone(),
-        source,
-    };
-    let existing = match fs::read_to_string(&path) {
-        Ok(text) => Some(text),
-        Err(err) if err.kind() == io::ErrorKind::NotFound => None,
-        Err(err) => return Err(io_error(err)),
-    };
-    match apply(existing.as_deref(), profile)? {
+    match apply(read(workdir)?.as_deref(), profile)? {
         Some(text) => {
-            write_atomic(&path, text.as_bytes()).map_err(io_error)?;
+            write_atomic(&path, text.as_bytes())
+                .map_err(|source| GitignoreError::Io { path, source })?;
             Ok(true)
         }
         None => Ok(false),

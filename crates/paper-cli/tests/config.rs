@@ -669,9 +669,38 @@ fn set_project_profile_with_a_broken_block_fails_and_leaves_gitignore_alone() {
     let env = project();
     let broken = "# >>> paper-vcs profile: latex >>>\n*.aux\n";
     env.write(".gitignore", broken);
+    let toml = env.read("paper.toml");
 
     let run = env.paper(&["config", "set", "--project", "profile", "typst"]);
 
     run.assert_three_part_error(1);
     assert_eq!(env.read(".gitignore"), broken);
+    assert_eq!(env.read("paper.toml"), toml);
+    assert!(
+        run.stderr
+            .contains("paper config set --project profile typst"),
+        "the retry command should be the one that failed: {run:#?}"
+    );
+}
+
+#[test]
+fn set_project_profile_with_a_gitignore_that_is_not_utf8_is_a_user_error() {
+    let env = project();
+    std::fs::write(env.work.join(".gitignore"), b"caf\xe9\n").unwrap();
+    let toml = env.read("paper.toml");
+
+    let run = env.paper(&["config", "set", "--project", "profile", "typst"]);
+
+    run.assert_three_part_error(1);
+    assert!(run.stderr.contains("UTF-8"), "{run:#?}");
+    assert!(
+        run.stderr
+            .contains("paper config set --project profile typst"),
+        "{run:#?}"
+    );
+    assert_eq!(
+        std::fs::read(env.work.join(".gitignore")).unwrap(),
+        b"caf\xe9\n"
+    );
+    assert_eq!(env.read("paper.toml"), toml);
 }

@@ -94,11 +94,13 @@ pub fn init(initialized: &Initialized) -> String {
     let _ = writeln!(out, "Profile: {}", profile_origin(initialized));
     if !initialized.written.is_empty() {
         let _ = write!(out, "Wrote {}", initialized.written.join(" and "));
-        out.push_str(if initialized.adopted {
-            ". They show up as unsaved changes in your draft.\n"
-        } else {
-            ".\n"
-        });
+        out.push_str(
+            if initialized.adopted && !initialized.written_in_first_save {
+                ". They show up as unsaved changes in your draft.\n"
+            } else {
+                ".\n"
+            },
+        );
     }
     for tip in &initialized.tips {
         let _ = writeln!(out, "Tip: {tip}");

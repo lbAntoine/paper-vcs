@@ -20,6 +20,7 @@ use crate::view::{Line, View, ViewError};
 
 /// What `init` did, for the front-end to report.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)] // independent facts for the report, not a state
 pub struct Initialized {
     /// `true` when an existing git repository was adopted rather than created.
     pub adopted: bool,
@@ -41,6 +42,9 @@ pub struct Initialized {
     pub from_paper_toml: bool,
     /// Files `init` wrote in the working folder, relative to it: `.gitignore` and/or `paper.toml`.
     pub written: Vec<String>,
+    /// `true` when `written` went into the first save, `false` when it is left in the draft
+    /// as unsaved changes (adopting a repository that already has saves).
+    pub written_in_first_save: bool,
     /// The profile's tips.
     pub tips: Vec<String>,
 }
@@ -221,6 +225,7 @@ fn adopt(
         detected: report.detected,
         from_paper_toml: report.from_paper_toml,
         written: report.written,
+        written_in_first_save: false,
         tips: report.tips,
     };
     finish(
@@ -266,6 +271,7 @@ fn start_fresh(
         detected: report.detected,
         from_paper_toml: report.from_paper_toml,
         written: report.written,
+        written_in_first_save: true,
         tips: report.tips,
     };
     let view = View::new(line, Line { tip: save, draft });

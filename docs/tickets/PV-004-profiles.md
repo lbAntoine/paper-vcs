@@ -187,3 +187,11 @@ never touches the user's own lines, and records the choice in `paper.toml`.
 - MINOR: unrelated test fixtures depend on detection (latex block from `.tex` fixtures).
 - NITs: conflict-error wording ("run it after init", "adopt"); the `generic (nothing more specific found)` line isn't in 02-cli; a duplicated help test; `.gitignore` written before `paper.toml` in `config set` (acceptable with atomic writes).
 - Coordinator decisions: fix everything in this round except the last NIT. A non-UTF-8 `.gitignore` is a three-part user error ("save .gitignore as UTF-8"), nothing written. Fixture helpers in save/restore/show_diff/history tests use an explicit `generic` profile; detection is tested in `profile.rs`. Adding tests is authorised; don't weaken any.
+
+### GREEN (review round 1) · rust-engineer · 2026-10-16
+- MAJOR: `PaperError::from_gitignore(error, retry)`; init suggests `paper init`, `config set --project profile <name>` suggests itself. CLI tests assert it in stderr.
+- Non-UTF-8 `.gitignore`: new `GitignoreError::NotUtf8` (via shared `gitignore::read`), a three-part user error for init and config set, nothing written; tests for both.
+- `Initialized.written_in_first_save` (true for new projects and repos without commits): the "unsaved changes" sentence only shows when false. New snapshot `init__init_adopted_no_commits`; no other snapshot changed.
+- Tests added: `config set` broken block keeps `paper.toml` byte-identical; adoption with a broken block writes nothing (core); `*.swp`, `*.swo`, `*~` in the shared-lines test.
+- Fixtures in core save/restore/show_diff/history use `init_with_profile(.., generic)`; restore is back to `a.tex`. Expected lists unchanged.
+- NITs: conflict wording fixed; `generic (nothing more specific found)` in 02-cli; duplicate help test removed (the basics one now also checks "no effect" is absent). `#[allow(clippy::struct_excessive_bools)]` on `Initialized` (independent report facts).

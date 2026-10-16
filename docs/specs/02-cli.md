@@ -108,7 +108,7 @@ with `from` the commit the files were restored from.
   blocks) is a user error and nothing is written.
 - It reports whether the project was created or adopted, how many files are tracked, the
   profile (`Profile: latex (detected from *.tex)`, `Profile: markdown (chosen)` or
-  `Profile: latex (from paper.toml)`), the files it wrote (`.gitignore`, `paper.toml`), the
+  `Profile: latex (from paper.toml)`; with nothing to detect, `Profile: generic (nothing more specific found)`), the files it wrote (`.gitignore`, `paper.toml`), the
   profile's tips, the files left out (too large, symlinks, nested repositories) and any
   branches skipped. `--json` adds `profile`, `detected`, `written` and `tips`.
 - If no identity is found in the environment, paper config or git config, ask for name and
