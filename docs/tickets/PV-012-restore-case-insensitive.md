@@ -77,3 +77,11 @@ case) as on Linux, and never leaves a file/folder swap half done.
 ## Summary
 
 ## Handoff log
+
+### RED · test-author · 2026-10-16
+
+- `crates/paper-core/tests/restore.rs`: 4 new tests (16 existing still pass), plus helpers `names`, `rename_on_disk`, `restore_and_check_untouched_history`.
+  - 3 case-only tests (file, reverse file, folder): restore both spellings as paths; assert the listing has only the save's spelling, content, HEAD/index unchanged, draft matches, fsck. On macOS they fail today (draft not matching: neither file is left). On Linux they pass already (case-sensitive), which is expected.
+  - 1 flip test: ignored `chap/cache.log` blocks `chap` becoming a file; asserts `chap/one.tex` kept, both paths skipped `Blocked`, only `extra.tex` deleted. Fails today (`chap/one.tex` is deleted).
+- No stubs: the public API already suffices. Case tests pass both spellings in `paths` so the selection is the same everywhere. No runtime case probe used.
+- Questions: none.

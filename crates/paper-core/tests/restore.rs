@@ -451,3 +451,129 @@ fn restore_never_touches_files_under_a_nested_repository() {
         vec![skipped("vendor/lib.tex", RestoreSkip::NestedRepository)]
     );
 }
+
+// ---- PV-012: case-only renames and all-or-nothing flips ----
+//
+// Case-only tests assert an end state that is the same on case-sensitive and
+// case-insensitive filesystems, and check it by listing directory entries
+// (`Path::exists` ignores case on macOS and Windows).
+
+/// The sorted names of the entries directly inside `dir/sub`, ignoring dot-entries.
+fn names(dir: &Path, sub: &str) -> Vec<String> {
+    let mut found: Vec<String> = fs::read_dir(dir.join(sub))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|name| !name.starts_with('.'))
+        .collect();
+    found.sort();
+    found
+}
+
+/// Replaces `from` with `to` on disk as a separate delete and create, so the result is
+/// the same on every filesystem.
+fn rename_on_disk(dir: &Path, from: &str, to: &str) {
+    let content = fs::read_to_string(dir.join(from)).unwrap();
+    fs::remove_file(dir.join(from)).unwrap();
+    write(dir, to, &content);
+}
+
+/// Restores `only`, then checks what every case-only scenario must keep true.
+fn restore_and_check_untouched_history(dir: &Path, project: &mut Project, only: &[&str]) {
+    let head = git(dir, &["rev-parse", "HEAD"]);
+    let index = git(dir, &["ls-files", "--stage"]);
+
+    restore(project, only, None).unwrap();
+
+    assert_eq!(git(dir, &["rev-parse", "HEAD"]), head);
+    assert_eq!(git(dir, &["ls-files", "--stage"]), index);
+    assert_eq!(project.snapshot().unwrap().changes, vec![], "draft matches");
+    fsck(dir);
+}
+
+#[test]
+fn restore_gives_the_saved_spelling_when_only_the_case_of_a_file_changed() {
+    let (dir, mut project) = project_with(&[("Notes.tex", "saved\n")]);
+    save_all(&mut project, "one");
+    rename_on_disk(dir.path(), "Notes.tex", "notes.tex");
+    fs::write(dir.path().join("notes.tex"), "edited\n").unwrap();
+    project.snapshot().unwrap();
+
+    restore_and_check_untouched_history(dir.path(), &mut project, &["Notes.tex", "notes.tex"]);
+
+    assert_eq!(names(dir.path(), ""), vec!["Notes.tex"]);
+    assert_eq!(read(dir.path(), "Notes.tex"), "saved\n");
+}
+
+#[test]
+fn restore_gives_the_saved_spelling_for_the_reverse_case_only_rename() {
+    let (dir, mut project) = project_with(&[("notes.tex", "saved\n")]);
+    save_all(&mut project, "one");
+    rename_on_disk(dir.path(), "notes.tex", "Notes.tex");
+    fs::write(dir.path().join("Notes.tex"), "edited\n").unwrap();
+    project.snapshot().unwrap();
+
+    restore_and_check_untouched_history(dir.path(), &mut project, &["Notes.tex", "notes.tex"]);
+
+    assert_eq!(names(dir.path(), ""), vec!["notes.tex"]);
+    assert_eq!(read(dir.path(), "notes.tex"), "saved\n");
+}
+
+#[test]
+fn restore_gives_the_saved_spelling_when_only_the_case_of_a_folder_changed() {
+    let (dir, mut project) = project_with(&[("Sections/a.tex", "saved\n")]);
+    save_all(&mut project, "one");
+    fs::remove_dir_all(dir.path().join("Sections")).unwrap();
+    write(dir.path(), "sections/a.tex", "edited\n");
+    project.snapshot().unwrap();
+
+    restore_and_check_untouched_history(dir.path(), &mut project, &["Sections", "sections"]);
+
+    assert_eq!(names(dir.path(), ""), vec!["Sections"]);
+    assert_eq!(names(dir.path(), "Sections"), vec!["a.tex"]);
+    assert_eq!(read(dir.path(), "Sections/a.tex"), "saved\n");
+}
+
+#[test]
+fn a_blocked_file_folder_swap_leaves_both_sides_alone_but_still_does_an_unrelated_deletion() {
+    let (dir, mut project) = project_with(&[
+        (".gitignore", "*.log\n"),
+        ("chap", "a file\n"),
+        ("keep.tex", "keep\n"),
+    ]);
+    save_all(&mut project, "one");
+    // The draft turns `chap` into a folder holding a tracked file and an ignored one.
+    fs::remove_file(dir.path().join("chap")).unwrap();
+    write(dir.path(), "chap/one.tex", "1\n");
+    write(dir.path(), "chap/cache.log", "ignored\n");
+    write(dir.path(), "extra.tex", "extra\n");
+    project.snapshot().unwrap();
+    let head = git(dir.path(), &["rev-parse", "HEAD"]);
+    let index = git(dir.path(), &["ls-files", "--stage"]);
+
+    let restored = restore(&mut project, &["chap", "extra.tex"], None).unwrap();
+
+    assert_eq!(names(dir.path(), "chap"), vec!["cache.log", "one.tex"]);
+    assert_eq!(read(dir.path(), "chap/one.tex"), "1\n");
+    assert_eq!(read(dir.path(), "chap/cache.log"), "ignored\n");
+    assert_eq!(
+        restored.skipped,
+        vec![
+            skipped("chap", RestoreSkip::Blocked),
+            skipped("chap/one.tex", RestoreSkip::Blocked),
+        ]
+    );
+    let changes: Vec<(String, ChangeKind)> = restored
+        .changes
+        .iter()
+        .map(|change| (change.path.clone(), change.kind))
+        .collect();
+    assert_eq!(changes, vec![("extra.tex".to_owned(), ChangeKind::Deleted)]);
+    assert_eq!(
+        names(dir.path(), ""),
+        vec![".gitignore", "chap", "keep.tex"]
+    );
+    assert_eq!(git(dir.path(), &["rev-parse", "HEAD"]), head);
+    assert_eq!(git(dir.path(), &["ls-files", "--stage"]), index);
+    assert_eq!(project.snapshot().unwrap().changes, vec![], "draft matches");
+    fsck(dir.path());
+}
