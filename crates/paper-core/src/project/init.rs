@@ -134,10 +134,12 @@ impl Project {
         choice: Option<&Profile>,
     ) -> Result<(Self, Initialized), InitError> {
         fs::create_dir_all(path).map_err(|source| io_error(path, source))?;
-        match GitRepo::enclosing_workdir(path) {
-            None if path.join(".git").exists() => Err(InitError::DamagedGit {
+        if has_damaged_git(path) {
+            return Err(InitError::DamagedGit {
                 path: path.to_owned(),
-            }),
+            });
+        }
+        match GitRepo::enclosing_workdir(path) {
             None => {
                 let plan = ProfilePlan::prepare(path, choice)?;
                 let repo = GitRepo::init(path, &identity)?;
@@ -341,6 +343,17 @@ fn create_paper_dir(repo: &GitRepo) -> Result<PathBuf, InitError> {
     let dir = paper_dir(repo);
     fs::create_dir_all(&dir).map_err(|source| io_error(&dir, source))?;
     Ok(dir)
+}
+
+/// Whether `target` has its own `.git` that git cannot open (empty, half deleted, or a file
+/// pointing at a missing folder). Git's search skips such a `.git` and finds a repository
+/// further up, so the folder looks like it is inside another project; this tells the two
+/// apart: `target/.git` exists, yet the repository found from `target` does not start at
+/// `target`. (Reading the git settings fails the same way, see `open_repository` in
+/// `paper-git`, so callers check this before reading them.)
+pub fn has_damaged_git(target: &Path) -> bool {
+    target.join(".git").exists()
+        && !GitRepo::enclosing_workdir(target).is_some_and(|root| same_dir(&root, target))
 }
 
 fn same_dir(a: &Path, b: &Path) -> bool {

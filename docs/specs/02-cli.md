@@ -110,8 +110,9 @@ with `from` the commit the files were restored from.
   profile (`Profile: latex (detected from *.tex)`, `Profile: markdown (chosen)` or
   `Profile: latex (from paper.toml)`; with nothing to detect,
   `Profile: generic (nothing more specific found)`), the files it wrote (`.gitignore`,
-  `paper.toml`), the profile's tips, the files left out (too large, symlinks, nested repositories) and any
-  branches skipped. `--json` adds `profile`, `detected`, `written` and `tips`.
+  `paper.toml`), the profile's tips, the files left out (too large, symlinks, nested
+  repositories) and any branches skipped. `--json` adds `profile`, `detected`, `written` and
+  `tips`.
 - If no identity is found in the environment, paper config or git config, ask for name and
   email once on a terminal and store them in the user config (see Global behaviour).
   Without a terminal `init` fails with the `paper config set user.…` commands (then the
@@ -119,9 +120,9 @@ with `from` the commit the files were restored from.
 - If the folder is inside a cloud-sync root (OneDrive, Dropbox, iCloud Drive, Google Drive),
   warn and ask for confirmation (`--yes` skips the prompt). See
   [04-content](04-content.md#cloud-sync-folders).
-- A `.git` in the target folder that git can't open (empty or damaged) is a user error
-  ("This folder has a damaged .git") that says to inspect it or move it away; nothing is
-  written.
+- A `.git` in the target folder that git can't open (empty, damaged, or a file pointing at a
+  missing folder) is a user error ("This folder has a damaged .git") that says to inspect it
+  or move it away; nothing is written. This holds inside another repository too.
 
 ### `paper status` (since v0.1)
 
@@ -225,9 +226,10 @@ and the diffs. The date reads like `history` times; `--json` has the exact times
 **Points or paths?** Up to two leading arguments are points if they resolve as points; the
 first one that doesn't, and everything after it, are paths. A word that is clearly a mistyped
 point (`last~x`, `HEAD~1`) is an error, and a first word that is neither a point nor a file
-is reported as "not a save, line, date or file". A word containing `/` or `.` can only be a
-file, so a typo such as `sections/nope.tex` gets the file wording ("No file matches", with
-`paper status` and `paper show <point>`). A name that is both a point and a
+is reported as "not a save, line, date or file". A word containing `/` or `.` is treated as a
+file (line names may contain them, but such a typo is far more likely a file), so a mistyped
+`sections/nope.tex`, or a line name with `/` or `.`, gets the file wording ("No file
+matches", with `paper status` and `paper show <point>`). A name that is both a point and a
 file is a point; `--` forces everything after it to be paths (`paper diff -- last` diffs the
 file called `last`). `--since <point>` can't be combined with points.
 
@@ -366,10 +368,10 @@ are local until `paper share <line>`. This means experiments are private by defa
   names the file) and a project error otherwise.
 - `paper config list` prints every key with its value and its source (`env`, `project`,
   `user`, `git` or `default`). With `--json`:
-  `{"schema":1,"settings":[{"key","value","source"}],"notes":[…]}`, in the table's order; `value` is a
-  string, an integer (megabytes) or `null` when unset (human output shows `(not set)` with
-  source `-`). `get --json` prints `{"schema":1,"key","value","source","notes":[…]}` and
-  `set --json`
+  `{"schema":1,"settings":[{"key","value","source"}],"notes":[…]}`, in the table's order;
+  `value` is a string, an integer (megabytes) or `null` when unset (human output shows
+  `(not set)` with source `-`). `get --json` prints
+  `{"schema":1,"key","value","source","notes":[…]}` and `set --json`
   `{"schema":1,"key","value","file"}`.
 - Personal keys (`user.*`, `ui.*`) found in `paper.toml` are ignored, never read; `get` and
   `list` print a note on stderr saying so and to remove them, because `paper.toml` is saved

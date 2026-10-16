@@ -315,3 +315,22 @@ fn a_damaged_dot_git_at_the_target_is_a_user_error_that_says_where_to_look() {
     );
     assert!(!env.work.join("paper.toml").exists());
 }
+
+#[test]
+fn a_damaged_dot_git_inside_a_parent_repository_is_still_a_damaged_git_error() {
+    let env = Env::new();
+    env.git_work(&["init", "--quiet", "-b", "main"]);
+    let child = env.work.join("child");
+    std::fs::create_dir_all(child.join(".git")).unwrap();
+    let pointer = env.work.join("pointer");
+    std::fs::create_dir(&pointer).unwrap();
+    std::fs::write(pointer.join(".git"), "gitdir: ../no-such-gitdir\n").unwrap();
+
+    for folder in ["child", "pointer"] {
+        let run = env.paper(&["init", folder]);
+
+        run.assert_three_part_error(1);
+        assert!(run.stderr.contains("damaged .git"), "{run:#?}");
+        assert!(!run.stderr.contains("inside another"), "{run:#?}");
+    }
+}

@@ -312,7 +312,8 @@ impl Env {
 /// "your") is indistinguishable from a real four-letter short id, so it is replaced. The
 /// minimum is not raised because real short ids are four letters long. Change ids use 16
 /// letters (k-z), so the odds are about one in 65 536 (16^-4) per id per matching four-letter
-/// k-z word in the text.
+/// k-z word in the text. A longer k-z word that is a prefix of an id is just as ambiguous, at
+/// 16^-n for n letters (n = 5 is about one in a million), so it matters even less.
 pub fn redact_ids(text: &str, ids: &[(String, String)]) -> String {
     let is_token_char = |c: char| c.is_ascii_alphanumeric();
     let mut out = String::with_capacity(text.len());

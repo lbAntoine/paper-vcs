@@ -138,7 +138,7 @@ fn a_chosen_profile_beats_detection_and_is_reported_as_chosen() {
     let (_project, initialized) = init(dir.path(), Some("markdown")).unwrap();
 
     assert_eq!(initialized.profile, "markdown");
-    assert_ne!(initialized.profile_source, ProfileSource::Detected);
+    assert_eq!(initialized.profile_source, ProfileSource::Chosen);
     let gitignore = read(dir.path(), ".gitignore");
     assert!(gitignore.contains(&block_start("markdown")));
     assert!(!gitignore.contains(&block_start("latex")));
@@ -262,6 +262,7 @@ fn adoption_keeps_an_existing_profile_in_paper_toml_and_does_not_rewrite_the_fil
     let (_project, initialized) = init(dir.path(), None).unwrap();
 
     assert_eq!(initialized.profile, "typst");
+    assert_eq!(initialized.profile_source, ProfileSource::PaperToml);
     assert_eq!(initialized.written, [".gitignore"]);
     assert_eq!(read(dir.path(), "paper.toml"), toml);
     assert!(read(dir.path(), ".gitignore").contains(&block_start("typst")));

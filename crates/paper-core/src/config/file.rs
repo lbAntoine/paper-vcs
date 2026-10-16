@@ -64,11 +64,13 @@ impl ConfigFile {
                 message: err.message().to_owned(),
             }
         })?;
+        let crlf = first_line_is_crlf(&text);
+        let raw = consistent_raw(text, &doc, crlf);
         Ok(Self {
             doc,
             path: Some(path.to_owned()),
-            crlf: first_line_is_crlf(&text),
-            raw: text,
+            crlf,
+            raw,
         })
     }
 
@@ -194,7 +196,7 @@ impl ConfigFile {
         raw.push_str(&raw_lines[old_lines.len() - tail..].concat());
         Self {
             doc: doc.clone(),
-            raw,
+            raw: consistent_raw(raw, doc, self.crlf),
             ..self.clone()
         }
     }
@@ -219,9 +221,10 @@ impl ConfigFile {
         let doc = text
             .parse::<DocumentMut>()
             .map_err(|err| key.invalid(&value.to_string(), err.message().to_owned()))?;
+        let raw = consistent_raw(text, &doc, self.crlf);
         Ok(Self {
             doc,
-            raw: text,
+            raw,
             ..self.clone()
         })
     }
@@ -292,12 +295,42 @@ fn set_keeping_decor(table: &mut dyn toml_edit::TableLike, name: &str, mut new: 
     {
         *new_value.decor_mut() = old.decor().clone();
     }
-    table.insert(name, new);
+    // Replace the item in place: re-inserting the key would drop the comment above it.
+    match table.get_mut(name) {
+        Some(item) => *item = new,
+        None => {
+            table.insert(name, new);
+        }
+    }
 }
 
 fn first_line_is_crlf(text: &str) -> bool {
     text.find('\n')
         .is_some_and(|end| end > 0 && text.as_bytes()[end - 1] == b'\r')
+}
+
+/// `raw` if it is the document's text apart from CRLF endings; otherwise the document's text
+/// with the file's ending. `toml_edit` ends the last line with a newline even when the file
+/// did not, so a file without a final newline gets one here (the same ending as the file's
+/// first line) rather than letting the next appended key land on the same line.
+fn consistent_raw(raw: String, doc: &DocumentMut, crlf: bool) -> String {
+    let lf = doc.to_string();
+    if raw.replace("\r\n", "\n") == lf {
+        return raw;
+    }
+    let mut fixed = raw;
+    if !fixed.is_empty() && !fixed.ends_with('\n') {
+        fixed.push_str(if crlf { "\r\n" } else { "\n" });
+    }
+    if fixed.replace("\r\n", "\n") != lf {
+        // Safe fallback: rebuild from the document, losing only mixed line endings.
+        fixed = lf
+            .split_inclusive('\n')
+            .map(|l| with_ending(l, crlf))
+            .collect();
+    }
+    debug_assert_eq!(fixed.replace("\r\n", "\n"), lf);
+    fixed
 }
 
 /// `line` (which ends in `\n`, or has no ending) with a CRLF or LF ending.
