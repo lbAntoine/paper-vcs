@@ -126,3 +126,18 @@ completes the v0.1 command set (`status`, `diff --lines`, `restore`).
 ## Summary
 
 ## Handoff log
+
+### RED · test-author · 2026-10-16
+
+- Tests: `crates/paper-core/tests/diff.rs` (8), `status.rs` (4), `restore.rs` (10). 22 new, all fail on
+  `todo!("PV-010")` in the stubs; all 150+ pre-existing tests pass. fmt and clippy are clean.
+- Stubs (no logic): `project/diff.rs`, `project/status.rs`, `project/restore.rs` with the request,
+  result and error types from the ticket (`DiffError`, `StatusError`, `RestoreError` wrap
+  `ResolveError`/`SaveError`/`GitError`), re-exported from `project/mod.rs`.
+- Notes for the implementer: `Project::init` already makes a first save, so `save_all` in the tests
+  is a no-op when the draft has no edits. The `large`/`skipped` test uses
+  `SnapshotOptions { warn_file_bytes: 50, max_file_bytes: 1000 }`. The symlink test is
+  deliberately loose (user's plain file in place of a committed symlink must survive; `skipped`
+  is asserted only if restore succeeds). Tighten it if the implementation chooses a definite
+  outcome. The `UnknownPaths` order asserted is the order the user gave.
+- Questions: none.

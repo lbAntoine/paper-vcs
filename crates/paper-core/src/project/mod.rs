@@ -1,9 +1,12 @@
 //! A paper project: a git repository plus paper's own state in `.git/paper/`.
 
+mod diff;
 mod history;
 mod init;
 mod resolve;
+mod restore;
 mod save;
+mod status;
 
 use std::fs;
 use std::io;
@@ -17,10 +20,13 @@ use crate::name::LineName;
 use crate::snapshot::SnapshotOptions;
 use crate::view::{View, ViewError};
 
+pub use diff::{DiffError, DiffRequest, FileDiffEntry};
 pub use history::{HistoryEntry, HistoryError, HistoryRequest, ShowError, Shown};
 pub use init::{InitError, Initialized};
 pub use resolve::{Candidate, PointKind, ResolveError, Resolved};
+pub use restore::{RestoreError, RestoreRequest, Restored};
 pub use save::{DraftState, PathSelection, SaveError, SaveOutcome, SaveRequest, Saved};
+pub use status::{ChangeStat, Status, StatusEntry, StatusError, StatusOptions};
 
 /// Version of the on-disk format in `.git/paper/`. Migrations are keyed on it.
 pub const FORMAT_VERSION: u32 = 1;
