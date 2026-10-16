@@ -477,6 +477,13 @@ fn rename_on_disk(dir: &Path, from: &str, to: &str) {
     write(dir, to, &content);
 }
 
+/// The stored draft already records the working files: a fresh snapshot changes nothing.
+fn assert_draft_records_working_files(project: &mut Project) {
+    let stored = project.status(&StatusOptions { snapshot: false }).unwrap();
+    let fresh = project.status(&StatusOptions { snapshot: true }).unwrap();
+    assert_eq!(stored.changes, fresh.changes, "draft matches");
+}
+
 /// Restores `only`, then checks what every case-only scenario must keep true.
 fn restore_and_check_untouched_history(dir: &Path, project: &mut Project, only: &[&str]) {
     let head = git(dir, &["rev-parse", "HEAD"]);
@@ -486,7 +493,7 @@ fn restore_and_check_untouched_history(dir: &Path, project: &mut Project, only: 
 
     assert_eq!(git(dir, &["rev-parse", "HEAD"]), head);
     assert_eq!(git(dir, &["ls-files", "--stage"]), index);
-    assert_eq!(project.snapshot().unwrap().changes, vec![], "draft matches");
+    assert_draft_records_working_files(project);
     fsck(dir);
 }
 
@@ -500,7 +507,7 @@ fn restore_gives_the_saved_spelling_when_only_the_case_of_a_file_changed() {
 
     restore_and_check_untouched_history(dir.path(), &mut project, &["Notes.tex", "notes.tex"]);
 
-    assert_eq!(names(dir.path(), ""), vec!["Notes.tex"]);
+    assert_eq!(names(dir.path(), ""), vec!["Notes.tex", "paper.toml"]);
     assert_eq!(read(dir.path(), "Notes.tex"), "saved\n");
 }
 
@@ -514,7 +521,7 @@ fn restore_gives_the_saved_spelling_for_the_reverse_case_only_rename() {
 
     restore_and_check_untouched_history(dir.path(), &mut project, &["Notes.tex", "notes.tex"]);
 
-    assert_eq!(names(dir.path(), ""), vec!["notes.tex"]);
+    assert_eq!(names(dir.path(), ""), vec!["notes.tex", "paper.toml"]);
     assert_eq!(read(dir.path(), "notes.tex"), "saved\n");
 }
 
@@ -528,7 +535,7 @@ fn restore_gives_the_saved_spelling_when_only_the_case_of_a_folder_changed() {
 
     restore_and_check_untouched_history(dir.path(), &mut project, &["Sections", "sections"]);
 
-    assert_eq!(names(dir.path(), ""), vec!["Sections"]);
+    assert_eq!(names(dir.path(), ""), vec!["Sections", "paper.toml"]);
     assert_eq!(names(dir.path(), "Sections"), vec!["a.tex"]);
     assert_eq!(read(dir.path(), "Sections/a.tex"), "saved\n");
 }
@@ -570,10 +577,10 @@ fn a_blocked_file_folder_swap_leaves_both_sides_alone_but_still_does_an_unrelate
     assert_eq!(changes, vec![("extra.tex".to_owned(), ChangeKind::Deleted)]);
     assert_eq!(
         names(dir.path(), ""),
-        vec![".gitignore", "chap", "keep.tex"]
+        vec!["chap", "keep.tex", "paper.toml"]
     );
     assert_eq!(git(dir.path(), &["rev-parse", "HEAD"]), head);
     assert_eq!(git(dir.path(), &["ls-files", "--stage"]), index);
-    assert_eq!(project.snapshot().unwrap().changes, vec![], "draft matches");
+    assert_draft_records_working_files(&mut project);
     fsck(dir.path());
 }

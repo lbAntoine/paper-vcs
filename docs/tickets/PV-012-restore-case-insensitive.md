@@ -97,3 +97,9 @@ case) as on Linux, and never leaves a file/folder swap half done.
   1. `names(dir, "")` lists the project root, which always holds `paper.toml` (written by `init`), and it hides dot-entries, so the root-listing assertions in the three case tests (`["Notes.tex"]`, `["notes.tex"]`, `["Sections"]`) can never hold, and the flip test's `[".gitignore", "chap", "keep.tex"]` can't either. Fix: let `names` also drop `paper.toml`, and expect `["chap", "keep.tex"]`.
   2. `Project::snapshot().changes` is the diff against the last save (the tip), not against the previous draft. In the flip test the draft legitimately differs from the tip (the file/folder swap was kept, `extra.tex` deleted), so `assert_eq!(snapshot().changes, vec![], "draft matches")` can't hold there. Fix: compare against the expected remaining changes (`chap` Deleted, `chap/one.tex` Added) or drop that assertion for this test.
 - What `paper restore Notes.tex` does today (only the saved spelling named; draft holds `notes.tex`), on a case-insensitive filesystem: `notes.tex` is not a target, so it is not doomed. The write of `Notes.tex` finds `notes.tex` on disk (same file, other spelling), which is an untracked-looking obstacle, so the write is blocked: nothing changes and `Notes.tex` is listed as skipped `Blocked`. On a case-sensitive filesystem it simply writes `Notes.tex` next to `notes.tex`. No behaviour added beyond the ticket.
+
+### RED (fix) · test-author · 2026-10-16
+
+- Root listings now expect `paper.toml` explicitly (the dotfile filter stays; `.gitignore` is hidden by it).
+- "Draft matches" now compares `status` with `snapshot: false` to `snapshot: true` (new helper `assert_draft_records_working_files`), modelled on `after_restore_the_draft_matches_the_working_files`.
+- All 20 restore tests pass against d0cd6c5 on macOS.
