@@ -2,7 +2,7 @@
 
 use std::io::{BufRead, Write};
 
-use paper_core::PaperError;
+use paper_core::{ErrorKind, PaperError, Suggestion};
 
 /// Asks `Describe this save: ` on `output` and reads one line from `input`.
 ///
@@ -17,13 +17,41 @@ use paper_core::PaperError;
 /// # Panics
 ///
 /// Never.
-#[allow(dead_code)] // wired into `save` in GREEN
 pub fn ask_for_message(
-    _is_tty: bool,
-    _input: &mut dyn BufRead,
-    _output: &mut dyn Write,
+    is_tty: bool,
+    input: &mut dyn BufRead,
+    output: &mut dyn Write,
 ) -> Result<String, PaperError> {
-    todo!("PV-011: save-message prompt")
+    if !is_tty {
+        return Ok(String::new());
+    }
+    // A prompt that can't be shown still lets the answer be read.
+    let _ = write!(output, "Describe this save: ");
+    let _ = output.flush();
+    let mut line = String::new();
+    input.read_line(&mut line).map_err(|err| PaperError {
+        kind: ErrorKind::User,
+        message: "Paper could not read your answer".to_owned(),
+        why: format!("Reading from the terminal failed: {err}."),
+        next: vec![suggestion()],
+    })?;
+    let message = line.trim();
+    if message.is_empty() {
+        return Err(PaperError {
+            kind: ErrorKind::User,
+            message: "A save needs a message".to_owned(),
+            why: "The message says what changed, so you can find this save later.".to_owned(),
+            next: vec![suggestion()],
+        });
+    }
+    Ok(message.to_owned())
+}
+
+fn suggestion() -> Suggestion {
+    Suggestion {
+        command: "paper save \"Describe what changed\"".to_owned(),
+        explanation: "save with a message".to_owned(),
+    }
 }
 
 #[cfg(test)]

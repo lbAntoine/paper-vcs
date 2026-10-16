@@ -87,10 +87,12 @@ pub enum Command {
     Status,
     /// Compare two points, or the last save and the draft.
     Diff {
-        /// Up to two points, then files or folders (relative to where you run paper). `--`
-        /// makes everything after it a path.
-        #[arg(num_args = 0.., allow_hyphen_values = false)]
+        /// Up to two points, then files or folders (relative to where you run paper). The first
+        /// word that is not a point starts the paths.
         args: Vec<String>,
+        /// Files or folders after `--`: always paths, even when named like a point.
+        #[arg(last = true)]
+        paths: Vec<String>,
         /// Compare line by line (the default).
         #[arg(long, conflicts_with = "words")]
         lines: bool,

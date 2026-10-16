@@ -70,8 +70,8 @@ impl PaperError {
             message: message.into(),
             why: cause_chain(cause),
             next: vec![Suggestion::new(
-                "report it at https://github.com/lbAntoine/paper-vcs/issues",
-                "include what you ran and the message above",
+                "https://github.com/lbAntoine/paper-vcs/issues",
+                "report it, including what you ran and the message above",
             )],
         }
     }
@@ -356,20 +356,64 @@ impl From<ShowError> for PaperError {
 }
 
 impl From<DiffError> for PaperError {
-    fn from(_error: DiffError) -> Self {
-        todo!("PV-011: DiffError conversion")
+    fn from(error: DiffError) -> Self {
+        match error {
+            DiffError::UnknownPaths { paths } => Self::user(
+                format!("No file matches: {}", paths.join(", ")),
+                "These paths are not in the draft or in either save being compared. \
+                 A typo in a path is the usual cause.",
+                vec![
+                    Suggestion::new("paper status", "list the files in the draft"),
+                    Suggestion::new("paper show <point>", "list the files of a save"),
+                ],
+            ),
+            DiffError::Resolve(inner) => inner.into(),
+            DiffError::Git(_) => Self::project("Paper could not compare those saves", &error),
+        }
     }
 }
 
 impl From<StatusError> for PaperError {
-    fn from(_error: StatusError) -> Self {
-        todo!("PV-011: StatusError conversion")
+    fn from(error: StatusError) -> Self {
+        match error {
+            StatusError::Save(inner) => inner.into(),
+            StatusError::Resolve(inner) => inner.into(),
+            StatusError::Git(_) => Self::project("Paper could not read the draft", &error),
+        }
     }
 }
 
 impl From<RestoreError> for PaperError {
-    fn from(_error: RestoreError) -> Self {
-        todo!("PV-011: RestoreError conversion")
+    fn from(error: RestoreError) -> Self {
+        match error {
+            RestoreError::NoPaths => Self::user(
+                "Say which files to restore",
+                "Restoring puts files back the way they were, so paper needs to know which ones.",
+                vec![Suggestion::new(
+                    "paper restore main.tex",
+                    "restore one file (a folder works too)",
+                )],
+            ),
+            RestoreError::UnknownPaths { paths } => Self::user(
+                format!("No file matches: {}", paths.join(", ")),
+                "These paths are not in your draft or in that save, so no files were changed. \
+                 A typo in a path is the usual cause.",
+                vec![
+                    Suggestion::new("paper status", "list the files in the draft"),
+                    Suggestion::new("paper show <point>", "list the files of a save"),
+                ],
+            ),
+            RestoreError::Save(inner) => inner.into(),
+            RestoreError::Resolve(inner) => inner.into(),
+            RestoreError::Git(_) => Self::project("Paper could not restore those files", &error),
+            RestoreError::Io { .. } => {
+                let mut converted = Self::project("Paper could not restore those files", &error);
+                converted
+                    .next
+                    .insert(0, Suggestion::new("paper status", "see where things stand"));
+                converted
+            }
+        }
     }
 }
 

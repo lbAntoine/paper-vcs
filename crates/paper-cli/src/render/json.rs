@@ -1,14 +1,14 @@
 //! `--json` output: CLI-owned DTOs, so `paper-core` carries no serde derives. Every object has
 //! `"schema": 1`; the shapes are part of the CLI's contract.
 
-use paper_core::project::{HistoryEntry, Initialized, SaveOutcome, Saved, Shown};
+use paper_core::project::{FileDiffEntry, HistoryEntry, Initialized, SaveOutcome, Saved, Shown};
 use paper_core::snapshot::{Change, ChangeKind, SkipReason, Skipped};
 use serde::Serialize;
 
-const SCHEMA: u32 = 1;
+pub(super) const SCHEMA: u32 = 1;
 
 #[derive(Serialize)]
-struct FileChange {
+pub(super) struct FileChange {
     path: String,
     kind: &'static str,
 }
@@ -20,7 +20,7 @@ struct Author {
 }
 
 #[derive(Serialize)]
-struct SaveInfo {
+pub(super) struct SaveInfo {
     id: String,
     change_id: Option<String>,
     commit: String,
@@ -32,14 +32,14 @@ struct SaveInfo {
 }
 
 #[derive(Serialize)]
-struct SkippedFile {
+pub(super) struct SkippedFile {
     path: String,
     reason: &'static str,
     bytes: Option<u64>,
 }
 
 #[derive(Serialize)]
-struct LargeFile {
+pub(super) struct LargeFile {
     path: String,
     bytes: u64,
 }
@@ -78,9 +78,10 @@ struct ShowOut {
     schema: u32,
     save: SaveInfo,
     changes: Vec<FileChange>,
+    files: Vec<super::json_diff::DiffFile>,
 }
 
-fn changes(changes: &[Change]) -> Vec<FileChange> {
+pub(super) fn changes(changes: &[Change]) -> Vec<FileChange> {
     changes
         .iter()
         .map(|change| FileChange {
@@ -98,7 +99,7 @@ pub fn kind_name(kind: ChangeKind) -> &'static str {
     }
 }
 
-fn skipped(skipped: &Skipped) -> SkippedFile {
+pub(super) fn skipped(skipped: &Skipped) -> SkippedFile {
     let (reason, bytes) = match skipped.reason {
         SkipReason::TooLarge { bytes } => ("too_large", Some(bytes)),
         SkipReason::Symlink => ("symlink", None),
@@ -112,7 +113,7 @@ fn skipped(skipped: &Skipped) -> SkippedFile {
     }
 }
 
-fn save_info(entry: &HistoryEntry) -> SaveInfo {
+pub(super) fn save_info(entry: &HistoryEntry) -> SaveInfo {
     SaveInfo {
         id: entry.short_change_id.clone(),
         change_id: entry.change_id.map(|id| id.to_string()),
@@ -139,7 +140,17 @@ fn rfc3339(seconds: i64, offset_seconds: i32) -> String {
     )
 }
 
-fn line<T: Serialize>(value: &T) -> String {
+pub(super) fn large(large: &[(String, u64)]) -> Vec<LargeFile> {
+    large
+        .iter()
+        .map(|(path, bytes)| LargeFile {
+            path: path.clone(),
+            bytes: *bytes,
+        })
+        .collect()
+}
+
+pub(super) fn line<T: Serialize>(value: &T) -> String {
     // The DTOs hold only strings, numbers and bools, which always serialise.
     format!("{}\n", serde_json::to_string(value).unwrap_or_default())
 }
@@ -150,14 +161,7 @@ pub fn init(initialized: &Initialized) -> String {
         adopted: initialized.adopted,
         tracked_files: initialized.tracked_files,
         skipped: initialized.skipped.iter().map(skipped).collect(),
-        large: initialized
-            .large
-            .iter()
-            .map(|(path, bytes)| LargeFile {
-                path: path.clone(),
-                bytes: *bytes,
-            })
-            .collect(),
+        large: large(&initialized.large),
         skipped_branches: initialized.skipped_branches.clone(),
     })
 }
@@ -203,10 +207,11 @@ pub fn history(entries: &[HistoryEntry]) -> String {
     })
 }
 
-pub fn show(shown: &Shown) -> String {
+pub fn show(shown: &Shown, diffs: &[FileDiffEntry]) -> String {
     line(&ShowOut {
         schema: SCHEMA,
         save: save_info(&shown.entry),
         changes: changes(&shown.changes),
+        files: super::json_diff::files(diffs),
     })
 }

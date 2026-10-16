@@ -34,9 +34,9 @@ pub struct Restored {
 
 #[derive(Debug, thiserror::Error)]
 pub enum RestoreError {
-    #[error("say which files to restore, for example `paper restore main.tex`")]
+    #[error("no files were named, so there is nothing to restore")]
     NoPaths,
-    #[error("these paths are not in your draft or in that save: {}; no files were changed. Run `paper status` or `paper show <point>` to see the files", paths.join(", "))]
+    #[error("these paths are not in your draft or in that save: {}; no files were changed", paths.join(", "))]
     UnknownPaths { paths: Vec<String> },
     #[error(transparent)]
     Save(#[from] SaveError),
@@ -44,9 +44,7 @@ pub enum RestoreError {
     Resolve(#[from] ResolveError),
     #[error(transparent)]
     Git(#[from] GitError),
-    #[error(
-        "could not {action} {path}; your previous draft is recorded, run `paper status` to see where things stand"
-    )]
+    #[error("could not {action} {path}; your previous draft is recorded")]
     Io {
         /// "restore" or "remove".
         action: &'static str,

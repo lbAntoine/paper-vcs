@@ -11,6 +11,7 @@ authors.workspace = true
 [dependencies]
 dunce.workspace = true
 paper-core.workspace = true
+paper-diff.workspace = true
 paper-git.workspace = true
 clap.workspace = true
 serde.workspace = true

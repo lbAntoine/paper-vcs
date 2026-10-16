@@ -1,0 +1,10 @@
+---
+source: crates/paper-cli/tests/status.rs
+expression: env.redact(&run.stdout)
+---
+On main · last save [ID] "Rewrite intro" ([TIME])
+
+Draft (unsaved):
+  new       figures/plot.bin    (2 KB)
+  deleted   related.tex         +0 −1 lines
+  modified  sections/intro.tex  +2 −1 lines

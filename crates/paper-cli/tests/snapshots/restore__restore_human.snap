@@ -1,0 +1,6 @@
+---
+source: crates/paper-cli/tests/restore.rs
+expression: env.redact(&run.stdout)
+---
+Restored 1 file:
+  modified  sections/intro.tex

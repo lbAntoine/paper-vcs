@@ -42,7 +42,10 @@ pub fn run() -> ExitCode {
 /// clap's default 2, which the CLI reserves for "needs attention". Under `--json` the error is
 /// the usual JSON object on stdout.
 fn clap_exit(err: &clap::Error) -> ExitCode {
-    let wants_json = std::env::args_os().any(|arg| arg == "--json");
+    // Anything after `--` is a value, not a flag.
+    let wants_json = std::env::args_os()
+        .take_while(|arg| arg != "--")
+        .any(|arg| arg == "--json");
     match err.kind() {
         ClapKind::DisplayHelp | ClapKind::DisplayVersion => {
             let _ = err.print();

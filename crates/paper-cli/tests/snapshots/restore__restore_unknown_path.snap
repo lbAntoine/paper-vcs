@@ -1,0 +1,8 @@
+---
+source: crates/paper-cli/tests/restore.rs
+expression: env.redact(&run.stderr)
+---
+error: No file matches: nope.tex
+  why:  These paths are not in your draft or in that save, so no files were changed. A typo in a path is the usual cause.
+  next: paper status        # list the files in the draft
+        paper show <point>  # list the files of a save

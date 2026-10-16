@@ -28,8 +28,12 @@ impl Paths {
     ///
     /// # Errors
     ///
-    /// A user error if the path leads outside the project.
+    /// A user error if the path leads outside the project, or (on Windows) is root-relative
+    /// (`\a`) or drive-relative (`C:a`).
     pub fn project_path(&self, given: &str) -> Result<String, PaperError> {
+        if cfg!(windows) && is_root_or_drive_relative(given) {
+            return Err(rooted_path_error(given));
+        }
         let normalised = if cfg!(windows) {
             given.replace('\\', "/")
         } else {
@@ -72,16 +76,31 @@ impl Paths {
 /// True for the Windows forms that name neither a place under this folder nor a full path:
 /// root-relative (`\a`, no drive) and drive-relative (`C:a`, no separator after the colon).
 /// `C:\a`, `C:/a`, `\\server\share` and plain relative paths are false.
-#[allow(dead_code)] // wired into `project_path` in GREEN
-pub fn is_root_or_drive_relative(_given: &str) -> bool {
-    todo!("PV-011: root-relative and drive-relative paths")
+pub fn is_root_or_drive_relative(given: &str) -> bool {
+    let bytes = given.as_bytes();
+    let separator = |b: u8| b == b'\\' || b == b'/';
+    // `\a` (but not the `\\server\share` form).
+    if bytes.first().copied().is_some_and(separator) {
+        return !bytes.get(1).copied().is_some_and(separator);
+    }
+    // `C:a` (but not `C:`, `C:\a` or `C:/a`).
+    bytes.len() > 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && !separator(bytes[2])
 }
 
 /// The user error for a root-relative or drive-relative path: tells the researcher to use a
 /// path relative to this folder or a full path.
-#[allow(dead_code)] // wired into `project_path` in GREEN
-pub fn rooted_path_error(_given: &str) -> PaperError {
-    todo!("PV-011: root-relative and drive-relative paths")
+pub fn rooted_path_error(given: &str) -> PaperError {
+    PaperError {
+        kind: ErrorKind::User,
+        message: format!("{given} does not say where the file is"),
+        why: "It starts from the root of a drive, or names a drive without a folder, so paper \
+              can't tell which folder it is in."
+            .to_owned(),
+        next: vec![Suggestion {
+            command: "paper <command> <path>".to_owned(),
+            explanation: "use a path relative to this folder or a full path".to_owned(),
+        }],
+    }
 }
 
 /// The components of `path` below `root`, comparing as written first and then with symlinks

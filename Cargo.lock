@@ -1313,6 +1313,7 @@ dependencies = [
  "insta",
  "jiff",
  "paper-core",
+ "paper-diff",
  "paper-git",
  "serde",
  "serde_json",

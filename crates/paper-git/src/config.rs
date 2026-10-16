@@ -13,7 +13,8 @@ use crate::{GitError, Identity};
 ///
 /// # Errors
 ///
-/// [`GitError`] if a config file exists but can't be read or parsed.
+/// [`GitError`] if a config file exists but can't be read or parsed, or if `path` itself holds
+/// a damaged repository. A stray or broken `.git` above `path` is ignored.
 ///
 /// # Panics
 ///
@@ -21,9 +22,7 @@ use crate::{GitError, Identity};
 pub fn configured_identity(path: &Path) -> Result<Option<Identity>, GitError> {
     // Start at the nearest folder that exists: `paper init new-folder` asks before it is made.
     let start = path.ancestors().find(|p| p.exists()).unwrap_or(path);
-    let in_repository = start.ancestors().any(|p| p.join(".git").exists());
-    let (name, email) = if in_repository {
-        let repo = gix::discover(start).context("open the repository")?;
+    let (name, email) = if let Some(repo) = open_repository(start)? {
         let config = repo.config_snapshot();
         (
             value(config.string("user.name")),
@@ -46,4 +45,17 @@ pub fn configured_identity(path: &Path) -> Result<Option<Identity>, GitError> {
 
 fn value<T: ToString>(raw: Option<T>) -> Option<String> {
     raw.map(|v| v.to_string())
+}
+
+/// The repository around `start`, or `None` when there is none to use.
+///
+/// A `.git` entry directly at `start` that can't be opened is an error: the folder claims to be
+/// a repository and is damaged. One further up that can't be opened (a stray file or an empty
+/// folder) is not the target's business, so the caller falls back to the global configuration.
+fn open_repository(start: &Path) -> Result<Option<gix::Repository>, GitError> {
+    match gix::discover(start) {
+        Ok(repo) => Ok(Some(repo)),
+        Err(err) if start.join(".git").exists() => Err(err).context("open the repository"),
+        Err(_) => Ok(None),
+    }
 }

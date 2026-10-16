@@ -1,0 +1,18 @@
+---
+source: crates/paper-cli/tests/json_errors.rs
+expression: env.redact_json(&run.stdout)
+---
+{
+  "error": {
+    "kind": "project",
+    "message": "This project was made by a different version of paper",
+    "next": [
+      {
+        "command": "https://github.com/lbAntoine/paper-vcs/issues",
+        "explanation": "report it, including what you ran and the message above"
+      }
+    ],
+    "why": "this project uses paper format '99', but this version of paper reads format 1"
+  },
+  "schema": 1
+}

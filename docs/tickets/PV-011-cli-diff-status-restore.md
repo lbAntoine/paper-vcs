@@ -181,3 +181,28 @@ helpers and `ask_for_message` carry `#[allow(dead_code)]` until GREEN wires them
 `configured_identity` tests (stray `.git` above an existing target folder) must coexist with the old
 "damaged repository at the path itself is an error" test; if gix cannot tell them apart, say so.
 (3) `Env::git` fails on non-zero exit, so `git apply --check -R` failures show up as panics.
+
+### GREEN · rust-engineer · 2026-10-16
+
+**Implemented.** `paper status`, `diff`, `restore` and diffs in `show` (`src/inspect.rs`; renderers in
+`render/{diff,status,json_diff}.rs`), `DiffError`/`StatusError`/`RestoreError` conversions, core `Display`
+rewording (no commands, no `paper lines`; substrings asserted by resolve.rs/save.rs kept), save prompt
+via `prompt::ask_for_message`, Windows root/drive-relative path error, `--json` scan stops at `--`,
+`configured_identity` ignores a broken `.git` above the target (decided by whether `start/.git` exists,
+since gix's error doesn't separate the cases), `project_failure` puts the issue URL in `command`.
+Snapshots accepted after reading each: status/diff/restore/show human and JSON.
+
+**Deviations.**
+- Added `Project::show_diff(&Point)` in paper-core (`project/diff.rs`): `show` needs the diff of a save against
+  its first parent, and the first save against the empty tree, which `DiffRequest` can't express. `diff()` and
+  it share a private `entries`.
+- `matches()` in `project/save.rs` treats the empty path (`.` at the project root) as every file, so
+  `paper restore .` works; `save` already mapped it to "all".
+- `paper-cli` now depends on `paper-diff` directly (Cargo.toml, Cargo.lock).
+- `--` in `diff` uses clap's `#[arg(last = true)] paths`; leading args are points while they resolve
+  (`UnknownPoint`/unparseable means path; other resolve errors and foreign syntax like `HEAD~1` are errors).
+- Status shows line counts for deleted text files too (`+0 −1 lines`).
+
+**Specs.** `02-cli.md` (paths, JSON shapes, `command` may be a URL, show/diff/restore/status), `03-architecture.md` § Errors.
+
+**Follow-ups.** Restore skipped files are paths only; a reason per file needs a core change.

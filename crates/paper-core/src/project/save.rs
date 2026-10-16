@@ -291,10 +291,12 @@ fn select(
         .partition(|change| paths.iter().any(|path| matches(path, &change.path)) == keep_matches))
 }
 
-/// A selected path names the file itself or a directory containing it.
+/// A selected path names the file itself or a directory containing it. The empty path is the
+/// project folder, which contains every file.
 pub(super) fn matches(selected: &str, file: &str) -> bool {
     let selected = selected.trim_end_matches('/');
-    file == selected
+    selected.is_empty()
+        || file == selected
         || file
             .strip_prefix(selected)
             .is_some_and(|rest| rest.starts_with('/'))

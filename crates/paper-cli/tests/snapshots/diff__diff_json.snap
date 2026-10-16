@@ -1,0 +1,53 @@
+---
+source: crates/paper-cli/tests/diff.rs
+expression: env.redact_json(&run.stdout)
+---
+{
+  "files": [
+    {
+      "added": null,
+      "binary": true,
+      "hunks": [],
+      "kind": "added",
+      "new_bytes": 2048,
+      "old_bytes": null,
+      "path": "figures/plot.bin",
+      "removed": null
+    },
+    {
+      "added": 2,
+      "binary": false,
+      "hunks": [
+        {
+          "lines": [
+            {
+              "kind": "removed",
+              "missing_newline": false,
+              "text": "Intro v2"
+            },
+            {
+              "kind": "added",
+              "missing_newline": false,
+              "text": "Intro v3"
+            },
+            {
+              "kind": "added",
+              "missing_newline": true,
+              "text": "More text"
+            }
+          ],
+          "new_len": 2,
+          "new_start": 1,
+          "old_len": 1,
+          "old_start": 1
+        }
+      ],
+      "kind": "modified",
+      "new_bytes": null,
+      "old_bytes": null,
+      "path": "sections/intro.tex",
+      "removed": 1
+    }
+  ],
+  "schema": 1
+}

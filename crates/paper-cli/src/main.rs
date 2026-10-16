@@ -3,6 +3,7 @@
 mod cli;
 mod commands;
 mod error;
+mod inspect;
 mod panic;
 mod paths;
 mod prompt;

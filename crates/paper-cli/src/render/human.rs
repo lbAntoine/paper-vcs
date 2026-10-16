@@ -3,17 +3,19 @@
 
 use std::fmt::Write as _;
 
+use paper_core::project::FileDiffEntry;
 use paper_core::project::{HistoryEntry, Initialized, Saved, Shown};
-use paper_core::snapshot::{Change, ChangeKind, SkipReason};
+use paper_core::snapshot::{Change, ChangeKind, SkipReason, Skipped};
 
 use super::Verbosity;
+use super::diff;
 use super::style::Style;
 use super::time::relative_time;
 
 /// Width of the time column in `history`: wide enough for `59 minutes ago`.
 const TIME_WIDTH: usize = 14;
 
-fn kind_label(kind: ChangeKind) -> &'static str {
+pub(super) fn kind_label(kind: ChangeKind) -> &'static str {
     match kind {
         ChangeKind::Added => "added",
         ChangeKind::Modified => "modified",
@@ -21,7 +23,7 @@ fn kind_label(kind: ChangeKind) -> &'static str {
     }
 }
 
-fn change_lines(changes: &[Change]) -> String {
+pub(super) fn change_lines(changes: &[Change]) -> String {
     let mut out = String::new();
     for change in changes {
         let _ = writeln!(out, "  {:<8}  {}", kind_label(change.kind), change.path);
@@ -49,12 +51,36 @@ pub fn size(bytes: u64) -> String {
     }
 }
 
-fn files(count: usize) -> String {
+pub(super) fn files(count: usize) -> String {
     if count == 1 {
         "1 file".to_owned()
     } else {
         format!("{count} files")
     }
+}
+
+/// One line per skipped file, with the reason in parentheses.
+pub(super) fn skipped_lines(skipped: &[Skipped]) -> String {
+    let mut out = String::new();
+    for item in skipped {
+        let why = match item.reason {
+            SkipReason::TooLarge { bytes } => format!("too large to track, {}", size(bytes)),
+            SkipReason::Symlink => "a symbolic link".to_owned(),
+            SkipReason::NestedRepository => "a separate git repository".to_owned(),
+            SkipReason::NonUtf8Path => "its name can't be read as text".to_owned(),
+        };
+        let _ = writeln!(out, "  {}  ({why})", item.path);
+    }
+    out
+}
+
+/// One line per large file, with its size.
+pub(super) fn large_lines(large: &[(String, u64)]) -> String {
+    let mut out = String::new();
+    for (path, bytes) in large {
+        let _ = writeln!(out, "  {path}  ({})", size(*bytes));
+    }
+    out
 }
 
 pub fn init(initialized: &Initialized) -> String {
@@ -66,21 +92,11 @@ pub fn init(initialized: &Initialized) -> String {
     let _ = writeln!(out, "Tracking {}.", files(initialized.tracked_files));
     if !initialized.skipped.is_empty() {
         out.push_str("\nLeft out:\n");
-        for skipped in &initialized.skipped {
-            let why = match skipped.reason {
-                SkipReason::TooLarge { bytes } => format!("too large to track, {}", size(bytes)),
-                SkipReason::Symlink => "a symbolic link".to_owned(),
-                SkipReason::NestedRepository => "a separate git repository".to_owned(),
-                SkipReason::NonUtf8Path => "its name can't be read as text".to_owned(),
-            };
-            let _ = writeln!(out, "  {}  ({why})", skipped.path);
-        }
+        out.push_str(&skipped_lines(&initialized.skipped));
     }
     if !initialized.large.is_empty() {
         out.push_str("\nLarge files (tracked, but they make saves slow):\n");
-        for (path, bytes) in &initialized.large {
-            let _ = writeln!(out, "  {path}  ({})", size(*bytes));
-        }
+        out.push_str(&large_lines(&initialized.large));
     }
     if !initialized.skipped_branches.is_empty() {
         let _ = writeln!(
@@ -166,7 +182,15 @@ pub fn history(
     out
 }
 
-pub fn show(shown: &Shown, now: i64, verbosity: Verbosity, style: Style) -> String {
+/// A save: metadata, the changed files, then their diffs (or their line counts for `--stat`).
+pub fn show(
+    shown: &Shown,
+    diffs: &[FileDiffEntry],
+    stat: bool,
+    now: i64,
+    verbosity: Verbosity,
+    style: Style,
+) -> String {
     let entry = &shown.entry;
     let is_draft = entry.message.is_empty();
     let title = if is_draft {
@@ -191,9 +215,15 @@ pub fn show(shown: &Shown, now: i64, verbosity: Verbosity, style: Style) -> Stri
     out.push('\n');
     if shown.changes.is_empty() {
         out.push_str("No changed files.\n");
+    } else if stat {
+        out.push_str(&diff::stat(diffs));
     } else {
         let _ = writeln!(out, "Changed {}:", files(shown.changes.len()));
         out.push_str(&change_lines(&shown.changes));
+        if !diffs.is_empty() {
+            out.push('\n');
+            out.push_str(&diff::unified(diffs, style));
+        }
     }
     out
 }
