@@ -125,9 +125,7 @@ review round 2 approved, a one-line fix to the new raw/document check (it panick
 on CRLF multi-line strings) went in without a third round; the coordinator checked the diff and
 that its two tests fail before it.
 
-Follow-up: PV-015, a set value containing `
-` comes back as `
-` in a CRLF file
+Follow-up: PV-015, a set value containing `\r\n` comes back as `\r\r\n` in a CRLF file
 (pre-existing).
 
 ## Handoff log
