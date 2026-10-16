@@ -13,7 +13,8 @@ commands that change the worktree or the repository. Bash is only for `git log`,
 
 - `TICKET`: path to `docs/tickets/PV-NNN-*.md`, relative to the worktree
 - `WORKTREE`: absolute path to the ticket branch
-- `CARGO_TARGET_DIR`: shared build directory. Export it before running cargo.
+- `CARGO_TARGET_DIR`: this worktree's own build directory (`<WORKTREE>/target`). Export it
+  before running cargo. Never use another checkout's `target/`.
 
 ## What to read
 
