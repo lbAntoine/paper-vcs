@@ -117,3 +117,22 @@ case) as on Linux, and never leaves a file/folder swap half done.
 - The three case-only tests now also assert the draft tree's exact file list (`git ls-tree -r --name-only refs/paper/draft/main`: `.gitignore`, the save's spelling, `paper.toml`) and that `status` lists no change at all.
 - On main (d67ad0d, probe worktree, since removed): all 4 new tests FAIL. The case tests fail on the draft listing (both spellings recorded, e.g. `Notes.tex` and `notes.tex`); the flip test fails because `chap/one.tex` is deleted.
 - On this branch (HEAD): all 20 restore tests pass; clippy is clean.
+
+### Review · reviewer · 2026-10-16
+- Verdict: CHANGES. Tests, clippy and fmt pass on macOS. Linux behaviour, deleted files, tracked symlinks and flip semantics verified; the final RED tests and their earlier fixes are sound. `save.rs` untouched.
+- BLOCKER: `has_exact_name` (snapshot/mod.rs) lists every folder from the root for each tracked path the walk didn't produce, uncached. Measured in release: `paper status` with 3 000 tracked-but-ignored files takes 1.5 s (0.02 s on main), against the 100 ms target.
+- MAJOR: a case-renamed folder that still holds an ignored file (`Sections/a.tex` saved; draft `sections/a.tex` plus ignored `sections/cache.log`) reports success but writes into `sections/`, and the draft and status don't converge; the spec's "on every filesystem" claim is false there.
+- MAJOR: `paper restore Notes.tex` with the draft holding `notes.tex` is skipped on macOS with a false reason ("a file paper doesn't track is in the way"), and writes both spellings on Linux.
+- MINOR: `has_exact_name` turns an unreadable (x without r) parent folder into a snapshot error.
+- MINOR: a deletion dropped by an all-or-nothing flip is reported as "a file paper doesn't track is in the way", though the file is tracked.
+- MINOR: `to_lowercase` is full lowercasing, not the simple folding the decision names (`ß`, Turkish `İ`).
+- MINOR: test gaps: snapshot-only case rename, tracked ignored file or symlink whose case changed, the folder case above, the single-spelling restore.
+- NIT: `settle` loops to a fixpoint; add a comment saying why.
+- Coordinator decisions: fix everything in this round.
+  - List each folder at most once per snapshot (a cache local to the snapshot).
+  - A `read_dir` failure falls back to the old behaviour.
+  - The case-renamed folder with an obstacle is blocked: both sides stay, reported.
+  - Single-spelling restore gets its own skip reason that names the other spelling and the command (`paper restore Notes.tex notes.tex`), on every platform; on Linux, where both can exist, the write still happens, and that is documented.
+  - The flip's dropped deletions get their own reason naming the blocked target.
+  - Document the case-folding limitation rather than implementing full Unicode simple folding.
+  - Adding tests is authorised; don't weaken any.
