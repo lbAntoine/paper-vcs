@@ -279,17 +279,54 @@ fn select(
         PathSelection::Only(paths) => (paths, true),
         PathSelection::AllBut(paths) => (paths, false),
     };
+    // Complexity: O((P + C) log C) for P selected paths and C changes (times the path depth,
+    // which is small). Each selected path is looked up in the sorted change paths by binary
+    // search, and each change is tested against the set of selected paths through its own
+    // ancestors, so no path is ever compared with every change. Results match `matches`.
+    let mut sorted: Vec<&str> = changes.iter().map(|change| change.path.as_str()).collect();
+    sorted.sort_unstable();
     let unmatched: Vec<String> = paths
         .iter()
-        .filter(|path| !changes.iter().any(|change| matches(path, &change.path)))
+        .filter(|path| !any_change_under(&sorted, path))
         .cloned()
         .collect();
     if !unmatched.is_empty() {
         return Err(SaveError::NoChangesAt { paths: unmatched });
     }
+    let chosen: BTreeSet<&str> = paths
+        .iter()
+        .map(|path| path.trim_end_matches('/'))
+        .collect();
     Ok(changes
         .into_iter()
-        .partition(|change| paths.iter().any(|path| matches(path, &change.path)) == keep_matches))
+        .partition(|change| is_selected(&chosen, &change.path) == keep_matches))
+}
+
+/// Whether some file in `sorted` (ascending) is selected by `path`, as `matches` defines it.
+///
+/// The files under `p` are exactly the keys in `[p + "/", p + "0")`: `'0'` is the byte after
+/// `'/'`, so the range stops before neighbours such as `p-x`, `p.x` and `p0`, which sort
+/// between `p` and `p/`.
+fn any_change_under(sorted: &[&str], path: &str) -> bool {
+    let path = path.trim_end_matches('/');
+    if path.is_empty() {
+        return !sorted.is_empty();
+    }
+    let lower = format!("{path}/");
+    let upper = format!("{path}0");
+    let exact = sorted.binary_search(&path).is_ok();
+    let start = sorted.partition_point(|file| *file < lower.as_str());
+    exact || sorted.get(start).is_some_and(|file| *file < upper.as_str())
+}
+
+/// Whether `file` is selected by any of the (slash-trimmed) paths in `chosen`: the empty path,
+/// the file itself, or one of its ancestor directories.
+fn is_selected(chosen: &BTreeSet<&str>, file: &str) -> bool {
+    chosen.contains("")
+        || chosen.contains(file)
+        || file
+            .match_indices('/')
+            .any(|(at, _)| chosen.contains(&file[..at]))
 }
 
 /// A selected path names the file itself or a directory containing it. The empty path is the

@@ -82,3 +82,11 @@ Characterisation tests: all PASS against today's code by design (behaviour-prese
 - Stubs added: none; no production code changed (`select` is reachable from the child test module).
 - Note: "a b/" and "a.b/" match (trailing `/` ignored); tests reflect that.
 - Questions: none.
+
+### GREEN · rust-engineer · 2026-10-16
+
+`select` in `crates/paper-core/src/project/save.rs` now uses sorted lookups, O((P + C) log C) (times path depth), with the complexity in a comment.
+
+- Unmatched check: change paths sorted once; each selected path is a binary search for the exact key plus the range `[path + "/", path + "0")` (so `a b`, `a-b`, `a.b`, `a0` are not matched). `""` selects everything; trailing `/` is trimmed.
+- Partition: each change is tested against a `BTreeSet` of the trimmed selected paths via itself and its ancestor directories.
+- `matches` is unchanged (still used by `close_over_conflicts` and the tests). No tests, specs, dependencies or manifests changed. All characterisation tests pass unchanged; fmt, clippy `-D warnings` and the full suite are green.
