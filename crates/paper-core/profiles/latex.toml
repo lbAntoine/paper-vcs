@@ -1,0 +1,8 @@
+name = "latex"
+detect = ["*.tex"]
+# The compiled PDF is not ignored: the researcher decides.
+ignore = [
+  "*.aux", "*.log", "*.out", "*.toc", "*.lof", "*.lot", "*.fls", "*.fdb_latexmk",
+  "*.synctex.gz", "*.bbl", "*.blg", "*.bcf", "*.run.xml", "_minted-*/", "build/",
+]
+tips = ["Write one sentence per line: diffs and merges become much cleaner."]

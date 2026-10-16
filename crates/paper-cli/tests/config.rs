@@ -264,17 +264,19 @@ fn identity_is_never_written_to_the_project_file() {
         let run = env.paper(&["config", "set", "--project", key, "x@y"]);
         run.assert_three_part_error(1);
     }
-    assert!(!env.paper_toml().exists());
+    // Only the profile that `init` wrote is in there.
+    assert_eq!(env.read("paper.toml"), "profile = \"latex\"\n");
 }
 
 #[test]
 fn profile_needs_project() {
     let env = project();
+    let before = env.read("paper.toml");
     let run = env.paper(&["config", "set", "profile", "latex"]);
     run.assert_three_part_error(1);
     assert!(run.stderr.contains("--project"), "{run:#?}");
     assert!(!env.user_config().exists());
-    assert!(!env.paper_toml().exists());
+    assert_eq!(env.read("paper.toml"), before);
 }
 
 #[test]
@@ -369,6 +371,7 @@ fn get_an_unset_identity_exits_1_with_a_three_part_error() {
 #[test]
 fn get_an_unset_profile_exits_1() {
     let env = project();
+    std::fs::remove_file(env.paper_toml()).unwrap(); // init wrote the profile there
     env.paper(&["config", "get", "profile"])
         .assert_three_part_error(1);
 }
@@ -457,8 +460,8 @@ fn list_json_has_schema_1_and_a_fixed_key_set() {
     assert_eq!(rows[4]["source"], "project");
     assert_eq!(rows[0]["value"], "Mina Park");
     assert_eq!(rows[0]["source"], "git");
-    assert_eq!(rows[6]["value"], serde_json::Value::Null);
-    assert_eq!(rows[6]["source"], "default");
+    assert_eq!(rows[6]["value"], "latex"); // written by init
+    assert_eq!(rows[6]["source"], "project");
     settings().bind(|| {
         insta::assert_snapshot!("config_list_json", env.redact_json(&run.stdout));
     });
@@ -618,4 +621,86 @@ fn get_and_set_json_have_a_fixed_shape() {
     assert_keys(&json, &["schema", "key", "value", "source"]);
     assert_eq!(json["value"], 7);
     assert_eq!(json["source"], "user");
+}
+
+// ---- profile updates the .gitignore block (PV-004) ----
+
+#[test]
+fn set_project_profile_replaces_the_block_in_gitignore_and_says_so() {
+    let env = project();
+    assert!(env.read(".gitignore").contains("paper-vcs profile: latex"));
+    let existing = env.read(".gitignore");
+    env.write(".gitignore", &format!("my-own-line\n\n{existing}"));
+
+    let run = env.paper(&["config", "set", "--project", "profile", "typst"]);
+
+    run.assert_code(0);
+    assert!(run.stdout.contains("Set profile = typst in "), "{run:#?}");
+    assert!(run.stdout.contains(".gitignore"), "{run:#?}");
+    let gitignore = env.read(".gitignore");
+    assert!(gitignore.starts_with("my-own-line\n"), "{gitignore}");
+    assert!(
+        gitignore.contains("paper-vcs profile: typst"),
+        "{gitignore}"
+    );
+    assert!(
+        !gitignore.contains("paper-vcs profile: latex"),
+        "{gitignore}"
+    );
+    assert!(env.read("paper.toml").contains("profile = \"typst\""));
+}
+
+#[test]
+fn set_project_profile_creates_the_gitignore_when_there_is_none() {
+    let env = project();
+    std::fs::remove_file(env.work.join(".gitignore")).unwrap();
+
+    env.paper(&["config", "set", "--project", "profile", "markdown"])
+        .assert_code(0);
+
+    assert!(
+        env.read(".gitignore")
+            .contains("paper-vcs profile: markdown")
+    );
+}
+
+#[test]
+fn set_project_profile_with_a_broken_block_fails_and_leaves_gitignore_alone() {
+    let env = project();
+    let broken = "# >>> paper-vcs profile: latex >>>\n*.aux\n";
+    env.write(".gitignore", broken);
+    let toml = env.read("paper.toml");
+
+    let run = env.paper(&["config", "set", "--project", "profile", "typst"]);
+
+    run.assert_three_part_error(1);
+    assert_eq!(env.read(".gitignore"), broken);
+    assert_eq!(env.read("paper.toml"), toml);
+    assert!(
+        run.stderr
+            .contains("paper config set --project profile typst"),
+        "the retry command should be the one that failed: {run:#?}"
+    );
+}
+
+#[test]
+fn set_project_profile_with_a_gitignore_that_is_not_utf8_is_a_user_error() {
+    let env = project();
+    std::fs::write(env.work.join(".gitignore"), b"caf\xe9\n").unwrap();
+    let toml = env.read("paper.toml");
+
+    let run = env.paper(&["config", "set", "--project", "profile", "typst"]);
+
+    run.assert_three_part_error(1);
+    assert!(run.stderr.contains("UTF-8"), "{run:#?}");
+    assert!(
+        run.stderr
+            .contains("paper config set --project profile typst"),
+        "{run:#?}"
+    );
+    assert_eq!(
+        std::fs::read(env.work.join(".gitignore")).unwrap(),
+        b"caf\xe9\n"
+    );
+    assert_eq!(env.read("paper.toml"), toml);
 }

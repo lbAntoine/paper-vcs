@@ -99,6 +99,19 @@ pub enum SnapshotError {
     },
 }
 
+/// Relative paths of the files a snapshot of `root` would see (ignore rules applied), sorted.
+///
+/// # Errors
+///
+/// [`SnapshotError`] if the folder can't be listed.
+pub(crate) fn visible_files(root: &std::path::Path) -> Result<Vec<String>, SnapshotError> {
+    Ok(walk::walk(root)?
+        .files
+        .into_iter()
+        .map(|f| f.path)
+        .collect())
+}
+
 /// Records the working directory of `repo` as a tree, starting from `base` (the draft's tree).
 ///
 /// `previous` is the cache from the last snapshot. Nothing is written to `.git/paper/`: the

@@ -1,0 +1,4 @@
+name = "markdown"
+detect = ["*.md"]
+ignore = ["_site/", ".cache/"]
+tips = ["Write one sentence per line: diffs and merges become much cleaner."]

@@ -3,6 +3,7 @@
 use std::fmt;
 
 use super::ConfigError;
+use crate::profile::Profile;
 
 /// A setting paper knows about.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -54,7 +55,6 @@ pub enum Source {
 }
 
 const COLORS: [&str; 3] = ["auto", "always", "never"];
-const PROFILES: [&str; 6] = ["latex", "markdown", "typst", "quarto", "jupyter", "generic"];
 
 impl Key {
     /// Every key, in the order `paper config list` shows them.
@@ -155,7 +155,7 @@ impl Key {
                 .is_some_and(|(local, domain)| !local.is_empty() && !domain.is_empty()),
             Key::UiColor => COLORS.contains(&trimmed),
             Key::DiffDefault => trimmed == "lines" || trimmed == "words",
-            Key::Profile => PROFILES.contains(&trimmed),
+            Key::Profile => Profile::builtin(trimmed).is_some(),
             Key::LargeFilesWarnMb | Key::LargeFilesMaxMb => {
                 return match trimmed.parse::<u64>() {
                     Ok(mb) if mb >= 1 => Ok(Value::Megabytes(mb)),
@@ -190,7 +190,7 @@ impl Key {
                                  stay line by line)"
                     .to_owned()
             }
-            Key::Profile => format!("one of {}", PROFILES.join(", ")),
+            Key::Profile => format!("one of {}", Profile::names().collect::<Vec<_>>().join(", ")),
         }
     }
 

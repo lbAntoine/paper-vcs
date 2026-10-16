@@ -5,6 +5,7 @@ use std::io::{self, IsTerminal};
 use std::path::{Path, PathBuf};
 
 use paper_core::config::Settings;
+use paper_core::profile::Profile;
 use paper_core::project::{HistoryRequest, PathSelection, Project, SaveOutcome, SaveRequest};
 use paper_core::{ErrorKind, PaperError, Suggestion};
 use paper_git::{GitRepo, Identity};
@@ -26,7 +27,7 @@ pub fn execute(cli: &Cli, style: Style) -> Output {
         verbose: cli.verbose,
     };
     match &cli.command {
-        Command::Init { path, .. } => init(cli, path.as_deref()),
+        Command::Init { path, profile } => init(cli, path.as_deref(), profile.as_deref()),
         Command::Save {
             message,
             paths,
@@ -68,12 +69,15 @@ pub(crate) fn finish(
     }
 }
 
-fn init(cli: &Cli, path: Option<&Path>) -> Output {
+fn init(cli: &Cli, path: Option<&Path>, profile: Option<&str>) -> Output {
     let base = start_dir(cli)?;
     let target = path.map_or_else(|| base.clone(), |p| base.join(p));
     let settings = settings::resolve(Some(&target), &target)?;
     let identity = identity(cli, &settings)?;
-    let (_project, initialized) = Project::init(&target, identity, &settings.snapshot_options())?;
+    // clap only lets the six built-in names through.
+    let choice = profile.and_then(Profile::builtin);
+    let (_project, initialized) =
+        Project::init_with_profile(&target, identity, &settings.snapshot_options(), choice)?;
     Ok(finish(
         cli,
         || human::init(&initialized),

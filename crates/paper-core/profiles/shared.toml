@@ -1,0 +1,9 @@
+# Lines every profile adds to the .gitignore block, after its own (04-content.md § Profiles).
+ignore = [
+  # Operating system and editor leftovers
+  ".DS_Store", "Thumbs.db", "*.swp", "*.swo", "*~",
+  # Python and R environments
+  ".venv/", "__pycache__/", ".Rproj.user/", "renv/library/",
+  # Office and LibreOffice lock and temporary files
+  "~$*", ".~lock.*#", "~WRL*.tmp",
+]

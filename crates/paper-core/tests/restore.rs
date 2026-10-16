@@ -5,6 +5,7 @@ use std::path::Path;
 use std::process::Command;
 
 use paper_core::point::Point;
+use paper_core::profile::Profile;
 use paper_core::project::*;
 use paper_core::snapshot::{ChangeKind, SnapshotOptions};
 use paper_git::Identity;
@@ -63,7 +64,9 @@ fn project_with_options(
     for (path, content) in files {
         write(dir.path(), path, content);
     }
-    let (project, _) = Project::init(dir.path(), identity(), options).unwrap();
+    let (project, _) =
+        Project::init_with_profile(dir.path(), identity(), options, Profile::builtin("generic"))
+            .unwrap();
     (dir, project)
 }
 

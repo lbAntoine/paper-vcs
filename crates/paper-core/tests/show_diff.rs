@@ -3,6 +3,7 @@
 use std::fs;
 
 use paper_core::point::Point;
+use paper_core::profile::Profile;
 use paper_core::project::{FileDiffEntry, PathSelection, Project, SaveRequest};
 use paper_core::snapshot::{ChangeKind, SnapshotOptions};
 use paper_git::Identity;
@@ -18,7 +19,13 @@ fn project_with(files: &[(&str, &str)]) -> (tempfile::TempDir, Project) {
         name: "Mina Park".to_owned(),
         email: "mina@uni.example".to_owned(),
     };
-    let (project, _) = Project::init(dir.path(), identity, &SnapshotOptions::default()).unwrap();
+    let (project, _) = Project::init_with_profile(
+        dir.path(),
+        identity,
+        &SnapshotOptions::default(),
+        Profile::builtin("generic"),
+    )
+    .unwrap();
     (dir, project)
 }
 
@@ -38,7 +45,12 @@ fn a_first_save_shows_every_file_as_added() {
 
     assert_eq!(
         summary(&entries),
-        vec![("a.tex", ChangeKind::Added), ("d/b.tex", ChangeKind::Added)]
+        vec![
+            (".gitignore", ChangeKind::Added),
+            ("a.tex", ChangeKind::Added),
+            ("d/b.tex", ChangeKind::Added),
+            ("paper.toml", ChangeKind::Added)
+        ]
     );
 }
 

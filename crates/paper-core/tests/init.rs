@@ -64,7 +64,8 @@ fn init_in_an_empty_folder_creates_a_first_save_and_an_empty_draft() {
     let dir = tempfile::tempdir().unwrap();
     let (project, initialized) = init(dir.path()).unwrap();
     assert!(!initialized.adopted);
-    assert_eq!(initialized.tracked_files, 0);
+    // PV-004: the generic profile's .gitignore and paper.toml are in the first save.
+    assert_eq!(initialized.tracked_files, 2);
 
     let view = project.view();
     assert_eq!(view.current_line(), &LineName::main());
@@ -93,14 +94,15 @@ fn init_with_existing_files_saves_them_and_leaves_git_clean() {
     write(dir.path(), "main.aux", "junk");
 
     let (_project, initialized) = init(dir.path()).unwrap();
-    assert_eq!(initialized.tracked_files, 3);
+    // PV-004: paper.toml joins the first save (the .gitignore now also holds the profile block).
+    assert_eq!(initialized.tracked_files, 4);
     assert_eq!(
         git(dir.path(), &["log", "--format=%s", "main"]),
         "Start project\n"
     );
     assert_eq!(
         git(dir.path(), &["ls-tree", "-r", "--name-only", "main"]),
-        ".gitignore\nmain.tex\nsections/intro.tex\n"
+        ".gitignore\nmain.tex\npaper.toml\nsections/intro.tex\n"
     );
     assert_eq!(
         git(dir.path(), &["symbolic-ref", "HEAD"]),
@@ -166,7 +168,11 @@ fn adopting_keeps_history_and_turns_uncommitted_work_into_the_draft() {
     assert_eq!(view.current_line(), &line("main"));
     assert_eq!(view.lines().count(), 2);
     assert_eq!(view.current().tip.as_str(), main_before.trim());
-    assert_eq!(draft_files(&project, "main"), ["notes.md", "paper.tex"]);
+    // PV-004: the profile block and paper.toml are unsaved changes in the draft.
+    assert_eq!(
+        draft_files(&project, "main"),
+        [".gitignore", "notes.md", "paper.tex", "paper.toml"]
+    );
     assert_eq!(draft_files(&project, "journal-version"), ["paper.tex"]);
     git(dir.path(), &["fsck", "--strict", "--no-progress"]);
 }

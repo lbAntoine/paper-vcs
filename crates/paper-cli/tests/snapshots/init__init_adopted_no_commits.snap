@@ -1,0 +1,8 @@
+---
+source: crates/paper-cli/tests/init.rs
+expression: env.redact(&run.stdout)
+---
+Adopted this git repository as a paper project. Nothing in it was rewritten.
+Tracking 3 files.
+Profile: generic (nothing more specific found)
+Wrote .gitignore and paper.toml.

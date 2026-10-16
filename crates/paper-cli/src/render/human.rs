@@ -3,6 +3,7 @@
 
 use std::fmt::Write as _;
 
+use paper_core::profile::Profile;
 use paper_core::project::FileDiffEntry;
 use paper_core::project::{HistoryEntry, Initialized, Saved, Shown};
 use paper_core::snapshot::{Change, ChangeKind, SkipReason, Skipped};
@@ -90,6 +91,20 @@ pub fn init(initialized: &Initialized) -> String {
         "Created a paper project, with a first save: \"Start project\".\n".to_owned()
     };
     let _ = writeln!(out, "Tracking {}.", files(initialized.tracked_files));
+    let _ = writeln!(out, "Profile: {}", profile_origin(initialized));
+    if !initialized.written.is_empty() {
+        let _ = write!(out, "Wrote {}", initialized.written.join(" and "));
+        out.push_str(
+            if initialized.adopted && !initialized.written_in_first_save {
+                ". They show up as unsaved changes in your draft.\n"
+            } else {
+                ".\n"
+            },
+        );
+    }
+    for tip in &initialized.tips {
+        let _ = writeln!(out, "Tip: {tip}");
+    }
     if !initialized.skipped.is_empty() {
         out.push_str("\nLeft out:\n");
         out.push_str(&skipped_lines(&initialized.skipped));
@@ -106,6 +121,21 @@ pub fn init(initialized: &Initialized) -> String {
         );
     }
     out
+}
+
+/// `latex (detected from *.tex)`, `markdown (chosen)` or `latex (from paper.toml)`.
+fn profile_origin(initialized: &Initialized) -> String {
+    let name = &initialized.profile;
+    if initialized.from_paper_toml {
+        return format!("{name} (from paper.toml)");
+    }
+    if !initialized.detected {
+        return format!("{name} (chosen)");
+    }
+    match Profile::builtin(name).map(|profile| profile.detect.join(", ")) {
+        Some(patterns) if !patterns.is_empty() => format!("{name} (detected from {patterns})"),
+        _ => format!("{name} (nothing more specific found)"),
+    }
 }
 
 pub fn nothing_to_save() -> String {

@@ -7,16 +7,20 @@ use std::path::{Path, PathBuf};
 
 use paper_git::{ChangeId, CommitId, GitError, GitRepo, Identity, NewCommit, TreeId};
 
+use super::init_profile::{ProfilePlan, ProfileReport};
 use super::{
     FORMAT_VERSION, Project, VERSION_FILE, draft_ref, line_ref, paper_dir, signature_now,
     write_draft,
 };
+use crate::config::ConfigError;
 use crate::name::LineName;
+use crate::profile::{Profile, gitignore::GitignoreError};
 use crate::snapshot::{Skipped, SnapshotError, SnapshotOptions, StatCache, snapshot};
 use crate::view::{Line, View, ViewError};
 
 /// What `init` did, for the front-end to report.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)] // independent facts for the report, not a state
 pub struct Initialized {
     /// `true` when an existing git repository was adopted rather than created.
     pub adopted: bool,
@@ -28,6 +32,21 @@ pub struct Initialized {
     pub large: Vec<(String, u64)>,
     /// Existing branches whose names can't be used as line names; they were left alone.
     pub skipped_branches: Vec<String>,
+    /// Name of the profile in effect: `latex`, `markdown`, ...
+    pub profile: String,
+    /// `true` when the profile was detected from the files, `false` when it was chosen or read
+    /// from `paper.toml`.
+    pub detected: bool,
+    /// `true` when the profile came from an existing `profile` in `paper.toml` (and `detected`
+    /// is `false`).
+    pub from_paper_toml: bool,
+    /// Files `init` wrote in the working folder, relative to it: `.gitignore` and/or `paper.toml`.
+    pub written: Vec<String>,
+    /// `true` when `written` went into the first save, `false` when it is left in the draft
+    /// as unsaved changes (adopting a repository that already has saves).
+    pub written_in_first_save: bool,
+    /// The profile's tips.
+    pub tips: Vec<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -42,6 +61,12 @@ pub enum InitError {
     UnusableBranchName { name: String },
     #[error("the current branch '{name}' has no commits yet, but other branches do")]
     EmptyCurrentBranch { name: String },
+    #[error("paper.toml says the profile is '{existing}', but '{requested}' was asked for")]
+    ProfileConflict { requested: String, existing: String },
+    #[error(transparent)]
+    Gitignore(#[from] GitignoreError),
+    #[error(transparent)]
+    Config(#[from] ConfigError),
     #[error(transparent)]
     Git(#[from] GitError),
     #[error(transparent)]
@@ -71,13 +96,44 @@ impl Project {
         identity: Identity,
         options: &SnapshotOptions,
     ) -> Result<(Self, Initialized), InitError> {
+        Self::init_with_profile(path, identity, options, None)
+    }
+}
+
+impl Project {
+    /// Like [`Project::init`], with the profile choice: `Some(profile)` is "chosen" (reported
+    /// with `detected == false`), `None` detects it from the files the snapshot walk sees.
+    ///
+    /// New project: `.gitignore` (profile block) and `paper.toml` (`profile = "<name>"`) are
+    /// written before the first save, so the save contains both and none of the ignored files.
+    /// Adoption: history is never rewritten; the block and `paper.toml` (when it has no
+    /// `profile` yet) are written to the working files and show up in the draft. An existing
+    /// `profile` in `paper.toml` wins over detection.
+    ///
+    /// # Errors
+    ///
+    /// Everything [`Project::init`] reports, plus [`InitError::ProfileConflict`] when `choice`
+    /// disagrees with the `profile` in `paper.toml`, and [`InitError::Gitignore`] for a
+    /// malformed paper-vcs block; in both cases nothing is written.
+    ///
+    /// # Panics
+    ///
+    /// Never.
+    pub fn init_with_profile(
+        path: &Path,
+        identity: Identity,
+        options: &SnapshotOptions,
+        choice: Option<&Profile>,
+    ) -> Result<(Self, Initialized), InitError> {
         fs::create_dir_all(path).map_err(|source| io_error(path, source))?;
         match GitRepo::enclosing_workdir(path) {
             None => {
+                let plan = ProfilePlan::prepare(path, choice)?;
                 let repo = GitRepo::init(path, &identity)?;
-                start_fresh(repo, identity, options, LineName::main(), false)
+                let report = plan.write(path)?;
+                start_fresh(repo, identity, options, LineName::main(), false, report)
             }
-            Some(root) if same_dir(&root, path) => adopt(path, identity, options),
+            Some(root) if same_dir(&root, path) => adopt(path, identity, options, choice),
             Some(root) => Err(InitError::InsideAnotherRepository {
                 path: path.to_owned(),
                 root,
@@ -90,6 +146,7 @@ fn adopt(
     path: &Path,
     identity: Identity,
     options: &SnapshotOptions,
+    choice: Option<&Profile>,
 ) -> Result<(Project, Initialized), InitError> {
     let repo = GitRepo::open(path, &identity)?;
     if paper_dir(&repo).join(VERSION_FILE).exists() {
@@ -102,17 +159,21 @@ fn adopt(
         .parse()
         .map_err(|_| InitError::UnusableBranchName { name: current })?;
     let branches = repo.local_branches()?;
-    if branches.is_empty() {
-        // A repository without commits yet: start like a new project, on its current branch.
-        return start_fresh(repo, identity, options, current_line, true);
-    }
-    if !branches
-        .iter()
-        .any(|(branch, _)| *branch == current_line.as_str())
+    if !branches.is_empty()
+        && !branches
+            .iter()
+            .any(|(branch, _)| *branch == current_line.as_str())
     {
         return Err(InitError::EmptyCurrentBranch {
             name: current_line.to_string(),
         });
+    }
+    // The block and `paper.toml` go to the working files before the snapshot, so they are part
+    // of the draft; nothing is rewritten in history.
+    let report = ProfilePlan::prepare(path, choice)?.write(path)?;
+    if branches.is_empty() {
+        // A repository without commits yet: start like a new project, on its current branch.
+        return start_fresh(repo, identity, options, current_line, true, report);
     }
 
     let paper_dir = create_paper_dir(&repo)?;
@@ -160,6 +221,12 @@ fn adopt(
         skipped: snap.skipped,
         large: snap.large,
         skipped_branches,
+        profile: report.profile,
+        detected: report.detected,
+        from_paper_toml: report.from_paper_toml,
+        written: report.written,
+        written_in_first_save: false,
+        tips: report.tips,
     };
     finish(
         repo,
@@ -180,6 +247,7 @@ fn start_fresh(
     options: &SnapshotOptions,
     line: LineName,
     adopted: bool,
+    report: ProfileReport,
 ) -> Result<(Project, Initialized), InitError> {
     let paper_dir = create_paper_dir(&repo)?;
     let empty = repo.empty_tree()?;
@@ -199,6 +267,12 @@ fn start_fresh(
         skipped: snap.skipped,
         large: snap.large,
         skipped_branches: Vec::new(),
+        profile: report.profile,
+        detected: report.detected,
+        from_paper_toml: report.from_paper_toml,
+        written: report.written,
+        written_in_first_save: true,
+        tips: report.tips,
     };
     let view = View::new(line, Line { tip: save, draft });
     finish(

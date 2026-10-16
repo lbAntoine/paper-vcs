@@ -6,6 +6,7 @@ pub mod error;
 mod fs_util;
 pub mod name;
 pub mod point;
+pub mod profile;
 pub mod project;
 pub mod snapshot;
 pub mod tree_diff;
