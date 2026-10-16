@@ -68,6 +68,31 @@ fn project_with_saves(saves: usize) -> (TempDir, Project) {
     (dir, project)
 }
 
+/// Like `project_with_saves(2)`, but retried until the tip's first `length` hash characters
+/// match no other commit in the repository (hashes of fresh saves are random-ish, so a
+/// short prefix can otherwise clash: about 1 in 65 000 per other commit for four characters).
+fn project_with_unambiguous_tip(length: usize) -> (TempDir, Project) {
+    loop {
+        let (dir, project) = project_with_saves(2);
+        let tip = project.view().current().tip.clone();
+        let objects = git(
+            dir.path(),
+            &[
+                "cat-file",
+                "--batch-all-objects",
+                "--batch-check=%(objectname) %(objecttype)",
+            ],
+        );
+        let sharing = objects
+            .lines()
+            .filter(|l| l.ends_with(" commit") && l.starts_with(&tip.as_str()[..length]))
+            .count();
+        if sharing == 1 {
+            return (dir, project);
+        }
+    }
+}
+
 /// A repository built commit by commit, then adopted as a project.
 struct Plain {
     dir: TempDir,
@@ -278,6 +303,10 @@ fn a_unique_change_id_prefix_resolves_including_the_drafts() {
 
 #[test]
 fn an_ambiguous_change_id_prefix_lists_its_candidates() {
+    // The two fixed IDs share nine letters and differ at the tenth. The project also holds
+    // random IDs (the draft); one starting with the nine shared letters is a 1 in 16^9
+    // (about 7e10) chance per random ID, so the lookups below can't realistically clash.
+    const SHARED: &str = "kmqrstuvw";
     let plain = Plain::new();
     let root = plain.commit(&[("a.txt", "a")], "Root", &[], at(1_000), None);
     let left = plain.commit(
@@ -285,22 +314,22 @@ fn an_ambiguous_change_id_prefix_lists_its_candidates() {
         "Left",
         &[&root],
         at(2_000),
-        Some(&change_id("kmnn", 'k')),
+        Some(&change_id(&format!("{SHARED}n"), 'k')),
     );
     let right = plain.commit(
         &[("a.txt", "r")],
         "Right",
         &[&root],
         at(3_000),
-        Some(&change_id("kmpp", 'k')),
+        Some(&change_id(&format!("{SHARED}p"), 'k')),
     );
     plain.branch("main", &left);
     plain.branch("side", &right);
     let (_dir, project) = plain.adopt(&[("a.txt", "l")]);
 
-    match project.resolve(&point("km")) {
+    match project.resolve(&point(SHARED)) {
         Err(ResolveError::Ambiguous { prefix, candidates }) => {
-            assert_eq!(prefix, "km");
+            assert_eq!(prefix, SHARED);
             let mut ids: Vec<_> = candidates.iter().map(|c| c.commit.clone()).collect();
             ids.sort();
             let mut expected = vec![left.clone(), right.clone()];
@@ -313,14 +342,15 @@ fn an_ambiguous_change_id_prefix_lists_its_candidates() {
         other => panic!("expected Ambiguous, got {other:?}"),
     }
     // A longer prefix tells them apart.
-    assert_eq!(resolved(&project, "kmn").commit, left);
-    assert_eq!(resolved(&project, "kmp").commit, right);
+    assert_eq!(resolved(&project, &format!("{SHARED}n")).commit, left);
+    assert_eq!(resolved(&project, &format!("{SHARED}p")).commit, right);
 }
 
 #[test]
 fn commits_sharing_one_change_id_resolve_to_the_newest() {
     let plain = Plain::new();
-    let same = change_id("knnn", 'q');
+    // Eight letters are looked up below: a random ID matching them is a 1 in 16^8 chance.
+    let same = change_id("knnnrstw", 'q');
     let older = plain.commit(&[("a.txt", "a")], "Older", &[], at(1_000), Some(&same));
     let newer = plain.commit(
         &[("a.txt", "b")],
@@ -333,14 +363,14 @@ fn commits_sharing_one_change_id_resolve_to_the_newest() {
     plain.branch("old", &older);
     let (_dir, project) = plain.adopt(&[("a.txt", "b")]);
 
-    let found = resolved(&project, "knn");
+    let found = resolved(&project, "knnnrstw");
     assert_eq!(found.commit, newer);
     assert_eq!(found.matched, PointKind::ChangeId);
 }
 
 #[test]
 fn a_unique_hash_prefix_of_at_least_four_characters_resolves() {
-    let (_dir, project) = project_with_saves(2);
+    let (_dir, project) = project_with_unambiguous_tip(4);
     let tip = project.view().current().tip.clone();
 
     for length in [4, 7, 40] {
@@ -354,6 +384,7 @@ fn a_unique_hash_prefix_of_at_least_four_characters_resolves() {
 fn a_hash_prefix_shorter_than_four_characters_is_not_a_hash() {
     let (_dir, project) = project_with_saves(2);
     let tip = project.view().current().tip.clone();
+    // Fewer than four characters is never a hash, whatever else shares them.
     let short = &tip.as_str()[..3];
     match project.resolve(&point(short)) {
         Err(ResolveError::UnknownPoint { name }) => assert_eq!(name, short),
@@ -401,7 +432,7 @@ fn an_ambiguous_hash_prefix_lists_its_candidates() {
 #[test]
 fn unknown_names_are_reported_with_the_name() {
     let (_dir, project) = project_with_saves(1);
-    for name in ["nothing-here", "zzzz", "ffffffffff"] {
+    for name in ["nothing-here", "zzzzzzzzzz", "ffffffffff"] {
         match project.resolve(&point(name)) {
             Err(ResolveError::UnknownPoint { name: given }) => assert_eq!(given, name),
             other => panic!("expected UnknownPoint for {name}, got {other:?}"),

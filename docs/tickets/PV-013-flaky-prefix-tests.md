@@ -74,3 +74,49 @@ reviews as usual.
 ## Summary
 
 ## Handoff log
+
+### FIX · test-author · 2026-10-16
+
+Test-only ticket, so I made the fix myself (no src changes, no stubs).
+
+**Fixed** (`tests/resolve.rs`, `tests/history.rs`):
+- `an_ambiguous_change_id_prefix_lists_its_candidates`: IDs now share nine letters
+  (`kmqrstuvw`) and diverge at the tenth (`n`/`p`); ambiguity is asserted on the nine-letter
+  prefix, each ID resolved with its tenth letter. All assertions kept. Odds: 16^-9 (1.5e-11)
+  per random ID.
+- `commits_sharing_one_change_id_resolve_to_the_newest`: was `knn` (1 in 4096 per random ID
+  to turn it ambiguous, the same flaw). Now `knnnrstw` (8 letters, 16^-8 = 2.3e-10).
+- `unknown_names_are_reported_with_the_name`: `zzzz` could be a random change-ID prefix
+  (16^-4 = 1.5e-5 per ID). Now `zzzzzzzzzz` (16^-10 = 9e-13).
+- `a_unique_hash_prefix_of_at_least_four_characters_resolves`: the 4-character hash prefix of a
+  save could match another commit (about 1.5e-5 per other commit; hashes vary per run because
+  of random change IDs). Now uses `project_with_unambiguous_tip(4)`, which rebuilds the project
+  until `git cat-file --batch-all-objects` shows exactly one commit with that prefix.
+- `history.rs` `short_change_ids_grow_until_they_tell_similar_ids_apart` and
+  `short_change_ids_count_the_ids_of_every_line`: shared head `kmrwpq` (6 letters, 6e-8 per
+  random ID, enough to lengthen the shortest prefix) is now `kmrwpqstvw` (10 letters, 9e-13);
+  expected short ids are `kmrwpqstvwm` / `kmrwpqstvwk`.
+
+**Audited, left as is:**
+- resolve `a_line_wins_over...`: `kmrw` and the 6-char hash spelling are line names, and a line
+  wins over any ID or hash match, so a random clash can't change the result. Safe by rule.
+- resolve `a_unique_change_id_prefix_resolves...`: 8 characters of real IDs, 16^-8 per other
+  ID (2.3e-10, about 3 other IDs: below 1e-9).
+- resolve `a_hash_prefix_shorter_than_four...`: three characters are never a hash; the result
+  does not depend on neighbours (and hex digits never overlap the k-z change-ID letters).
+- resolve `an_ambiguous_hash_prefix...`: finds a real collision among deterministic plain
+  commits; extra random commits only add candidates and the assertions are `contains`. Safe.
+- resolve `last`, `@`, date tests: no prefixes.
+- history `commits_made_with_plain_git...`: the 7-char hash id is of a deterministic plain
+  commit (no change ID, fixed times) and hashes can't clash with k-z IDs. Safe.
+- history `short_change_ids_are_at_least_four_letters_and_unique...`: asserts invariants over
+  actual IDs, no fixed prefix. Safe.
+- history `show_by_change_id_and_by_line_name...`: looks up the computed short ID, which is
+  unique across the project including the draft by that test's contract. Safe.
+- history other tests use no prefixes.
+
+**Repeat runs** (build once, loop over the binaries, `-q`): resolve binary 500/500 passes,
+history binary 500/500 passes (0 failures each).
+
+CI: `--no-fail-fast` added. NOTES.md: dated entry added. fmt, clippy `-D warnings` and the
+full suite pass.
