@@ -5,6 +5,7 @@
 
 use std::path::Path;
 
+use crate::config::{ConfigError, Conflict, Key, Origin, Scope};
 use crate::point::ParsePointError;
 use crate::project::{
     DiffError, HistoryError, InitError, OpenError, ResolveError, RestoreError, SaveError,
@@ -76,21 +77,29 @@ impl PaperError {
         }
     }
 
-    /// No `user.name` / `user.email` in git config; the suggestions are the two
-    /// `git config --global user.…` commands.
+    /// No `user.name` / `user.email` in paper's settings or git config; the suggestions are
+    /// `paper config set …` first, then the two `git config --global user.…` commands.
     pub fn no_identity() -> Self {
         Self::user(
             "Paper doesn't know who you are yet",
-            "Every save records its author, and neither a name nor an email is set in your git \
-             configuration.",
+            "Every save records its author, and no name or email is set in your paper settings \
+             or your git configuration.",
             vec![
                 Suggestion::new(
-                    "git config --global user.name \"Your Name\"",
+                    "paper config set user.name \"Your Name\"",
                     "set the name saves are made under",
                 ),
                 Suggestion::new(
-                    "git config --global user.email \"you@example.org\"",
+                    "paper config set user.email you@example.org",
                     "set your email address",
+                ),
+                Suggestion::new(
+                    "git config --global user.name \"Your Name\"",
+                    "or set the name in your git configuration instead",
+                ),
+                Suggestion::new(
+                    "git config --global user.email \"you@example.org\"",
+                    "or set the email in your git configuration instead",
                 ),
             ],
         )
@@ -196,6 +205,194 @@ impl From<InitError> for PaperError {
             | InitError::View(_)
             | InitError::Io { .. } => Self::project("Paper could not set up this folder", &error),
         }
+    }
+}
+
+impl From<ConfigError> for PaperError {
+    fn from(error: ConfigError) -> Self {
+        Self::from_config(&error, Scope::User)
+    }
+}
+
+impl PaperError {
+    /// A settings error in three parts. `scope` is the file a `set` was aimed at, so a rejected
+    /// value suggests the right form of `paper config set` (`--project` for `paper.toml`).
+    pub fn from_config(error: &ConfigError, scope: Scope) -> Self {
+        match error {
+            ConfigError::UnknownKey { key } => {
+                let known: Vec<&str> = Key::ALL.iter().map(|k| k.as_str()).collect();
+                Self::user(
+                    format!("`{key}` is not a setting paper knows"),
+                    format!("The settings are: {}.", known.join(", ")),
+                    vec![Suggestion::new(
+                        "paper config list",
+                        "see every setting and its value",
+                    )],
+                )
+            }
+            ConfigError::InvalidValue {
+                key,
+                value,
+                expected,
+                origin,
+                conflict: None,
+            } => invalid_value(key, value, expected, origin.as_ref(), scope),
+            ConfigError::InvalidValue {
+                key,
+                value,
+                origin,
+                conflict: Some(conflict),
+                ..
+            } => order_conflict(key, value, *conflict, origin.as_ref(), scope),
+            ConfigError::WrongHome {
+                key,
+                where_,
+                reason,
+            } => {
+                let command = if where_.contains("project") {
+                    format!("paper config set {key} <value>")
+                } else {
+                    format!("paper config set --project {key} <value>")
+                };
+                Self::user(
+                    format!("`{key}` can't be set {where_}"),
+                    reason.clone(),
+                    vec![Suggestion::new(command, "set it where it belongs")],
+                )
+            }
+            ConfigError::Blocked { path, table, key } => {
+                let file = path
+                    .as_ref()
+                    .map_or_else(|| "the file".to_owned(), |p| p.display().to_string());
+                Self::user(
+                    format!("`{table}` in {file} is a plain value, not a section"),
+                    format!(
+                        "Paper keeps `{key}` in a `[{table}]` section, and `{table}` is already used for something else."
+                    ),
+                    vec![Suggestion::new(
+                        file,
+                        format!(
+                            "edit the file: remove `{table}` or turn it into a [{table}] section"
+                        ),
+                    )],
+                )
+            }
+            ConfigError::Malformed {
+                path,
+                line,
+                message,
+            } => Self::user(
+                format!("Paper can't read the settings file {}", path.display()),
+                format!("It isn't valid TOML (line {line}): {message}."),
+                vec![Suggestion::new(
+                    path.display().to_string(),
+                    format!("fix line {line}, or delete the file to start over"),
+                )],
+            ),
+            ConfigError::Io { path, .. } => Self::project(
+                format!("Paper could not use the settings file {}", path.display()),
+                error,
+            ),
+        }
+    }
+}
+
+fn invalid_value(
+    key: &str,
+    value: &str,
+    expected: &str,
+    origin: Option<&Origin>,
+    scope: Scope,
+) -> PaperError {
+    let example = Key::parse(key).map_or("<value>", Key::example);
+    let mut next = Vec::new();
+    match origin {
+        Some(Origin::Env(var)) => next.push(Suggestion::new(
+            format!("unset {var}"),
+            "remove the variable, or set it to a value paper accepts",
+        )),
+        Some(Origin::File(path)) => {
+            next.push(Suggestion::new(
+                format!(
+                    "paper config set {}{key} {example}",
+                    set_flag(origin, scope)
+                ),
+                "replace the bad value",
+            ));
+            next.push(Suggestion::new(
+                path.display().to_string(),
+                "or edit the file by hand",
+            ));
+        }
+        None => next.push(Suggestion::new(
+            format!(
+                "paper config set {}{key} {example}",
+                set_flag(origin, scope)
+            ),
+            "set it to a value paper accepts",
+        )),
+    }
+    PaperError::user(
+        format!(
+            "`{value}` is not a valid value for `{key}`{}",
+            origin_note(origin)
+        ),
+        format!("{key} takes {expected}."),
+        next,
+    )
+}
+
+fn order_conflict(
+    key: &str,
+    value: &str,
+    conflict: Conflict,
+    origin: Option<&Origin>,
+    scope: Scope,
+) -> PaperError {
+    let other = conflict.other.as_str();
+    let other_value = conflict.other_value;
+    let relation = if conflict.other == Key::LargeFilesWarnMb {
+        "below"
+    } else {
+        "above"
+    };
+    let flag = set_flag(origin, scope);
+    let in_file = match origin {
+        Some(Origin::File(path)) => format!(" in {}", path.display()),
+        _ => String::new(),
+    };
+    PaperError::user(
+        format!("{key} ({value}) can't be {relation} {other} ({other_value}){in_file}"),
+        "Files bigger than large_files.max_mb are left out of saves, so the warning \
+             level can't be higher than that.",
+        vec![
+            Suggestion::new(
+                format!("paper config set {flag}{key} {other_value}"),
+                format!("make {key} at least {other_value}, to match {other}"),
+            ),
+            Suggestion::new(
+                format!("paper config set {flag}{other} {value}"),
+                format!("or move {other} to {value}, to match {key}"),
+            ),
+        ],
+    )
+}
+
+/// `--project ` when the command that fixes this must write `paper.toml`.
+fn set_flag(origin: Option<&Origin>, scope: Scope) -> &'static str {
+    let project = match origin {
+        Some(Origin::File(path)) => path.file_name().is_some_and(|name| name == "paper.toml"),
+        Some(Origin::Env(_)) => false,
+        None => scope == Scope::Project,
+    };
+    if project { "--project " } else { "" }
+}
+
+fn origin_note(origin: Option<&Origin>) -> String {
+    match origin {
+        None => String::new(),
+        Some(Origin::Env(var)) => format!(" (from {var} in the environment)"),
+        Some(Origin::File(path)) => format!(" (in {})", path.display()),
     }
 }
 

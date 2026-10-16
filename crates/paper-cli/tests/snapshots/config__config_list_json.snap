@@ -1,0 +1,44 @@
+---
+source: crates/paper-cli/tests/config.rs
+expression: env.redact_json(&run.stdout)
+---
+{
+  "schema": 1,
+  "settings": [
+    {
+      "key": "user.name",
+      "source": "git",
+      "value": "Mina Park"
+    },
+    {
+      "key": "user.email",
+      "source": "git",
+      "value": "mina@uni.example"
+    },
+    {
+      "key": "ui.color",
+      "source": "default",
+      "value": "auto"
+    },
+    {
+      "key": "large_files.warn_mb",
+      "source": "default",
+      "value": 10
+    },
+    {
+      "key": "large_files.max_mb",
+      "source": "project",
+      "value": 7
+    },
+    {
+      "key": "diff.default",
+      "source": "default",
+      "value": "lines"
+    },
+    {
+      "key": "profile",
+      "source": "default",
+      "value": null
+    }
+  ]
+}

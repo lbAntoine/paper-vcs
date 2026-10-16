@@ -1,6 +1,7 @@
 //! Core domain model and commands for paper-vcs.
 //!
 //! This crate never prints or prompts: every command returns data that a front-end renders.
+pub mod config;
 pub mod error;
 mod fs_util;
 pub mod name;

@@ -195,10 +195,20 @@ Precedence runs from highest to lowest: CLI flags, then `PAPER_*` environment va
 then project `paper.toml`, then user `config.toml`, then git config (identity only), then
 built-in defaults.
 
-*Today:* only the git-config step exists. `paper_git::configured_identity(path)` reads
-`user.name` and `user.email` as git would see them from `path` (the repository's config, then
-global and system config, honouring `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_NOSYSTEM`) and
-returns `None` if either is missing. The paper user config and the identity prompt come later.
+Every key can be overridden by an environment variable: `PAPER_` plus the dotted key
+upper-cased with `.` replaced by `_` (`PAPER_USER_NAME`, `PAPER_LARGE_FILES_MAX_MB`). An empty
+variable counts as unset. Git config supplies only `user.name` and `user.email`
+(`paper_git::configured_identity(path)`, which reads them as git would see them from `path`).
+Each key has one or two homes: identity and looks only in the user config, `profile` only in
+`paper.toml`, the rest in either (the project's wins). The key table is in
+[02-cli](02-cli.md#paper-config-getsetlist---project-since-v01).
+
+The user config is `$XDG_CONFIG_HOME/paper/config.toml`, else `~/.config/paper/config.toml`
+on Linux and macOS, and `%APPDATA%\paper\config.toml` on Windows. `paper-core::config`
+(`Key`, `ConfigFile`, `Settings`) loads and edits both files with `toml_edit`, so a `set` keeps
+comments and layout, and resolves them against an injected environment lookup; it never prints
+or prompts. The CLI feeds the result to `Project::with_options` (large-file thresholds) and
+uses it for the author and the `--color` default.
 
 ```toml
 # paper.toml (committed)
@@ -209,7 +219,7 @@ warn_mb = 10
 max_mb  = 100          # GitHub's hard limit; files above are skipped (I7)
 
 [diff]
-default = "words"      # words | lines
+default = "lines"      # lines (words arrives in v0.3)
 ```
 
 ```toml
@@ -219,8 +229,7 @@ name  = "Mina Park"
 email = "mina@uni.example"
 
 [ui]
-color = "auto"
-editor = ""            # empty = one-line prompt for save messages
+color = "auto"         # auto | always | never
 ```
 
 ## Errors

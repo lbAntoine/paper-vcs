@@ -123,23 +123,23 @@
     },
     {
       "id": "e1a0c014",
-      "title": "PV-014: review follow-ups from PV-011/PV-013 (diff file-typo wording, broken .git at init target as user error, CLI redact word-prefix flaw, change_id doc range, config.rs doc lines, large-file test via config after PV-005)",
-      "description": "Lists in the PV-011 and PV-013 ticket logs",
+      "title": "PV-014: review follow-ups from PV-011/PV-013/PV-005 (diff file-typo wording, broken .git at init target as user error, CLI redact word-prefix flaw, change_id doc range, config wording/CRLF/Origin/unset nits, JSON notes field)",
+      "description": "Lists in the PV-011, PV-013 and PV-005 ticket summaries",
       "status": "todo",
       "priority": "medium",
       "sprint": "v0.1",
       "created_at": "2026-10-16T08:42:58Z",
-      "updated_at": "2026-10-16T08:42:58Z"
+      "updated_at": "2026-10-16T12:12:14Z"
     },
     {
       "id": "9a6b3b7c",
       "title": "PV-005: config get/set/list + identity",
       "description": "",
-      "status": "todo",
+      "status": "done",
       "priority": "medium",
       "sprint": "v0.1",
       "created_at": "2026-09-25T12:32:57Z",
-      "updated_at": "2026-10-15T23:27:41Z"
+      "updated_at": "2026-10-16T12:12:14Z"
     },
     {
       "id": "c6026c86",

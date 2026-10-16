@@ -1,0 +1,11 @@
+---
+source: crates/paper-cli/tests/config.rs
+expression: env.redact(&run.stdout)
+---
+user.name            Mina Park         git
+user.email           mina@uni.example  git
+ui.color             never             user
+large_files.warn_mb  2                 env
+large_files.max_mb   7                 project
+diff.default         lines             default
+profile              (not set)         -

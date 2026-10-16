@@ -27,6 +27,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 similar = "2.7"
 tempfile = "3.27"
+toml_edit = "0.25"
 thiserror = "2.0"
 
 # Add third-party deps here when a task first needs them, then use `dep.workspace = true` in the crate.

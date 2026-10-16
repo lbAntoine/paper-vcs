@@ -13,6 +13,7 @@ use crate::commands;
 use crate::error::{self, exit_code};
 use crate::panic;
 use crate::render::style::Style;
+use crate::settings;
 
 /// Runs the CLI and returns the process exit code.
 pub fn run() -> ExitCode {
@@ -22,7 +23,8 @@ pub fn run() -> ExitCode {
         Err(err) => return clap_exit(&err),
     };
     panic::debug_trigger();
-    match commands::execute(&cli, Style::stdout(cli.color)) {
+    let color = settings::color_choice(&cli);
+    match commands::execute(&cli, Style::stdout(color)) {
         Ok(text) => {
             print_stdout(&text);
             ExitCode::SUCCESS
@@ -31,7 +33,7 @@ pub fn run() -> ExitCode {
             if cli.json {
                 print_stdout(&error::json(&err));
             } else {
-                eprint!("{}", error::human(&err, Style::stderr(cli.color)));
+                eprint!("{}", error::human(&err, Style::stderr(color)));
             }
             ExitCode::from(exit_code(err.kind))
         }

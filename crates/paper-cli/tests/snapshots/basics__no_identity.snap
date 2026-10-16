@@ -3,6 +3,8 @@ source: crates/paper-cli/tests/basics.rs
 expression: env.redact(&run.stderr)
 ---
 error: Paper doesn't know who you are yet
-  why:  Every save records its author, and neither a name nor an email is set in your git configuration.
-  next: git config --global user.name "Your Name"         # set the name saves are made under
-        git config --global user.email "you@example.org"  # set your email address
+  why:  Every save records its author, and no name or email is set in your paper settings or your git configuration.
+  next: paper config set user.name "Your Name"            # set the name saves are made under
+        paper config set user.email you@example.org       # set your email address
+        git config --global user.name "Your Name"         # or set the name in your git configuration instead
+        git config --global user.email "you@example.org"  # or set the email in your git configuration instead

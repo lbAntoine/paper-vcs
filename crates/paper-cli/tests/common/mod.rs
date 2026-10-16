@@ -22,6 +22,10 @@ pub struct Env {
     pub home: PathBuf,
     pub xdg_cache: PathBuf,
     pub local_app_data: PathBuf,
+    /// `XDG_CONFIG_HOME` for the run (the user config lives under it on Linux and macOS).
+    pub xdg_config: PathBuf,
+    /// `APPDATA` for the run (the user config lives under it on Windows).
+    pub app_data: PathBuf,
     pub global_config: PathBuf,
 }
 
@@ -51,7 +55,16 @@ impl Env {
         let home = root.join("home");
         let xdg_cache = root.join("xdg-cache");
         let local_app_data = root.join("local-app-data");
-        for folder in [&work, &home, &xdg_cache, &local_app_data] {
+        let xdg_config = root.join("xdg-config");
+        let app_data = root.join("app-data");
+        for folder in [
+            &work,
+            &home,
+            &xdg_cache,
+            &local_app_data,
+            &xdg_config,
+            &app_data,
+        ] {
             fs::create_dir_all(folder).unwrap();
         }
         let global_config = root.join("gitconfig");
@@ -63,6 +76,8 @@ impl Env {
             home,
             xdg_cache,
             local_app_data,
+            xdg_config,
+            app_data,
             global_config,
         }
     }
@@ -74,6 +89,21 @@ impl Env {
         } else {
             self.xdg_cache.join("paper")
         }
+    }
+
+    /// The user config file `paper` must use in this environment.
+    pub fn user_config(&self) -> PathBuf {
+        let base = if cfg!(windows) {
+            &self.app_data
+        } else {
+            &self.xdg_config
+        };
+        base.join("paper").join("config.toml")
+    }
+
+    /// The project file `paper config set --project` writes in `work`.
+    pub fn paper_toml(&self) -> PathBuf {
+        self.work.join("paper.toml")
     }
 
     fn isolate(&self, command: &mut Command) {
@@ -88,6 +118,8 @@ impl Env {
             .env("USERPROFILE", &self.home)
             .env("XDG_CACHE_HOME", &self.xdg_cache)
             .env("LOCALAPPDATA", &self.local_app_data)
+            .env("XDG_CONFIG_HOME", &self.xdg_config)
+            .env("APPDATA", &self.app_data)
             .env("GIT_CONFIG_GLOBAL", &self.global_config)
             .env("GIT_CONFIG_NOSYSTEM", "1")
             .env("NO_COLOR", "1");

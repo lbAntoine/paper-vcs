@@ -25,8 +25,8 @@ pub struct Cli {
     #[arg(short, long, global = true)]
     pub verbose: bool,
     /// When to use colour.
-    #[arg(long, global = true, value_enum, default_value_t = ColorChoice::Auto)]
-    pub color: ColorChoice,
+    #[arg(long, global = true, value_enum)]
+    pub color: Option<ColorChoice>,
     #[command(subcommand)]
     pub command: Command,
 }
@@ -106,6 +106,11 @@ pub enum Command {
         #[arg(long, value_name = "POINT")]
         since: Option<String>,
     },
+    /// Read or change paper's settings.
+    Config {
+        #[command(subcommand)]
+        action: ConfigAction,
+    },
     /// Put files back the way they were at a point.
     Restore {
         /// The files or folders to restore (relative to where you run paper).
@@ -115,4 +120,25 @@ pub enum Command {
         #[arg(long, value_name = "POINT")]
         from: Option<String>,
     },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ConfigAction {
+    /// Print the effective value of a setting.
+    Get {
+        /// The setting, for example `user.name`.
+        key: String,
+    },
+    /// Change a setting in your user settings, or in this project's `paper.toml`.
+    Set {
+        /// The setting, for example `user.name`.
+        key: String,
+        /// The new value.
+        value: String,
+        /// Write to this project's `paper.toml` instead of your user settings.
+        #[arg(long)]
+        project: bool,
+    },
+    /// Show every setting with its value and where the value comes from.
+    List,
 }
