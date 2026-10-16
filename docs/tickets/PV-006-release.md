@@ -1,6 +1,6 @@
 # PV-006: release pipeline (cargo-dist) and the v0.1.0 acceptance run
 
-- **Status:** In progress
+- **Status:** Done
 - **Branch:** `feat/PV-006-release`
 - **Depends on:** every other v0.1 ticket (merged). Runs alone.
 - **Touches:** root `Cargo.toml` (version, `[profile.dist]`), `Cargo.lock`, `dist-workspace.toml` (new, or
@@ -97,6 +97,31 @@ test. Publishing the release is a separate, maintainer-approved step after this 
 
 ## Summary
 
+A cargo-dist 0.32.0 release pipeline for v0.1.0 and an automated v0.1 acceptance run. Publishing is a
+separate maintainer-approved step (docs/workflow.md § Releasing).
+
+- `crates/paper-cli/tests/acceptance.rs` proves the roadmap's acceptance line with the real binary:
+  init a LaTeX paper (profile detected, junk not saved), ten saves, history, restore a file from
+  `last~3` byte-for-byte, save, `git push` to a bare repo, then a clone with all 12 saves, paper refs
+  present locally but none on the remote, clean `git status` and `fsck`. It passed on the first run
+  and on Linux, macOS and Windows CI.
+- `dist-workspace.toml` + generated `.github/workflows/v-release.yml`: five targets (macOS Intel and
+  ARM, Linux x86_64 and ARM gnu, Windows x86_64), shell and PowerShell installers, checksums, no
+  source tarball, no Homebrew/MSI/crates.io. Builds only on tags matching `v**[0-9]+.[0-9]+.[0-9]+*`;
+  plan only on pull requests.
+- Version 0.1.0; README (pre-release status, install one-liners pinned to v0.1.0), CHANGELOG 0.1.0,
+  the release runbook, 03-architecture § Distribution, 05-roadmap § v0.1.
+
+Deviations: the tag trigger is cargo-dist's generated pattern (narrowest with `tag-namespace = "v"`),
+not literally `v*`, which renamed the workflow to `v-release.yml`; cargo-dist can't mark 0.1.0 as a
+pre-release, so the runbook does it with `gh release edit`; the installers are named after the
+`paper-cli` package (revisit with the binary name). Before merge, a temporary commit built all five
+targets on this PR (nothing published; Apple Silicon artifact smoke-tested: `paper 0.1.0`, checksum
+OK), then was reverted.
+
+Follow-ups (not ticketed yet): a Homebrew tap, crates.io, MSI, musl builds for older Linux clusters,
+an install path outside `~/.cargo/bin`, a GitHub tag ruleset (maintainer).
+
 ## Handoff log
 
 ### RED · test-author · 2026-10-17
@@ -137,3 +162,10 @@ test. Publishing the release is a separate, maintainer-approved step after this 
 
 ### GREEN (pre-merge) · rust-engineer · 2026-10-17
 - Final doc fixes applied and the temporary `pr-run-mode = "upload"` commit reverted; `dist generate --check` is clean.
+
+### Review round 2 · reviewer · 2026-10-17
+- Verdict: APPROVE. All round-1 findings verified; `dist generate --check` and `dist plan --tag=v0.1.0` pass (five archives with checksums, two installers, no source tarball). Upload mode judged safe on PRs (`publishing` false; `host`/`announce` skipped).
+- Fixed before merge: a doubled backtick in 03-architecture; the runbook's run lookup (`--event push --branch vX.Y.Z --jq`); the README's Windows install folder; the ticket's Touches; the temporary upload-mode commit reverted.
+
+### Close · coordinator · 2026-10-17
+- Draft PR CI on the upload-mode commit: every release target built, `host` and `announce` skipped; full suite green on Linux, macOS and Windows (acceptance test included). CI-built aarch64-apple-darwin archive: `paper --version` → `paper 0.1.0`, `.sha256` verifies.
