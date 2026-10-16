@@ -205,11 +205,11 @@
       "id": "e1a0c013",
       "title": "PV-013: fix flaky an_ambiguous_change_id_prefix_lists_its_candidates (random change IDs can share the test's prefix)",
       "description": "From PV-010 review round 2",
-      "status": "todo",
+      "status": "done",
       "priority": "medium",
       "sprint": "v0.1",
       "created_at": "2026-10-16T07:35:03Z",
-      "updated_at": "2026-10-16T07:35:03Z"
+      "updated_at": "2026-10-16T09:02:12Z"
     }
   ]
 }

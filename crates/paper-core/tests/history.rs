@@ -409,24 +409,25 @@ fn short_change_ids_are_at_least_four_letters_and_unique_across_the_project() {
 
 #[test]
 fn short_change_ids_grow_until_they_tell_similar_ids_apart() {
+    // Ten shared letters: a random ID (the draft) sharing them is a 1 in 16^10 chance.
     let plain = Plain::new();
-    let first_id = format!("kmrwpq{}", "k".repeat(26));
-    let second_id = format!("kmrwpq{}", "m".repeat(26));
+    let first_id = format!("kmrwpqstvw{}", "k".repeat(22));
+    let second_id = format!("kmrwpqstvw{}", "m".repeat(22));
     let first = plain.commit(&[("a.txt", "1")], "One", &[], 1_000, Some(&first_id));
     let second = plain.commit(&[("a.txt", "2")], "Two", &[&first], 2_000, Some(&second_id));
     plain.branch("main", &second);
     let (_dir, project) = plain.adopt(&[("a.txt", "2")]);
 
     let entries = history(&project, &everything());
-    assert_eq!(entries[0].short_change_id, "kmrwpqm");
-    assert_eq!(entries[1].short_change_id, "kmrwpqk");
+    assert_eq!(entries[0].short_change_id, "kmrwpqstvwm");
+    assert_eq!(entries[1].short_change_id, "kmrwpqstvwk");
 }
 
 #[test]
 fn short_change_ids_count_the_ids_of_every_line() {
     let plain = Plain::new();
-    let main_id = format!("kmrwpq{}", "k".repeat(26));
-    let side_id = format!("kmrwpq{}", "m".repeat(26));
+    let main_id = format!("kmrwpqstvw{}", "k".repeat(22));
+    let side_id = format!("kmrwpqstvw{}", "m".repeat(22));
     let root = plain.commit(&[("a.txt", "1")], "Root", &[], 1_000, Some(&main_id));
     let side = plain.commit(&[("a.txt", "2")], "Side", &[&root], 2_000, Some(&side_id));
     plain.branch("main", &root);
@@ -435,7 +436,7 @@ fn short_change_ids_count_the_ids_of_every_line() {
 
     // Only `main` is listed, but the other line's ID still has to be told apart.
     let entries = history(&project, &everything());
-    assert_eq!(entries[0].short_change_id, "kmrwpqk");
+    assert_eq!(entries[0].short_change_id, "kmrwpqstvwk");
 }
 
 #[test]
