@@ -1,6 +1,6 @@
 # PV-003: CLI: clap, human + --json rendering, 3-part errors, exit codes, insta tests
 
-- **Status:** In progress
+- **Status:** Done
 - **Branch:** `feat/PV-003-cli`
 - **Depends on:** PV-001, PV-002 (merged). Runs in parallel with PV-010 (paper-core diff,
   status, restore). PV-011 wires `status`, `diff` and `restore` into the CLI once both are in.
@@ -140,6 +140,27 @@ exit codes. The CLI is the first real front-end over `paper-core`.
 
 ## Summary
 
+The `paper` binary for `init`, `save`, `history` and `show`, plus `PaperError` in paper-core and
+`configured_identity` in paper-git.
+
+- clap parsing with the global flags of 02-cli; discovery from the current folder or `-C`;
+  snapshot first (I1) unless `--no-snapshot`.
+- Paths are relative to where paper runs (`.`, `..`, `\` on Windows), and a path outside the
+  project is a user error.
+- Errors in three parts on stderr, or one JSON object on stdout with `--json` (argument errors
+  too). Exit codes 0/1/2/3/101; a panic writes a crash report and prints its path.
+- `--json` uses CLI-owned DTOs with `"schema": 1` and always the same keys.
+- Identity comes from git config until PV-005.
+
+Deviations: `From<ParsePointError>`; `show` prints a relative date (exact time in `--json`);
+`--all-but` repeats once per path; `--profile` accepted but not effective (PV-004); `--graph`
+"not yet". New dependencies: clap, assert_cmd, insta, dunce.
+
+Follow-ups in PV-011: the deferred review-round-2 items (no-op save JSON assertion,
+`project_failure` suggestion shape, identity fallback on a stray `.git`, `--json` scan stopping
+at `--`, Windows root-relative paths, a weak `history .` test), rewording core `Display` texts,
+and the untested TTY prompt.
+
 ## Handoff log
 
 ### RED · test-author · 2026-10-16
@@ -247,3 +268,12 @@ exit codes. The CLI is the first real front-end over `paper-core`.
 - Nits: `NotEnoughHistory` wording, `-v show` prints `Commit:  abc1234`, crash report names add
   the pid, panic test ignored in release builds (release test run passes).
 - Specs: 02-cli global behaviour, save, history.
+
+### Review round 2 · reviewer · 2026-10-16
+- Verdict: APPROVE. Tests, clippy and fmt pass on macOS (isolated target, INSTA_UPDATE=no).
+- Every round-1 finding verified fixed per the coordinator decisions.
+- Deferred to PV-011 (all MINOR/NIT): the no-op save JSON test doesn't assert the null keys;
+  `project_failure` puts prose in `next[].command`; `configured_identity` errors on a stray
+  `.git` above the target instead of falling back; the raw `--json` scan doesn't stop at `--`;
+  Windows root-relative (`\a`) and drive-relative (`C:a`) paths resolve under the current folder;
+  `history .` from a subfolder test only checks an absence.
