@@ -161,3 +161,18 @@ completes the v0.1 command set (`status`, `diff --lines`, `restore`).
 - Test fix: `status.rs` asserted `last.message == "first draft"`, but `save_all` is a no-op there
   (`init` already saved the starting files, as the RED note says), so the tip is "Start project".
   The assertion now expects that message; the line, commit and counts assertions are unchanged.
+
+### Review · reviewer · 2026-10-16
+- Verdict: CHANGES. Checks: tests, clippy and fmt pass on macOS (isolated target).
+- BLOCKER: `tests/restore.rs` uses `std::os::unix` without a cfg gate, so the crate doesn't compile on Windows CI → `#[cfg(unix)]` on the two Unix tests, as `tests/save.rs` does.
+- MAJOR: restore can write outside the project through a symlinked parent directory (only the last component is checked) → skip a path if any component is a symlink on disk; test it.
+- MAJOR: "skipped files are never overwritten" is untested apart from symlink entries in `from` → tests for a working-file symlink, an untracked oversize file and (ideally) a nested repo, asserting bytes unchanged and `skipped`.
+- MINOR: a refused restore still snapshots (moves the draft ref) while the spec says "nothing is written".
+- MINOR: blobs are read and flip obstacles found only after deletions → read everything and check obstacles before touching the disk.
+- MINOR: an untracked, ignored working file at a `from` path is overwritten without being recorded.
+- MINOR: `RestoreError::Io` wording: "write" for deletions too, absolute path, no next step.
+- MINOR: status test no longer proves `last` is the latest user save → save "first draft" first.
+- MINOR: the `git status --porcelain` AC is only tested where the restored file equals HEAD.
+- NIT: diff's `UnknownPaths` says "neither of the compared saves" when one side is the draft.
+- NIT: `history.rs` touched (visibility only) but not in Touches → record it in the ticket.
+- Coordinator decisions: fix everything in one round. A refused restore keeps the I1 snapshot (unsaved edits are recorded) but changes no working file; reword the spec and the AC that way and pin it with a test that has unsaved edits. Ignored working files at a `from` path go in `skipped`, untouched. Adding tests is authorised; don't weaken any.
