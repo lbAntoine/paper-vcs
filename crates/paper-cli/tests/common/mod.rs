@@ -208,9 +208,7 @@ impl Env {
 
     /// Replaces ids, hashes and the temp root in `text` so snapshots are stable.
     pub fn redact(&self, text: &str) -> String {
-        let mut out = text.replace('\\', "/");
-        let root = self.root.to_string_lossy().replace('\\', "/");
-        out = out.replace(root.as_str(), "[TMP]");
+        let mut out = redact_root(text, &self.root.to_string_lossy());
         for (change_id, hash) in self.known_ids() {
             for len in (4..=change_id.len()).rev() {
                 out = out.replace(&change_id[..len], "[ID]");
@@ -253,12 +251,39 @@ impl Env {
             .collect()
     }
 
-    /// Pretty-printed JSON with every time-like value redacted, then [`Env::redact`].
+    /// Pretty-printed JSON with every time-like value blanked and every string redacted with
+    /// [`Env::redact`]. Strings are redacted after parsing, so Windows paths are seen with
+    /// single backslashes, not as JSON escapes.
     pub fn redact_json(&self, stdout: &str) -> String {
         let mut value: serde_json::Value = serde_json::from_str(stdout)
             .unwrap_or_else(|err| panic!("stdout is not JSON ({err}): {stdout}"));
         blank_times(&mut value);
-        self.redact(&serde_json::to_string_pretty(&value).unwrap())
+        redact_strings(&mut value, &|text| self.redact(text));
+        serde_json::to_string_pretty(&value).unwrap()
+    }
+}
+
+/// Backslashes become `/` (so Windows and Unix agree) and the temp root becomes `[TMP]`.
+pub fn redact_root(text: &str, root: &str) -> String {
+    let root = root.replace('\\', "/");
+    text.replace('\\', "/").replace(root.as_str(), "[TMP]")
+}
+
+/// Applies `redact` to every string value in `value`.
+pub fn redact_strings(value: &mut serde_json::Value, redact: &dyn Fn(&str) -> String) {
+    match value {
+        serde_json::Value::String(text) => *text = redact(text),
+        serde_json::Value::Object(map) => {
+            for inner in map.values_mut() {
+                redact_strings(inner, redact);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for inner in items {
+                redact_strings(inner, redact);
+            }
+        }
+        _ => {}
     }
 }
 

@@ -277,3 +277,13 @@ and the untested TTY prompt.
   `.git` above the target instead of falling back; the raw `--json` scan doesn't stop at `--`;
   Windows root-relative (`\a`) and drive-relative (`C:a`) paths resolve under the current folder;
   `history .` from a subfolder test only checks an absence.
+
+### GREEN (CI fix) · rust-engineer · 2026-10-16
+
+- Windows CI failure: `redact_json` redacted the serialized JSON, where `\` is already `\\`, so
+  the temp root no longer matched. It now parses, then redacts every string value with the same
+  `redact` routine the human output uses (shared `redact_root`). New `tests/redaction.rs` checks
+  a Windows-style root in plain text and in escaped JSON on any OS.
+- Reviewed the other CLI tests for the same class (paths, save, show, history): they compare
+  git's `/` output, `/`-typed arguments and `[TMP]`-redacted text; no other `\` assumptions
+  found. Product output unchanged; no snapshot changed.
