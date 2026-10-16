@@ -120,3 +120,12 @@ history binary 500/500 passes (0 failures each).
 
 CI: `--no-fail-fast` added. NOTES.md: dated entry added. fmt, clippy `-D warnings` and the
 full suite pass.
+
+### Review · reviewer · 2026-10-16
+- Verdict: CHANGES. Tests, clippy and fmt pass; 200 more repeat runs of each binary, 0 failures. Odds in the FIX entry re-checked and correct. Other paper-core test files audited: clean. No overlap with PV-011.
+- MAJOR: short change-ID prefixes (1–3 letters, allowed by 01-concepts) are no longer tested anywhere; `short_id.len() >= 4` became vacuous.
+- MINOR: `project_with_unambiguous_tip` loops without a bound.
+- MINOR: NOTES.md says 2–4 letter prefixes clashed in 0.5% of runs (only the 2-letter one did) and "9 to 10 letters" (one is 8).
+- MINOR, follow-up (PV-014): the CLI test helper `Env::redact` replaces any 4+ letter prefix of a change ID, so an ID starting with a k–z word ("your", "most") rewrites snapshot text.
+- NITs, follow-up (PV-014): `change_id.rs` doc says `l..=z`; history.rs comment's odds are conservative.
+- Coordinator decisions: keep the long-prefix test, and add a short-prefix test that rebuilds the project (bounded, with a clear panic) while any random change ID starts with the short prefix, then checks `km` ambiguous and `kmn`/`kmp` unique, with exact short ids. Bound the unique-tip loop the same way. Fix the NOTES wording.
