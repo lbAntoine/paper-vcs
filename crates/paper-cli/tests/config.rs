@@ -619,3 +619,56 @@ fn get_and_set_json_have_a_fixed_shape() {
     assert_eq!(json["value"], 7);
     assert_eq!(json["source"], "user");
 }
+
+// ---- profile updates the .gitignore block (PV-004) ----
+
+#[test]
+fn set_project_profile_replaces_the_block_in_gitignore_and_says_so() {
+    let env = project();
+    assert!(env.read(".gitignore").contains("paper-vcs profile: latex"));
+    let existing = env.read(".gitignore");
+    env.write(".gitignore", &format!("my-own-line\n\n{existing}"));
+
+    let run = env.paper(&["config", "set", "--project", "profile", "typst"]);
+
+    run.assert_code(0);
+    assert!(run.stdout.contains("Set profile = typst in "), "{run:#?}");
+    assert!(run.stdout.contains(".gitignore"), "{run:#?}");
+    let gitignore = env.read(".gitignore");
+    assert!(gitignore.starts_with("my-own-line\n"), "{gitignore}");
+    assert!(
+        gitignore.contains("paper-vcs profile: typst"),
+        "{gitignore}"
+    );
+    assert!(
+        !gitignore.contains("paper-vcs profile: latex"),
+        "{gitignore}"
+    );
+    assert!(env.read("paper.toml").contains("profile = \"typst\""));
+}
+
+#[test]
+fn set_project_profile_creates_the_gitignore_when_there_is_none() {
+    let env = project();
+    std::fs::remove_file(env.work.join(".gitignore")).unwrap();
+
+    env.paper(&["config", "set", "--project", "profile", "markdown"])
+        .assert_code(0);
+
+    assert!(
+        env.read(".gitignore")
+            .contains("paper-vcs profile: markdown")
+    );
+}
+
+#[test]
+fn set_project_profile_with_a_broken_block_fails_and_leaves_gitignore_alone() {
+    let env = project();
+    let broken = "# >>> paper-vcs profile: latex >>>\n*.aux\n";
+    env.write(".gitignore", broken);
+
+    let run = env.paper(&["config", "set", "--project", "profile", "typst"]);
+
+    run.assert_three_part_error(1);
+    assert_eq!(env.read(".gitignore"), broken);
+}

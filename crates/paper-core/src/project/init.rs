@@ -11,7 +11,9 @@ use super::{
     FORMAT_VERSION, Project, VERSION_FILE, draft_ref, line_ref, paper_dir, signature_now,
     write_draft,
 };
+use crate::config::ConfigError;
 use crate::name::LineName;
+use crate::profile::{Profile, gitignore::GitignoreError};
 use crate::snapshot::{Skipped, SnapshotError, SnapshotOptions, StatCache, snapshot};
 use crate::view::{Line, View, ViewError};
 
@@ -28,6 +30,15 @@ pub struct Initialized {
     pub large: Vec<(String, u64)>,
     /// Existing branches whose names can't be used as line names; they were left alone.
     pub skipped_branches: Vec<String>,
+    /// Name of the profile in effect: `latex`, `markdown`, ...
+    pub profile: String,
+    /// `true` when the profile was detected from the files, `false` when chosen (by the caller
+    /// or by an existing `profile` in `paper.toml`).
+    pub detected: bool,
+    /// Files `init` wrote in the working folder, relative to it: `.gitignore` and/or `paper.toml`.
+    pub written: Vec<String>,
+    /// The profile's tips.
+    pub tips: Vec<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -42,6 +53,12 @@ pub enum InitError {
     UnusableBranchName { name: String },
     #[error("the current branch '{name}' has no commits yet, but other branches do")]
     EmptyCurrentBranch { name: String },
+    #[error("paper.toml says the profile is '{existing}', but '{requested}' was asked for")]
+    ProfileConflict { requested: String, existing: String },
+    #[error(transparent)]
+    Gitignore(#[from] GitignoreError),
+    #[error(transparent)]
+    Config(#[from] ConfigError),
     #[error(transparent)]
     Git(#[from] GitError),
     #[error(transparent)]
@@ -71,6 +88,7 @@ impl Project {
         identity: Identity,
         options: &SnapshotOptions,
     ) -> Result<(Self, Initialized), InitError> {
+        // RED stub: GREEN makes this `init_with_profile(.., None)`.
         fs::create_dir_all(path).map_err(|source| io_error(path, source))?;
         match GitRepo::enclosing_workdir(path) {
             None => {
@@ -83,6 +101,35 @@ impl Project {
                 root,
             }),
         }
+    }
+}
+
+impl Project {
+    /// Like [`Project::init`], with the profile choice: `Some(profile)` is "chosen" (reported
+    /// with `detected == false`), `None` detects it from the files the snapshot walk sees.
+    ///
+    /// New project: `.gitignore` (profile block) and `paper.toml` (`profile = "<name>"`) are
+    /// written before the first save, so the save contains both and none of the ignored files.
+    /// Adoption: history is never rewritten; the block and `paper.toml` (when it has no
+    /// `profile` yet) are written to the working files and show up in the draft. An existing
+    /// `profile` in `paper.toml` wins over detection.
+    ///
+    /// # Errors
+    ///
+    /// Everything [`Project::init`] reports, plus [`InitError::ProfileConflict`] when `choice`
+    /// disagrees with the `profile` in `paper.toml`, and [`InitError::Gitignore`] for a
+    /// malformed paper-vcs block; in both cases nothing is written.
+    ///
+    /// # Panics
+    ///
+    /// Never.
+    pub fn init_with_profile(
+        _path: &Path,
+        _identity: Identity,
+        _options: &SnapshotOptions,
+        _choice: Option<&Profile>,
+    ) -> Result<(Self, Initialized), InitError> {
+        todo!("PV-004: profiles in init")
     }
 }
 
@@ -160,6 +207,11 @@ fn adopt(
         skipped: snap.skipped,
         large: snap.large,
         skipped_branches,
+        // RED stub: GREEN fills these in.
+        profile: String::new(),
+        detected: false,
+        written: Vec::new(),
+        tips: Vec::new(),
     };
     finish(
         repo,
@@ -199,6 +251,11 @@ fn start_fresh(
         skipped: snap.skipped,
         large: snap.large,
         skipped_branches: Vec::new(),
+        // RED stub: GREEN fills these in.
+        profile: String::new(),
+        detected: false,
+        written: Vec::new(),
+        tips: Vec::new(),
     };
     let view = View::new(line, Line { tip: save, draft });
     finish(

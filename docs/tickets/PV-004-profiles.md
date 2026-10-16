@@ -114,3 +114,38 @@ never touches the user's own lines, and records the choice in `paper.toml`.
 ## Summary
 
 ## Handoff log
+
+### RED · test-author · 2026-10-16
+- Tests: `crates/paper-core/src/profile/mod.rs` (9 unit: parsing, shared lines, detection order),
+  `crates/paper-core/src/profile/gitignore.rs` (14 unit: block merge, CRLF, errors, `apply_to_file`),
+  `crates/paper-core/tests/profile.rs` (12: new project, chosen, walk-only detection, malformed block,
+  adoption, conflicts, `apply_to_file` vs git), `crates/paper-cli/tests/init.rs` (+7),
+  `crates/paper-cli/tests/config.rs` (+3). 46 new tests (+ 1 new snapshot `init_json_latex`).
+- Failing on: `todo!()` in `Profile::all/builtin`, `detect`, `gitignore::apply/apply_to_file`,
+  `Project::init_with_profile` (all profile unit and core integration tests); assertions in CLI
+  tests (no profile line, no `.gitignore`/`paper.toml`, `--help` text, no block update on
+  `config set --project profile`). All other pre-existing tests pass.
+- Stubs: `paper_core::profile::{Profile{name,detect,ignore,tips}, Profile::all, Profile::builtin(&str)
+  -> Option<&'static Profile>, detect(&[impl AsRef<str>]) -> &'static Profile}`,
+  `profile::gitignore::{apply(Option<&str>, &Profile) -> Result<Option<String>, GitignoreError>,
+  apply_to_file(&Path, &Profile) -> Result<bool, GitignoreError>, GitignoreError{UnterminatedBlock,
+  DuplicateBlock, Io}}`, `Project::init_with_profile(path, identity, options, Option<&Profile>)`,
+  `Initialized{profile, detected, written, tips}` (placeholders in the old `init`),
+  `InitError::{ProfileConflict{requested,existing}, Gitignore, Config}` (mapped to a project error
+  for now; GREEN must make ProfileConflict and Gitignore user errors, exit 1, three parts).
+  GREEN should make `Project::init` delegate to `init_with_profile(.., None)`.
+- Binding choices of mine (the ticket was silent): detection matches by file name in any folder;
+  `apply_to_file` is the core entry point for `config set --project profile`; `written` is
+  `[".gitignore", "paper.toml"]` in that order; adoption with `profile` in paper.toml reports it
+  as not detected is NOT asserted. CLI prints `Profile: latex (detected from *.tex)` /
+  `Profile: markdown (chosen)`.
+- Existing tests changed (all because init now saves/writes `.gitignore` and `paper.toml`):
+  core `tests/init.rs`: `init_in_an_empty_folder_creates_a_first_save_and_an_empty_draft`
+  (tracked_files 0 -> 2), `init_with_existing_files_saves_them_and_leaves_git_clean`
+  (tracked 3 -> 4, ls-tree gains `paper.toml`), `adopting_keeps_history_and_turns_uncommitted_work_into_the_draft`
+  (draft files gain `.gitignore`, `paper.toml`). These fail until GREEN.
+- Existing CLI snapshots that GREEN must re-accept (still pass today, will change): `init__init_created`,
+  `init__init_adopted`, `init__init_json`. `init__init_twice` should not change. New snapshot to accept:
+  `init__init_json_latex`. Other tests that run init (CLI `Env::project_with_three_saves`, core tests) now
+  also get `.gitignore`/`paper.toml`; GREEN to check they still pass.
+- Questions: none.

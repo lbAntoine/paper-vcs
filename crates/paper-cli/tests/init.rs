@@ -130,3 +130,123 @@ fn quiet_init_prints_nothing() {
     run.assert_code(0);
     assert_eq!(run.stdout, "");
 }
+
+// ---- profiles (PV-004) ----
+
+#[test]
+fn init_says_which_profile_it_detected_what_it_wrote_and_the_tips() {
+    let env = Env::new();
+    env.write("main.tex", "\\documentclass{article}\n");
+    env.write("main.aux", "junk");
+
+    let run = env.paper(&["init"]);
+
+    run.assert_code(0);
+    assert!(
+        run.stdout.contains("Profile: latex (detected from *.tex)"),
+        "{run:#?}"
+    );
+    assert!(run.stdout.contains(".gitignore"), "{run:#?}");
+    assert!(run.stdout.contains("paper.toml"), "{run:#?}");
+    assert!(run.stdout.contains("one sentence per line"), "{run:#?}");
+    let tracked = env.git_work(&["ls-tree", "-r", "--name-only", "main"]);
+    assert_eq!(tracked, ".gitignore\nmain.tex\npaper.toml\n");
+    assert_eq!(env.git_work(&["status", "--porcelain"]), "");
+    env.fsck();
+}
+
+#[test]
+fn init_with_profile_uses_it_and_reports_it_as_chosen() {
+    let env = Env::new();
+    env.write("main.tex", "\\documentclass{article}\n");
+
+    let run = env.paper(&["init", "--profile", "markdown"]);
+
+    run.assert_code(0);
+    assert!(
+        run.stdout.contains("Profile: markdown (chosen)"),
+        "{run:#?}"
+    );
+    assert!(
+        env.read(".gitignore")
+            .contains("paper-vcs profile: markdown")
+    );
+    assert!(env.read("paper.toml").contains("profile = \"markdown\""));
+}
+
+#[test]
+fn init_help_no_longer_says_the_profile_has_no_effect() {
+    let env = Env::new();
+    let run = env.paper(&["init", "--help"]);
+    run.assert_code(0);
+    assert!(!run.stdout.contains("no effect"), "{run:#?}");
+}
+
+#[test]
+fn init_json_has_profile_detected_written_and_tips() {
+    let env = Env::new();
+    env.write("main.tex", "\\documentclass{article}\n");
+
+    let run = env.paper(&["--json", "init"]);
+
+    run.assert_code(0);
+    let json = run.json();
+    assert_eq!(json["profile"], "latex");
+    assert_eq!(json["detected"], true);
+    assert_eq!(
+        json["written"],
+        serde_json::json!([".gitignore", "paper.toml"])
+    );
+    assert!(json["tips"].as_array().is_some_and(|tips| !tips.is_empty()));
+    settings().bind(|| {
+        insta::assert_snapshot!("init_json_latex", env.redact_json(&run.stdout));
+    });
+}
+
+#[test]
+fn init_json_reports_a_chosen_profile_as_not_detected() {
+    let env = Env::new();
+    env.write("main.tex", "\\documentclass{article}\n");
+    let run = env.paper(&["--json", "init", "--profile", "typst"]);
+    run.assert_code(0);
+    assert_eq!(run.json()["profile"], "typst");
+    assert_eq!(run.json()["detected"], false);
+}
+
+#[test]
+fn adopting_leaves_the_block_and_paper_toml_as_unsaved_changes() {
+    let env = Env::new();
+    env.plain_git_repo_with_side_branch();
+    let before = env.git_work(&["log", "--format=%H %s", "--all"]);
+
+    let run = env.paper(&["init"]);
+
+    run.assert_code(0);
+    assert!(run.stdout.contains("Profile: generic"), "{run:#?}");
+    assert!(run.stdout.contains(".gitignore"), "{run:#?}");
+    assert_eq!(env.git_work(&["log", "--format=%H %s", "--all"]), before);
+    let status = env.git_work(&["status", "--porcelain"]);
+    assert!(
+        status.contains(".gitignore") && status.contains("paper.toml"),
+        "{status}"
+    );
+    env.fsck();
+}
+
+#[test]
+fn adopting_with_a_conflicting_profile_is_a_user_error_and_writes_nothing() {
+    let env = Env::new();
+    env.plain_git_repo_with_side_branch();
+    env.write("paper.toml", "profile = \"typst\"\n");
+
+    let run = env.paper(&["init", "--profile", "latex"]);
+
+    run.assert_three_part_error(1);
+    assert!(run.stderr.contains("typst"), "{run:#?}");
+    assert!(
+        run.stderr.contains("config set"),
+        "should say how to change it: {run:#?}"
+    );
+    assert!(!env.work.join(".gitignore").exists());
+    assert!(!env.work.join(".git/paper").exists());
+}

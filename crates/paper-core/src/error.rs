@@ -201,6 +201,9 @@ impl From<InitError> for PaperError {
                 )],
             ),
             InitError::Git(_)
+            | InitError::ProfileConflict { .. }
+            | InitError::Gitignore(_)
+            | InitError::Config(_)
             | InitError::Snapshot(_)
             | InitError::View(_)
             | InitError::Io { .. } => Self::project("Paper could not set up this folder", &error),
