@@ -111,3 +111,9 @@ case) as on Linux, and never leaves a file/folder swap half done.
   - **The real case bug is in snapshot:** on a case-insensitive filesystem, a tracked `Notes.tex` still "exists" through `notes.tex`, so the draft records both spellings. Before the restore, `status` shows `modified Notes.tex` and `new notes.tex`; after it, `new notes.tex` although no such file exists.
 - GREEN's `snapshot/mod.rs` change (record a tracked path the walk didn't produce only if its exact spelling is listed) is the fix, so `snapshot/mod.rs` joins Touches.
 - The fixed RED tests pass against `main`'s code for the three case-only tests, because the "draft records the working files" check compares two equally wrong views. They must also assert the draft tree's exact file list. Bug 2 (blocked flip) still reproduces and its test fails on `main`, as it should.
+
+### RED (fix 2) · test-author · 2026-10-16
+
+- The three case-only tests now also assert the draft tree's exact file list (`git ls-tree -r --name-only refs/paper/draft/main`: `.gitignore`, the save's spelling, `paper.toml`) and that `status` lists no change at all.
+- On main (d67ad0d, probe worktree, since removed): all 4 new tests FAIL. The case tests fail on the draft listing (both spellings recorded, e.g. `Notes.tex` and `notes.tex`); the flip test fails because `chap/one.tex` is deleted.
+- On this branch (HEAD): all 20 restore tests pass; clippy is clean.

@@ -485,7 +485,13 @@ fn assert_draft_records_working_files(project: &mut Project) {
 }
 
 /// Restores `only`, then checks what every case-only scenario must keep true.
-fn restore_and_check_untouched_history(dir: &Path, project: &mut Project, only: &[&str]) {
+/// `tree` is the exact file list the draft must record afterwards.
+fn restore_and_check_untouched_history(
+    dir: &Path,
+    project: &mut Project,
+    only: &[&str],
+    tree: &[&str],
+) {
     let head = git(dir, &["rev-parse", "HEAD"]);
     let index = git(dir, &["ls-files", "--stage"]);
 
@@ -494,6 +500,13 @@ fn restore_and_check_untouched_history(dir: &Path, project: &mut Project, only: 
     assert_eq!(git(dir, &["rev-parse", "HEAD"]), head);
     assert_eq!(git(dir, &["ls-files", "--stage"]), index);
     assert_draft_records_working_files(project);
+    // Only the save's spelling is recorded in the draft, and status reports nothing
+    // for the other one.
+    let draft = git(dir, &["rev-parse", "refs/paper/draft/main"]);
+    let recorded = git(dir, &["ls-tree", "-r", "--name-only", draft.trim()]);
+    assert_eq!(recorded.lines().collect::<Vec<_>>(), tree);
+    let status = project.status(&StatusOptions { snapshot: true }).unwrap();
+    assert_eq!(status.changes, vec![], "nothing differs from the save");
     fsck(dir);
 }
 
@@ -505,7 +518,12 @@ fn restore_gives_the_saved_spelling_when_only_the_case_of_a_file_changed() {
     fs::write(dir.path().join("notes.tex"), "edited\n").unwrap();
     project.snapshot().unwrap();
 
-    restore_and_check_untouched_history(dir.path(), &mut project, &["Notes.tex", "notes.tex"]);
+    restore_and_check_untouched_history(
+        dir.path(),
+        &mut project,
+        &["Notes.tex", "notes.tex"],
+        &[".gitignore", "Notes.tex", "paper.toml"],
+    );
 
     assert_eq!(names(dir.path(), ""), vec!["Notes.tex", "paper.toml"]);
     assert_eq!(read(dir.path(), "Notes.tex"), "saved\n");
@@ -519,7 +537,12 @@ fn restore_gives_the_saved_spelling_for_the_reverse_case_only_rename() {
     fs::write(dir.path().join("Notes.tex"), "edited\n").unwrap();
     project.snapshot().unwrap();
 
-    restore_and_check_untouched_history(dir.path(), &mut project, &["Notes.tex", "notes.tex"]);
+    restore_and_check_untouched_history(
+        dir.path(),
+        &mut project,
+        &["Notes.tex", "notes.tex"],
+        &[".gitignore", "notes.tex", "paper.toml"],
+    );
 
     assert_eq!(names(dir.path(), ""), vec!["notes.tex", "paper.toml"]);
     assert_eq!(read(dir.path(), "notes.tex"), "saved\n");
@@ -533,7 +556,12 @@ fn restore_gives_the_saved_spelling_when_only_the_case_of_a_folder_changed() {
     write(dir.path(), "sections/a.tex", "edited\n");
     project.snapshot().unwrap();
 
-    restore_and_check_untouched_history(dir.path(), &mut project, &["Sections", "sections"]);
+    restore_and_check_untouched_history(
+        dir.path(),
+        &mut project,
+        &["Sections", "sections"],
+        &[".gitignore", "Sections/a.tex", "paper.toml"],
+    );
 
     assert_eq!(names(dir.path(), ""), vec!["Sections", "paper.toml"]);
     assert_eq!(names(dir.path(), "Sections"), vec!["a.tex"]);
