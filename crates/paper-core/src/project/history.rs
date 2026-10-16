@@ -2,8 +2,11 @@
 
 use paper_git::{ChangeId, Commit, CommitId, GitError, GitTime, Identity};
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use super::Project;
 use super::resolve::{Known, ResolveError};
+use super::save::matches;
 use crate::name::LineName;
 use crate::point::Point;
 use crate::snapshot::Change;
@@ -66,13 +69,26 @@ impl Project {
     /// [`HistoryError::Git`] if a commit can't be read.
     pub fn history(&self, request: &HistoryRequest) -> Result<Vec<HistoryEntry>, HistoryError> {
         let known = self.known()?;
-        let saves = if request.all_lines {
-            let tips: Vec<CommitId> = self
-                .view
-                .lines()
-                .map(|(_, line)| line.tip.clone())
-                .collect();
-            self.repo.ancestors(&tips)?
+        let saves: Vec<Commit> = if request.all_lines {
+            // One walk: the saves are the commits reachable from the tips, in `known` order.
+            let by_id: BTreeMap<&CommitId, &Commit> =
+                known.commits.iter().map(|c| (&c.id, c)).collect();
+            let mut reachable: BTreeSet<&CommitId> = BTreeSet::new();
+            let mut pending: Vec<&CommitId> =
+                self.view.lines().map(|(_, line)| &line.tip).collect();
+            while let Some(id) = pending.pop() {
+                if reachable.insert(id)
+                    && let Some(commit) = by_id.get(id)
+                {
+                    pending.extend(&commit.parents);
+                }
+            }
+            known
+                .commits
+                .iter()
+                .filter(|c| reachable.contains(&c.id))
+                .cloned()
+                .collect()
         } else {
             self.current_line_chain()?
         };
@@ -98,10 +114,10 @@ impl Project {
     ///
     /// [`ShowError::Resolve`] if the point names nothing, [`ShowError::Git`] on read failures.
     pub fn show(&self, point: &Point) -> Result<Shown, ShowError> {
-        let resolved = self.resolve(point)?;
+        let known = self.known()?;
+        let resolved = self.resolve_with(point, &known)?;
         let commit = self.repo.read_commit(&resolved.commit)?;
         let changes = self.changes_of(&commit)?;
-        let known = self.known()?;
         Ok(Shown {
             entry: self.entry(&commit, &known),
             changes,
@@ -135,13 +151,9 @@ impl Project {
     }
 
     fn touches(&self, commit: &Commit, path: &str) -> Result<bool, GitError> {
-        let path = path.trim_end_matches('/');
-        Ok(self.changes_of(commit)?.iter().any(|change| {
-            change.path == path
-                || change
-                    .path
-                    .strip_prefix(path)
-                    .is_some_and(|rest| rest.starts_with('/'))
-        }))
+        Ok(self
+            .changes_of(commit)?
+            .iter()
+            .any(|change| matches(path, &change.path)))
     }
 }

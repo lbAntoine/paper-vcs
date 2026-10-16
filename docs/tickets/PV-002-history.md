@@ -169,3 +169,20 @@ says how many saves the line has.
 - NIT: an inclusive end in a DST fold uses the earlier offset; the later one would be more
   inclusive. Optional.
 - Coordinator: fix all of these in one round. Adding tests is authorised; don't weaken any.
+
+### GREEN (review round 1)
+
+- BLOCKER: `resolve_date` no longer panics. A cutoff past jiff's maximum resolves to "no limit"
+  (the tip); one before the minimum gives `NoSaveBefore`. Tests for `date:9999-12-31` and
+  `date:-9999-01-01`; the "Never in practice" Panics claim is gone. No other `expect`/`unwrap` on
+  user input in resolve.rs or history.rs.
+- `DateSpec` implements `Display` (`2026-09-01`, `2026-09-01T14:30`); `NoSaveBefore` uses it.
+- `NotEnoughHistory` gained `line: LineName` and a singular/plural message. The existing test's
+  pattern needed a `..` to still compile; assertions unchanged.
+- Plain-git short ids and `Ambiguous` candidates use the shortest unique hash prefix, min 7. A
+  7-character collision is too costly to build with real commits, so the rule is covered by a
+  unit test on `unique_hash_len` with synthetic hashes.
+- `resolve_with(&Known)` is reused by `show`; `resolve` only walks history for names.
+  `history --all` filters the single `known` walk by reachability from the tips.
+- `history` uses `save::matches` (now `pub(super)`) instead of its own copy.
+- NIT done: the inclusive end uses the later occurrence in a DST fold.

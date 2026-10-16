@@ -196,7 +196,9 @@ fn last_past_the_first_save_says_how_many_saves_the_line_has() {
         commit_id(&git(dir.path(), &["rev-parse", "main~2"]))
     );
     match project.resolve(&point("last~3")) {
-        Err(ResolveError::NotEnoughHistory { back, available }) => {
+        Err(ResolveError::NotEnoughHistory {
+            back, available, ..
+        }) => {
             assert_eq!(back, 3);
             assert_eq!(available, total);
         }
@@ -469,4 +471,26 @@ fn a_date_before_the_first_save_finds_nothing() {
         }
         other => panic!("expected NoSaveBefore, got {other:?}"),
     }
+}
+
+#[test]
+fn extreme_dates_never_panic() {
+    let (_dir, project, [_first, _second, third]) = dated_project();
+    // Past the latest representable time: no limit, so the last save.
+    assert_eq!(resolved(&project, "date:9999-12-31").commit, third);
+    // Before the earliest: nothing.
+    assert!(matches!(
+        project.resolve(&point("date:-9999-01-01")),
+        Err(ResolveError::NoSaveBefore { .. })
+    ));
+}
+
+#[test]
+fn no_save_before_reads_the_date_back_plainly() {
+    let (_dir, project, _) = dated_project();
+    let message = project
+        .resolve(&point("date:2026-08-31T10:05"))
+        .unwrap_err()
+        .to_string();
+    assert!(message.contains("2026-08-31T10:05"), "{message}");
 }

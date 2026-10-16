@@ -46,6 +46,16 @@ pub enum ParsePointError {
     ForeignSyntax { given: String, suggestion: String },
 }
 
+impl std::fmt::Display for DateSpec {
+    /// The spelling a researcher types: `2026-09-01` or `2026-09-01T14:30`.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Day(day) => write!(f, "{day}"),
+            Self::Minute(m) => write!(f, "{}T{:02}:{:02}", m.date(), m.hour(), m.minute()),
+        }
+    }
+}
+
 impl DateSpec {
     /// The Last instant the spec covers (inclusive). `date:2026-09-01` covers the whole day
     pub fn inclusive_end(self) -> DateTime {
