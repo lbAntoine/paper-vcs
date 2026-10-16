@@ -1,6 +1,6 @@
 # PV-011: CLI for status, diff and restore; file diffs in show; error wording
 
-- **Status:** In progress
+- **Status:** Done
 - **Branch:** `feat/PV-011-cli-diff-status-restore`
 - **Depends on:** PV-003 (CLI), PV-010 (core diff, status, restore). Both merged.
   Runs in parallel with PV-013 (test-only, owns `crates/paper-core/tests/resolve.rs`,
@@ -122,6 +122,33 @@ well everywhere, and the minor issues left by PV-003's review are closed.
 - Core: unit tests in `crates/paper-core/src/error.rs`. paper-git: `tests/config.rs`.
 
 ## Summary
+
+`paper status`, `paper diff` and `paper restore` in the CLI, file diffs in `paper show`, and
+error wording across paper-core.
+
+- `status`: header with the last save, per-file line counts or sizes, skipped and large files,
+  `Nothing unsaved.`
+- `diff`: up to two leading points while they resolve, then paths; `--` forces paths;
+  `--since`, `--stat`; `--words` "not yet". Output is git's unified format, checked with
+  `git apply --check -R`. Mistyped points (`lsat`, `last~x`, `HEAD~1`) get point errors.
+- `restore`: paths from the current folder; skipped files listed with a reason.
+- `show`: metadata then the diff (`--stat` for the summary).
+- JSON with `"schema": 1` and fixed keys for all four. `DiffError`, `StatusError` and
+  `RestoreError` convert to three-part errors, and core messages no longer name commands
+  that don't exist yet.
+- PV-003 follow-ups closed: identity fallback for a stray `.git` above the target, `--json`
+  scan stopping at `--`, Windows root/drive-relative paths rejected, the issue URL in
+  `next[].command`, the no-op save JSON keys, `history .` tests, and the save prompt unit-tested.
+
+Deviations: `Project::show_diff` in paper-core (shares `parent_tree` with history);
+`matches("")` means every file (for `restore .`); `Restored.skipped` carries a `RestoreSkip`
+reason; `paper-cli` depends on `paper-diff` directly (shown in 03-architecture). Review
+round 2 found a one-line Windows compile error, so this was escalated to the maintainer: fixed
+with no third round, and windows-latest CI is the check.
+
+Follow-ups in PV-014: the file-typo wording in `diff`, a broken `.git` at the `init` target as a
+user error, long doc-comment lines in `config.rs`, and a large-file test through config once
+PV-005 exists.
 
 ## Handoff log
 
