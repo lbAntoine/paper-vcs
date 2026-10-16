@@ -206,3 +206,16 @@ Snapshots accepted after reading each: status/diff/restore/show human and JSON.
 **Specs.** `02-cli.md` (paths, JSON shapes, `command` may be a URL, show/diff/restore/status), `03-architecture.md` § Errors.
 
 **Follow-ups.** Restore skipped files are paths only; a reason per file needs a core change.
+
+### Review · reviewer · 2026-10-16
+- Verdict: CHANGES. Checks: tests, clippy and fmt pass on macOS (isolated target).
+- MAJOR: `configured_identity` checks `.git` at the nearest existing folder, not the target; `paper init newproj` under a folder with a stray `.git` exits 3 with a "report a bug" error. Tests created the target first.
+- MINOR: a mistyped point (`lsat`, `last~x`) becomes a path and the error only talks about files.
+- MINOR: no test that `HEAD~1` or an ambiguous point is an error rather than a path.
+- MINOR: `Project::show_diff` (deviation, justified) has no core test and repeats the first-parent/empty-tree choice of `history.rs`.
+- MINOR: `matches("")` changes core semantics (`Only([""])`, `AllBut([""])`) without a unit test or docs; no CLI test for `paper restore .`.
+- MINOR: restore's skipped list has no reasons and its header claims "paper does not track these", which isn't always true.
+- MINOR: deleted text files show `−N lines` but the 02-cli example doesn't.
+- MINOR: skipped/large output in `status` is only tested on Unix (symlink) and not at all for large files.
+- NITs: `diff . nope` skips the unknown-path check; a needless clone; a placeholder `next` command; a terminal read failure is `User` instead of a project failure; the direct `paper-diff` edge isn't in 03-architecture.
+- Coordinator decisions: fix everything in this round. Restore carries a reason per skipped path from core (`restore.rs` may change for that), rendered in the CLI and JSON. Deleted text files keep `−N lines`; update the spec. Keep the direct `paper-diff` dependency and show it in 03-architecture. Adding tests is authorised; don't weaken any.
