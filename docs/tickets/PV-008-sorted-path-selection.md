@@ -1,6 +1,6 @@
 # PV-008: save path selection with sorted lookups
 
-- **Status:** In progress
+- **Status:** Done
 - **Branch:** `feat/PV-008-sorted-path-selection`
 - **Depends on:** PV-007 (merged). Runs in parallel with PV-012 (restore).
 - **Touches:** `crates/paper-core/src/project/save.rs` (`select` only), `crates/paper-core/tests/save.rs`
@@ -64,6 +64,20 @@ paths, with exactly the same results as today.
 
 ## Summary
 
+`select` (save's path selection) uses sorted lookups instead of comparing every selected path with
+every change: O((P + C) log(P + C)) comparisons, times path depth. Results and order are unchanged.
+
+- Unmatched paths: a binary search for the exact path plus the range `[path + "/", path + "0")` over
+  the sorted change paths. The partition checks each change and its ancestor folders against a set.
+- Characterisation tests (written to pass before the refactor and unchanged by it): 14 through
+  `Project::save` on real repositories, a differential test against a reference implementation
+  over 12 000 seeded inputs including sort neighbours, non-ASCII and repeated trailing `/`, and a
+  20 000-change / 2 000-path test. Review mutation-tested the suite: 14 of 14 mutants caught.
+
+Deviations: the RED phase wrote characterisation tests that pass (behaviour-preserving refactor);
+post-approval test and comment fixes went in without another review round, checked by the
+coordinator. No spec change.
+
 ## Handoff log
 
 ### RED · test-author · 2026-10-16
@@ -94,3 +108,10 @@ Characterisation tests: all PASS against today's code by design (behaviour-prese
 ### GREEN (post-approval) · rust-engineer · 2026-10-16
 
 Tightened tests per review: clean-project `Only([""])` integration test, faster shared reference, non-ASCII and `//` inputs; complexity comment corrected to O((P + C) log(P + C)).
+
+### Review · reviewer · 2026-10-16
+- Verdict: APPROVE. Equivalence reasoned through (range bound, sort neighbours, non-ASCII, `""`, trailing `/`, ancestor walk, order and duplicates). Mutation testing: 14/14 mutants caught by the differential test, 13/14 through `Project::save`.
+- MINORs fixed after approval: an `Only([""])` test on a clean project (the one mutant integration tests missed); the complexity comment; the reference's per-pair allocations (unit tests 8–10 s → 0.76 s). NITs fixed: `mut` once, a non-ASCII component, repeated trailing `/`.
+
+### Close · coordinator · 2026-10-16
+- Post-approval commit checked: outside the test module only the complexity comment changed. fmt, clippy and the full suite (625 tests) pass.
