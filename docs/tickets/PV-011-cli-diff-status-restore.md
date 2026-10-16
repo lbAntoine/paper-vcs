@@ -1,0 +1,126 @@
+# PV-011: CLI for status, diff and restore; file diffs in show; error wording
+
+- **Status:** In progress
+- **Branch:** `feat/PV-011-cli-diff-status-restore`
+- **Depends on:** PV-003 (CLI), PV-010 (core diff, status, restore). Both merged.
+  Runs in parallel with PV-013 (test-only, owns `crates/paper-core/tests/resolve.rs`,
+  `tests/history.rs`, `ci.yml` and `NOTES.md`).
+- **Touches:** `crates/paper-cli/**` (sources, tests, snapshots, `Cargo.toml`),
+  `crates/paper-core/src/error.rs`,
+  `crates/paper-core/src/project/*.rs` (error `Display` texts only),
+  `crates/paper-git/src/config.rs`, `crates/paper-git/tests/config.rs`,
+  root `Cargo.toml` and `Cargo.lock` (only if `paper-cli` needs `paper-diff` as a direct dependency),
+  `docs/specs/02-cli.md`, `docs/specs/03-architecture.md` (§ Errors)
+- **Must not touch:** `crates/paper-core/tests/resolve.rs`, `crates/paper-core/tests/history.rs`,
+  `.github/workflows/ci.yml`, `docs/tickets/NOTES.md` (PV-013).
+- **Specs:** `02-cli.md` § Global behaviour, § `paper status`, § `paper show`, § `paper diff`,
+  § `paper restore`; `04-content.md` § Line diff, § Binary summary; `03-architecture.md` § Errors;
+  `01-concepts.md` § Researcher-facing wording rules
+
+## Goal
+
+The v0.1 command set is complete in the terminal: a researcher can run `paper status`,
+`paper diff`, `paper restore` and see real file diffs in `paper show`. Error texts read
+well everywhere, and the minor issues left by PV-003's review are closed.
+
+## Context
+
+- Core API: `Project::status(&mut self, &StatusOptions)`, `Project::diff(&self, &DiffRequest)`,
+  `Project::restore(&mut self, &RestoreRequest)` (`crates/paper-core/src/project/{status,diff,restore}.rs`);
+  `paper_diff::to_unified` renders a `TextDiff` as git's unified format.
+- CLI layout from PV-003: `cli.rs` (clap), `run.rs`, `commands.rs`, `paths.rs` (path resolution
+  from the start folder), `render/{human,json,style,time}.rs`, `error.rs`. Follow its patterns,
+  test helpers (`tests/common/mod.rs`, redaction) and DTO style.
+- `PaperError` conversions live in `crates/paper-core/src/error.rs`; `DiffError`, `StatusError`
+  and `RestoreError` have none yet.
+- The PV-003 ticket's Summary lists the review-round-2 follow-ups folded in here (item 6).
+
+## Scope
+
+1. **`paper status`**: the 02-cli layout, with line counts until v0.3 (`modified  sections/intro.tex
+   +12 −3 lines`; binary: sizes like `(318 KB)` or `318 KB → 331 KB`), a skipped/large section,
+   `Nothing unsaved.` for an empty draft. Header `On <line> · last save <id> "<message>" (<time>)`.
+   `--no-snapshot` maps to `StatusOptions { snapshot: false }`. Exit 0.
+2. **`paper diff [<from>] [<to>] [<paths>…] [--lines|--words] [--stat] [--since <point>]`**:
+   - Positionals: up to two leading arguments are points if they resolve as points; the first one
+     that doesn't, and everything after it, are paths (resolved with `paths.rs`). `--` forces
+     everything after it to be paths. A name that is both a point and a file is a point; the
+     spec says so and shows `--`.
+   - `--since X` = `diff X @`; combining it with positional points is a user error.
+   - Output: unified diff per file via `to_unified` (labels `a/<path>`, `b/<path>`, `/dev/null`),
+     binary files as the 04-content one-line summary. Colour (red/green) only on a colour TTY.
+   - `--stat`: one line per file with `+N −M` (or the binary sizes), then a total.
+   - `--lines` is the default and accepted; `--words` is a user error "not yet (v0.3)".
+   - No differences: prints nothing, exit 0.
+3. **`paper restore <paths>… [--from <point>]`**: paths through `paths.rs`; prints what was
+   restored or deleted and what was skipped (with why); `RestoreError::UnknownPaths` as a
+   three-part user error.
+4. **`paper show <point>`**: after the metadata, the file diffs (same renderer as `diff`);
+   `--stat` gives the summary instead. `show @` shows the draft's diff against `last`.
+5. **JSON** for status, diff, restore and show (`"schema": 1`, every key always present, `null`
+   when absent): diff files carry `path`, `kind`, `binary`, `added`, `removed`, `old_bytes`,
+   `new_bytes` and `hunks` (`old_start`, `old_len`, `new_start`, `new_len`, `lines` with `kind`
+   and `text`, `missing_newline`). Document the shapes in 02-cli § Global behaviour or a short
+   JSON subsection.
+6. **PV-003 review follow-ups:**
+   - the no-op save JSON test asserts every key is present and `null`/`[]`;
+   - `PaperError::project_failure`: `next[].command` holds the issue URL, the explanation the prose;
+     document that `command` may be a URL;
+   - `configured_identity` falls back to global config only on gix's "no repository found"
+     discover error; a stray or broken `.git` above an `init` target no longer blocks `init`
+     of a new folder; the `# Errors` doc matches; a test covers it;
+   - the raw `--json` scan stops at `--`;
+   - Windows root-relative (`\a`) and drive-relative (`C:a`) paths are a user error
+     ("use a path relative to this folder or a full path"); unit-tested under `cfg(windows)`
+     plus a pure-logic test on all platforms if the logic allows;
+   - the `history .` from a subfolder test also asserts the saves that should be listed.
+7. **Errors and wording:**
+   - `PaperError` conversions for `DiffError`, `StatusError`, `RestoreError` (unit tests).
+   - Core `Display` texts: none suggests a command that doesn't exist yet (`paper lines` is
+     v0.4); each reads as one clear sentence about what happened, without duplicating the
+     `next` hints the CLI shows. Keep every substring asserted by
+     `crates/paper-core/tests/resolve.rs` (lines 207 and 495) and `tests/save.rs` unchanged,
+     since those files aren't yours to edit (resolve.rs) or shouldn't need edits (save.rs).
+8. **TTY prompt:** the save-message prompt reads from an injected `BufRead` and an `is_tty`
+   flag so it is unit-tested (prompt text, empty answer → error, trimmed answer).
+9. **Specs:** `02-cli.md` sections above (remove the "*Today:*" note in `show`; diff positional
+   rules and `--`; `--words` not yet; JSON shapes); `03-architecture.md` § Errors if conversions
+   or `Suggestion` semantics change.
+
+## Out of scope
+
+- Word diff (v0.3), Office diffs, conflicts in `status` (v0.4), activity/undo (v0.2).
+- Restore on case-insensitive filesystems and blocked flips (PV-012).
+- Profiles (PV-004), config (PV-005).
+
+## Acceptance criteria
+
+- [ ] `paper status` after edits shows the header, each change with kind and line counts or sizes (sorted), skipped/large files; empty draft → `Nothing unsaved.`; `--no-snapshot` doesn't see an edit made since the last command. Snapshot-tested, human and JSON.
+- [ ] `paper diff` shows unsaved changes as a unified diff; `paper diff A`, `paper diff A B`, `--since A` and `-- <path>` compare the right points; paths from a subfolder work; an unknown path or point → exit 1 three-part error.
+- [ ] A file named like a point is diffed as a path after `--`, and as a point without it.
+- [ ] `--stat` prints per-file counts and a total; a binary file prints the size summary; `--words` → exit 1 "not yet".
+- [ ] `paper diff` output for edited, added and deleted text files passes `git apply --check -R` in the project (cross-check with the `git` binary).
+- [ ] `paper restore <file>` and `--from last~1 <dir>` restore content (checked on disk and with `git status --porcelain`); skipped files are listed; unknown path → exit 1, nothing changed on disk.
+- [ ] `paper show last` prints metadata then the diff; `show --stat`; `show @`; the first save shows every file as added.
+- [ ] JSON for status, diff, restore and show has `"schema": 1` and a fixed key set, snapshot-tested.
+- [ ] Every PV-003 follow-up in scope item 6 has a test.
+- [ ] `DiffError`, `StatusError`, `RestoreError` convert to three-part `PaperError`s with the right kind; no core message mentions `paper lines`.
+- [ ] The save prompt is unit-tested.
+- [ ] Specs updated.
+- [ ] fmt, clippy (`-D warnings`) and the full suite pass (CI on Linux, macOS, Windows).
+
+## Test plan
+
+- `crates/paper-cli/tests/{status,diff,restore}.rs` and additions to `show.rs`, `save.rs`,
+  `paths.rs`, `json_errors.rs`, using `tests/common/mod.rs` (isolated env, redaction on parsed
+  JSON values). Build fixtures with paper-core or the CLI itself.
+- Snapshots must be identical on Windows: no absolute paths in output except redacted roots;
+  file content in fixtures written with `\n`.
+- Git cross-check for `paper diff` (`last` → `@`): write the output to a file and run
+  `git apply --check -R <file>` in the project. The working files are the `@` side, so the
+  reversed patch must apply cleanly.
+- Core: unit tests in `crates/paper-core/src/error.rs`. paper-git: `tests/config.rs`.
+
+## Summary
+
+## Handoff log
