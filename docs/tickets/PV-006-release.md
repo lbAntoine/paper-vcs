@@ -113,3 +113,16 @@ test. Publishing the release is a separate, maintainer-approved step after this 
 - Version `0.1.0`; `Cargo.lock` updated (four workspace crates). Docs updated: README (status, Install, "later versions" note), new CHANGELOG.md `## 0.1.0`, workflow § Releasing, 03-architecture § Distribution (now vs later), 05-roadmap § v0.1 (boxes ticked, acceptance points to the test).
 - fmt, clippy `-D warnings` and the full suite pass. Nothing pushed, tagged or published.
 - Follow-up idea: the Windows and Linux aarch64 builds are only proven on CI/release day; the first real `dist` run will be the PR's `plan` job, and cross-build on the tag.
+
+### Review · reviewer · 2026-10-17
+- Verdict: CHANGES. Tests, clippy, fmt, `dist generate --check` and `dist plan` pass. release.yml is safe: no `pull_request_target`/`workflow_dispatch`, nothing publishes from a PR or a fork, only `GITHUB_TOKEN`, `contents: write` is the minimum, checkouts don't persist credentials.
+- MAJOR: 05-roadmap ticks a "`Store` trait", which doesn't exist (`GitRepo` is a concrete struct); 03-architecture still describes the trait.
+- MAJOR: CHANGELOG (the release body) implies `git pull` works; after a pull brings commits, `paper save` refuses (`OutOfSyncWithGit`).
+- MINOR: the generated tag trigger matches any tag containing `N.N.N`, not only `v*` (a stray tag fails at `host`, but `0.1.0` or `v0.1.0-x` would be accepted).
+- MINOR: `dist plan` also ships `source.tar.gz`, outside the maintainer's list.
+- MINOR: the acceptance test's "no `refs/paper/*` on the remote" check can't fail (`push main` only, and no local check that paper refs exist).
+- MINOR: runbook gaps: tag the merged CI-green commit; non-interactive run watching; a failure path; the cargo-dist upgrade line installs globally; bump the README's pinned URLs per release.
+- MINOR: README should say to open a new terminal after installing (binary goes to `~/.cargo/bin`).
+- NITs: installer naming acceptable for v0.1.0 (revisit with the binary name and crates.io); a redundant last line in CHANGELOG; glibc ≥ 2.35 floor (musl later).
+- Risk noted: the Linux aarch64 and Windows release builds have only ever run on a tag.
+- Coordinator decisions: fix both MAJORs (reword the roadmap item to `GitRepo` and update 03-architecture to match). Try `tag-namespace = "v"` (regenerate; verify `dist plan --tag=v0.1.0`); if unsupported, document the real pattern in the ticket and runbook. `source-tarball = false`. Strengthen the acceptance test as suggested. Fix the runbook, README and CHANGELOG items. To exercise every target before the real tag: set `pr-run-mode = "upload"` for this PR so the full build matrix runs (nothing publishes on a PR), then switch back to `"plan"` in a final commit once the artifacts are confirmed. A tag ruleset on GitHub is the maintainer's call, not part of this ticket.
