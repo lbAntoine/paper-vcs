@@ -98,3 +98,8 @@ test. Publishing the release is a separate, maintainer-approved step after this 
 ## Summary
 
 ## Handoff log
+
+### RED · test-author · 2026-10-17
+- Added `crates/paper-cli/tests/acceptance.rs`: 1 test (`a_researcher_can_init_save_restore_and_push_with_plain_git`) covering every step of scope item 1 (latex detected and junk unsaved; 10 saves; history 11 newest-first and `-n 3`; restore `last~3` byte-for-byte, status, diff, save; push to a local bare repo with `-b main`, fresh clone has files and 12 saves, no `refs/paper/*` on the remote, `fsck --strict` clean in work, clone and bare).
+- It passes at once (features already merged); no stubs needed. Also passes with an empty global git config and `GIT_CONFIG_NOSYSTEM=1`; full suite, fmt and clippy clean.
+- Portable: paths via `Path::join`, `\n` content. No questions.
