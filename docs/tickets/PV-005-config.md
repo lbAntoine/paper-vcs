@@ -42,7 +42,7 @@ identity in saves, the colour default, and the large-file thresholds.
   | `ui.color` | `auto` / `always` / `never` | user only | default for `--color` |
   | `large_files.warn_mb` | integer ≥ 1 | project or user | snapshot warning threshold |
   | `large_files.max_mb` | integer ≥ 1, ≥ `warn_mb` | project or user | snapshot skip threshold |
-  | `diff.default` | `lines` (`words` rejected "not yet, v0.3") | project or user | none yet beyond validation |
+  | `diff.default` | `lines` or `words` (`words` accepted, no effect until v0.3) | project or user | none yet beyond validation |
   | `profile` | the six profile names | project only | stored; used by PV-004 |
 
   `ui.editor` and any other key: a user error naming the known keys (`editor` arrives later).
@@ -105,7 +105,7 @@ identity in saves, the colour default, and the large-file thresholds.
 - [ ] Identity precedence: env > user config > git config; each step tested.
 - [ ] `config set` keeps existing comments and other keys in the file byte-for-byte.
 - [ ] `config set --project large_files.max_mb 1` writes `paper.toml`; a 2 MB file is then skipped by `status`/`save`; `PAPER_LARGE_FILES_MAX_MB` overrides it; user config applies when the project doesn't set it.
-- [ ] Invalid values (`ui.color purple`, `large_files.max_mb 0`, `max_mb` < `warn_mb`, `user.email nobody`, `diff.default words`, an unknown key, `ui.editor`) → exit 1, three-part error, nothing written.
+- [ ] Invalid values (`ui.color purple`, `large_files.max_mb 0`, `max_mb` < `warn_mb`, `user.email nobody`, an unknown key, `ui.editor`) → exit 1, three-part error, nothing written.
 - [ ] `user.name --project` and `profile` without `--project` are refused with a reason.
 - [ ] `config get` prints the effective value; an unset identity → exit 1.
 - [ ] `config list` shows every key with value and source; `--json` has `"schema": 1` and a fixed key set; snapshot-tested.
@@ -170,3 +170,15 @@ identity in saves, the colour default, and the large-file thresholds.
   - `diff.default = "words"` is accepted everywhere (spec lists it) and has no effect until v0.3, where `config list`/`get` say so. This changes the AC and the RED test that rejected it; that one test change is authorised.
   - Other invalid values in files stay errors, naming the file.
   - Adding tests is authorised; don't weaken any others.
+
+### GREEN (review round 1) · rust-engineer · 2026-10-16
+- 1: `ConfigError::InvalidValue` carries `origin` (env var or file) and an optional order `conflict`; `PaperError::from_config(&error, Scope)` words the three parts and suggests `unset VAR`, `paper config set [--project] key v` plus the file path, or both order fixes. `config set` passes its scope. CLI tests: `paper.toml` `max_mb = 0`, `PAPER_UI_COLOR=purple`, rejected `--project` set.
+- 2: core and CLI tests for the read guard (personal keys in `paper.toml` never change identity or colour).
+- 3: `with` uses `as_table_like_mut()`; a plain value in the way is the new `ConfigError::Blocked` (teaching error). Tested in core and CLI.
+- 4: order errors read "large_files.max_mb (1) can't be below large_files.warn_mb (10) in <file>" with both fixes.
+- 5: `Settings::ignored_project_keys()`, `ConfigFile::has`; `config get`/`list` print a privacy note on stderr. Tested.
+- 6: config writes use `fs_util::write_atomic`.
+- 7: `get`/`set --json` documented in 02-cli and asserted.
+- 8: `diff.default = words` is accepted everywhere; `get`/`list` note "no effect until v0.3" on stderr. AC line and spec updated. Authorised test changes: core `invalid_values_are_user_errors_that_say_what_is_allowed` (words removed from the invalid list), core `words_for_diff_default_says_not_yet` (now `..._is_accepted_and_has_no_effect_yet`), CLI `invalid_values_and_unknown_keys...` (words case removed) and CLI `diff_default_words_says_not_yet` (now accepted). Nothing else weakened.
+- 9: unset shows source `-` in the human list (JSON keeps `default`, as the RED test asserts); `profile` no-value why no longer mentions git; relative `XDG_CONFIG_HOME` ignored; no-settings-folder message per platform; CRLF files get CRLF lines.
+- Snapshot re-read: only `config_list` changed (profile source `default` -> `-`).

@@ -212,11 +212,10 @@ fn invalid_values_and_unknown_keys_are_three_part_errors_and_write_nothing() {
     let env = project();
     set(&env, &["--project", "large_files.warn_mb", "5"]);
     let before = std::fs::read_to_string(env.paper_toml()).unwrap();
-    let cases: [&[&str]; 8] = [
+    let cases: [&[&str]; 7] = [
         &["ui.color", "purple"],
         &["large_files.max_mb", "0"],
         &["user.email", "nobody"],
-        &["diff.default", "words"],
         &["nonsense.key", "1"],
         &["ui.editor", "vim"],
         &["large_files.max_mb", "lots"],
@@ -247,11 +246,15 @@ fn an_unknown_key_names_the_known_keys() {
 }
 
 #[test]
-fn diff_default_words_says_not_yet() {
+fn diff_default_words_is_accepted_and_says_it_has_no_effect_yet() {
     let env = project();
-    let run = env.paper(&["config", "set", "diff.default", "words"]);
-    run.assert_three_part_error(1);
+    set(&env, &["diff.default", "words"]);
+    let run = env.paper(&["config", "get", "diff.default"]);
+    run.assert_code(0);
+    assert_eq!(run.stdout.trim(), "words");
     assert!(run.stderr.contains("v0.3"), "{run:#?}");
+    let list = env.paper(&["config", "list"]);
+    assert!(list.stderr.contains("v0.3"), "{list:#?}");
 }
 
 #[test]
@@ -492,4 +495,127 @@ fn the_environment_beats_ui_color_in_the_user_config() {
     let run = env.paper_in(&env.work, &[("PAPER_UI_COLOR", "never")], &["history"]);
     run.assert_code(0);
     assert!(!run.stdout.contains('\u{1b}'), "{run:#?}");
+}
+
+// ---- review round 1 ----
+
+#[test]
+fn a_bad_value_in_paper_toml_names_the_file_and_suggests_the_project_fix() {
+    let env = project();
+    std::fs::write(env.paper_toml(), "[large_files]\nmax_mb = 0\n").unwrap();
+    let run = env.paper(&["status"]);
+    run.assert_three_part_error(1);
+    assert!(run.stderr.contains("paper.toml"), "{run:#?}");
+    assert!(
+        run.stderr
+            .contains("paper config set --project large_files.max_mb"),
+        "{run:#?}"
+    );
+}
+
+#[test]
+fn a_bad_environment_value_names_the_variable() {
+    let env = project();
+    let run = env.paper_in(&env.work, &[("PAPER_UI_COLOR", "purple")], &["status"]);
+    run.assert_three_part_error(1);
+    assert!(run.stderr.contains("PAPER_UI_COLOR"), "{run:#?}");
+    assert!(run.stderr.contains("unset PAPER_UI_COLOR"), "{run:#?}");
+}
+
+#[test]
+fn a_rejected_project_set_suggests_the_project_form() {
+    let env = project();
+    set(&env, &["--project", "large_files.warn_mb", "5"]);
+    let run = env.paper(&["config", "set", "--project", "large_files.max_mb", "3"]);
+    run.assert_three_part_error(1);
+    assert!(
+        run.stderr
+            .contains("large_files.max_mb (3) can't be below large_files.warn_mb (5)"),
+        "{run:#?}"
+    );
+    assert!(
+        run.stderr.contains("paper config set --project"),
+        "{run:#?}"
+    );
+}
+
+#[test]
+fn personal_settings_in_paper_toml_do_not_change_the_author_and_are_reported() {
+    let env = project();
+    std::fs::write(
+        env.paper_toml(),
+        "[user]\nname = \"Leaked Person\"\nemail = \"leak@lab.example\"\n",
+    )
+    .unwrap();
+    edit_and_save(&env, &[]);
+    assert_eq!(author(&env), "Mina Park/mina@uni.example");
+
+    let get = env.paper(&["config", "get", "user.name"]);
+    get.assert_code(0);
+    assert_eq!(get.stdout.trim(), "Mina Park");
+    assert!(
+        get.stderr.contains("user.name in paper.toml is ignored"),
+        "{get:#?}"
+    );
+    let list = env.paper(&["config", "list"]);
+    list.assert_code(0);
+    assert!(
+        list.stderr.contains("user.email in paper.toml is ignored"),
+        "{list:#?}"
+    );
+    assert!(list.stderr.contains("shared"), "{list:#?}");
+}
+
+#[test]
+fn set_works_in_an_inline_table_and_refuses_a_plain_value_clearly() {
+    let env = project();
+    std::fs::write(env.paper_toml(), "large_files = { warn_mb = 5 }\n").unwrap();
+    set(&env, &["--project", "large_files.max_mb", "8"]);
+    let get = env.paper(&["config", "get", "large_files.max_mb"]);
+    assert_eq!(get.stdout.trim(), "8");
+
+    std::fs::write(env.paper_toml(), "large_files = 5\n").unwrap();
+    let run = env.paper(&["config", "set", "--project", "large_files.max_mb", "8"]);
+    run.assert_three_part_error(1);
+    assert!(run.stderr.contains("large_files"), "{run:#?}");
+    assert_eq!(
+        std::fs::read_to_string(env.paper_toml()).unwrap(),
+        "large_files = 5\n"
+    );
+}
+
+#[test]
+fn unset_values_show_a_dash_as_their_source() {
+    let env = Env::without_identity();
+    let run = env.paper(&["config", "list"]);
+    run.assert_code(0);
+    let row = run
+        .stdout
+        .lines()
+        .find(|l| l.starts_with("profile"))
+        .unwrap();
+    assert!(row.trim_end().ends_with("(not set)  -"), "{row}");
+    let get = env.paper(&["config", "get", "profile"]);
+    get.assert_three_part_error(1);
+    assert!(!get.stderr.contains("git"), "{get:#?}");
+}
+
+#[test]
+fn get_and_set_json_have_a_fixed_shape() {
+    let env = project();
+    let set = env.paper(&["config", "set", "--json", "large_files.max_mb", "7"]);
+    set.assert_code(0);
+    let json = set.json();
+    assert_keys(&json, &["schema", "key", "value", "file"]);
+    assert_eq!(json["schema"], 1);
+    assert_eq!(json["key"], "large_files.max_mb");
+    assert_eq!(json["value"], 7);
+    assert!(json["file"].as_str().unwrap().ends_with("config.toml"));
+
+    let get = env.paper(&["config", "get", "--json", "large_files.max_mb"]);
+    get.assert_code(0);
+    let json = get.json();
+    assert_keys(&json, &["schema", "key", "value", "source"]);
+    assert_eq!(json["value"], 7);
+    assert_eq!(json["source"], "user");
 }

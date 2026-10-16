@@ -154,7 +154,7 @@ impl Key {
                 .split_once('@')
                 .is_some_and(|(local, domain)| !local.is_empty() && !domain.is_empty()),
             Key::UiColor => COLORS.contains(&trimmed),
-            Key::DiffDefault => trimmed == "lines",
+            Key::DiffDefault => trimmed == "lines" || trimmed == "words",
             Key::Profile => PROFILES.contains(&trimmed),
             Key::LargeFilesWarnMb | Key::LargeFilesMaxMb => {
                 return match trimmed.parse::<u64>() {
@@ -185,9 +185,11 @@ impl Key {
                  of saves), and not below large_files.warn_mb"
                     .to_owned()
             }
-            Key::DiffDefault => "only `lines` for now; word-by-word comparison (`words`) arrives \
-                                 in v0.3"
-                .to_owned(),
+            Key::DiffDefault => {
+                "`lines` or `words` (`words` has no effect until v0.3; comparisons \
+                                 stay line by line)"
+                    .to_owned()
+            }
             Key::Profile => format!("one of {}", PROFILES.join(", ")),
         }
     }
@@ -197,6 +199,8 @@ impl Key {
             key: self.as_str().to_owned(),
             value: value.to_owned(),
             expected,
+            origin: None,
+            conflict: None,
         }
     }
 

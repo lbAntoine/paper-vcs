@@ -341,12 +341,22 @@ are local until `paper share <line>`. This means experiments are private by defa
 - `paper config set <key> <value> [--project]` validates, writes, and prints
   `Set <key> = <value> in <file>`. It writes the user config by default and the project's
   `paper.toml` (at the project root, created on first use) with `--project`. Comments, layout
-  and other keys in the file are kept. Invalid values, unknown keys and a key in the wrong
+  and other keys in the file are kept. Invalid values, unknown keys, a section that is a plain value and a key in the wrong
   file are user errors and nothing is written.
 - `paper config list` prints every key with its value and its source (`env`, `project`,
   `user`, `git` or `default`). With `--json`:
   `{"schema":1,"settings":[{"key","value","source"}]}`, in the table's order; `value` is a
-  string, an integer (megabytes) or `null` when unset.
+  string, an integer (megabytes) or `null` when unset (human output shows `(not set)` with
+  source `-`). `get --json` prints `{"schema":1,"key","value","source"}` and `set --json`
+  `{"schema":1,"key","value","file"}`.
+- Personal keys (`user.*`, `ui.*`) found in `paper.toml` are ignored, never read; `get` and
+  `list` print a note on stderr saying so and to remove them, because `paper.toml` is saved
+  with the project and may be shared.
+- A bad value found in the environment or a file is a user error that names its origin (the
+  variable, or the file) and suggests what fixes it (`unset` the variable, `paper config set
+  --project …` or edit `paper.toml`, or the plain `paper config set …` for the user config).
+  A `max_mb` below `warn_mb` in one file reads "large_files.max_mb (1) can't be below
+  large_files.warn_mb (10) in <file>" and offers both fixes.
 - User keys work outside a project. `--project` and project keys need one.
 
 User config: `$XDG_CONFIG_HOME/paper/config.toml`, else `~/.config/paper/config.toml`
@@ -361,7 +371,7 @@ A malformed file is a user error naming the file and line. See
 | `ui.color` | `auto` / `always` / `never` | user only | default for `--color` |
 | `large_files.warn_mb` | integer ≥ 1 | project or user | snapshot warning threshold |
 | `large_files.max_mb` | integer ≥ 1, not below `warn_mb` in the same file | project or user | snapshot skip threshold |
-| `diff.default` | `lines` (`words` arrives in v0.3) | project or user | validated only |
+| `diff.default` | `lines` or `words` | project or user | none until v0.3 (comparisons stay by line; `get` and `list` say so) |
 | `profile` | the six profile names | project only | stored; used by profiles later |
 
 Identity and looks are never written to `paper.toml`: it is saved with the project, which

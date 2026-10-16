@@ -2,7 +2,7 @@
 
 use paper_git::Identity;
 
-use super::{ConfigError, ConfigFile, Home, Key, Source, Value};
+use super::{ConfigError, ConfigFile, Home, Key, Origin, Source, Value};
 use crate::snapshot::SnapshotOptions;
 
 const MB: u64 = 1024 * 1024;
@@ -29,6 +29,7 @@ pub struct Entry {
 #[derive(Debug, Clone)]
 pub struct Settings {
     entries: Vec<Entry>,
+    ignored_project_keys: Vec<Key>,
 }
 
 impl Settings {
@@ -49,12 +50,25 @@ impl Settings {
             .into_iter()
             .map(|key| resolve_key(key, &sources))
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(Self { entries })
+        let ignored_project_keys = Key::ALL
+            .into_iter()
+            .filter(|key| key.home() == Home::UserOnly && sources.project.has(*key))
+            .collect();
+        Ok(Self {
+            entries,
+            ignored_project_keys,
+        })
     }
 
     /// Every key in [`Key::ALL`] order.
     pub fn entries(&self) -> &[Entry] {
         &self.entries
+    }
+
+    /// Personal keys (identity, looks) found in the project's `paper.toml`. They are ignored,
+    /// because `paper.toml` is saved with the project and may be shared.
+    pub fn ignored_project_keys(&self) -> &[Key] {
+        &self.ignored_project_keys
     }
 
     /// The entry for `key`.
@@ -109,7 +123,11 @@ fn resolve_key<E: Fn(&str) -> Option<String>>(
         })
     };
     if let Some(text) = (sources.env)(&key.env_name()).filter(|text| !text.is_empty()) {
-        return found(key.parse_value(&text)?, Source::Env);
+        let name = key.env_name();
+        let value = key
+            .parse_value(&text)
+            .map_err(|error| error.with_origin(Origin::Env(name)))?;
+        return found(value, Source::Env);
     }
     if key.home() != Home::UserOnly
         && let Some(value) = sources.project.get(key)?

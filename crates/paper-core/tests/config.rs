@@ -150,7 +150,6 @@ fn invalid_values_are_user_errors_that_say_what_is_allowed() {
         (Key::UserEmail, "nobody"),
         (Key::UserName, ""),
         (Key::UserName, "   "),
-        (Key::DiffDefault, "words"),
         (Key::DiffDefault, "sentences"),
         (Key::Profile, "word"),
     ];
@@ -171,10 +170,14 @@ fn invalid_values_are_user_errors_that_say_what_is_allowed() {
 }
 
 #[test]
-fn words_for_diff_default_says_not_yet() {
-    let shown = PaperError::from(Key::DiffDefault.parse_value("words").unwrap_err());
-    let all = format!("{} {}", shown.message, shown.why);
-    assert!(all.contains("v0.3"), "{shown:?}");
+fn words_for_diff_default_is_accepted_and_has_no_effect_yet() {
+    assert_eq!(
+        Key::DiffDefault.parse_value("words").unwrap(),
+        text("words")
+    );
+    ConfigFile::empty()
+        .with(Key::DiffDefault, text("words"))
+        .unwrap();
 }
 
 #[test]
@@ -677,5 +680,199 @@ fn the_no_identity_error_suggests_paper_config_before_git_config() {
             .iter()
             .any(|c| c.starts_with("git config --global user.name")),
         "{commands:?}"
+    );
+}
+
+// ---- review round 1 ----
+
+fn project_file_at(dir: &Path, text: &str) -> ConfigFile {
+    let path = dir.join("paper.toml");
+    fs::write(&path, text).unwrap();
+    ConfigFile::load(&path).unwrap()
+}
+
+#[test]
+fn personal_keys_in_the_project_file_are_never_read() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = project_file_at(
+        dir.path(),
+        "[user]\nname = \"Leaked\"\nemail = \"leak@example.org\"\n[ui]\ncolor = \"always\"\n",
+    );
+    let s = resolve(&[], project, ConfigFile::empty(), None);
+    assert_eq!(s.identity(), None);
+    let color = s.entry(Key::UiColor);
+    assert_eq!(
+        (color.value.clone(), color.source),
+        (Some(text("auto")), Source::Default)
+    );
+    assert_eq!(
+        s.ignored_project_keys(),
+        [Key::UserName, Key::UserEmail, Key::UiColor]
+    );
+}
+
+#[test]
+fn no_ignored_keys_when_the_project_file_is_clean() {
+    let s = resolve(&[], ConfigFile::empty(), ConfigFile::empty(), None);
+    assert!(s.ignored_project_keys().is_empty());
+}
+
+#[test]
+fn a_bad_value_in_a_file_names_the_file_and_suggests_the_project_form() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = project_file_at(dir.path(), "[large_files]\nmax_mb = 0\n");
+    let error = Settings::resolve(Sources {
+        env: lookup(&[]),
+        project,
+        user: ConfigFile::empty(),
+        git_identity: None,
+    })
+    .unwrap_err();
+    let shown = PaperError::from(error);
+    assert!(shown.message.contains("paper.toml"), "{shown:?}");
+    let commands: Vec<&str> = shown.next.iter().map(|s| s.command.as_str()).collect();
+    assert!(
+        commands
+            .iter()
+            .any(|c| c.starts_with("paper config set --project large_files.max_mb")),
+        "{commands:?}"
+    );
+    assert!(
+        commands.iter().any(|c| c.ends_with("paper.toml")),
+        "{commands:?}"
+    );
+}
+
+#[test]
+fn a_bad_user_file_value_suggests_the_user_form() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("config.toml");
+    fs::write(&path, "[ui]\ncolor = \"purple\"\n").unwrap();
+    let error = Settings::resolve(Sources {
+        env: lookup(&[]),
+        project: ConfigFile::empty(),
+        user: ConfigFile::load(&path).unwrap(),
+        git_identity: None,
+    })
+    .unwrap_err();
+    let shown = PaperError::from(error);
+    assert!(shown.message.contains("config.toml"), "{shown:?}");
+    assert_eq!(shown.next[0].command, "paper config set ui.color auto");
+}
+
+#[test]
+fn a_bad_env_value_names_the_variable_and_says_to_unset_it() {
+    let error = Settings::resolve(Sources {
+        env: lookup(&[("PAPER_UI_COLOR", "purple")]),
+        project: ConfigFile::empty(),
+        user: ConfigFile::empty(),
+        git_identity: None,
+    })
+    .unwrap_err();
+    let shown = PaperError::from(error);
+    assert!(shown.message.contains("PAPER_UI_COLOR"), "{shown:?}");
+    assert_eq!(shown.next[0].command, "unset PAPER_UI_COLOR");
+}
+
+#[test]
+fn order_conflicts_read_as_a_sentence_and_offer_both_fixes() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = project_file_at(dir.path(), "[large_files]\nwarn_mb = 10\n");
+    let error = project
+        .with(Key::LargeFilesMaxMb, Value::Megabytes(1))
+        .unwrap_err();
+    let shown = PaperError::from_config(&error, Scope::Project);
+    assert!(
+        shown
+            .message
+            .starts_with("large_files.max_mb (1) can't be below large_files.warn_mb (10) in "),
+        "{shown:?}"
+    );
+    assert!(shown.message.contains("paper.toml"), "{shown:?}");
+    let commands: Vec<&str> = shown.next.iter().map(|s| s.command.as_str()).collect();
+    assert_eq!(
+        commands,
+        [
+            "paper config set --project large_files.max_mb 10",
+            "paper config set --project large_files.warn_mb 1"
+        ]
+    );
+}
+
+#[test]
+fn a_rejected_set_aimed_at_the_project_suggests_the_project_form() {
+    let error = Key::UiColor.parse_value("purple").unwrap_err();
+    let shown = PaperError::from_config(&error, Scope::Project);
+    assert_eq!(
+        shown.next[0].command,
+        "paper config set --project ui.color auto"
+    );
+}
+
+#[test]
+fn values_are_written_into_an_existing_inline_table() {
+    let (dir, file) = file_with("large_files = { warn_mb = 5 }   # mine\n");
+    let updated = file
+        .with(Key::LargeFilesMaxMb, Value::Megabytes(8))
+        .unwrap();
+    assert_eq!(
+        updated.get(Key::LargeFilesMaxMb).unwrap(),
+        Some(Value::Megabytes(8))
+    );
+    assert_eq!(
+        updated.get(Key::LargeFilesWarnMb).unwrap(),
+        Some(Value::Megabytes(5))
+    );
+    let path = dir.path().join("out.toml");
+    updated.write(&path).unwrap();
+    assert!(fs::read_to_string(&path).unwrap().contains("# mine"));
+    let changed = updated
+        .with(Key::LargeFilesWarnMb, Value::Megabytes(6))
+        .unwrap();
+    assert_eq!(
+        changed.get(Key::LargeFilesWarnMb).unwrap(),
+        Some(Value::Megabytes(6))
+    );
+}
+
+#[test]
+fn a_plain_value_where_a_table_belongs_is_a_teaching_error() {
+    let (_dir, file) = file_with("large_files = 5\n");
+    let error = file
+        .with(Key::LargeFilesMaxMb, Value::Megabytes(8))
+        .unwrap_err();
+    assert!(matches!(error, ConfigError::Blocked { .. }), "{error:?}");
+    let shown = PaperError::from(error);
+    assert_eq!(shown.kind, ErrorKind::User);
+    assert!(shown.message.contains("large_files"), "{shown:?}");
+    assert!(!shown.why.is_empty() && !shown.next.is_empty());
+}
+
+#[test]
+fn lines_added_to_a_crlf_file_use_crlf() {
+    let (_dir, file) = file_with("# mine\r\n[user]\r\nname = \"Mina Park\"\r\n");
+    let added = file.with(Key::UiColor, text("never")).unwrap().render();
+    assert!(added.starts_with("# mine\r\n[user]\r\n"), "{added:?}");
+    assert!(!added.replace("\r\n", "").contains('\n'), "{added:?}");
+    let in_table = file
+        .with(Key::UserEmail, text("m@u.example"))
+        .unwrap()
+        .render();
+    assert!(!in_table.replace("\r\n", "").contains('\n'), "{in_table:?}");
+}
+
+#[test]
+fn a_relative_xdg_config_home_is_ignored() {
+    assert_eq!(
+        path_for(
+            false,
+            &[("XDG_CONFIG_HOME", "relative/cfg"), ("HOME", "/h")]
+        ),
+        Some(
+            Path::new("/h")
+                .join(".config")
+                .join("paper")
+                .join("config.toml")
+        )
     );
 }

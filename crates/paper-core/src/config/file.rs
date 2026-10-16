@@ -3,16 +3,21 @@
 use std::fmt::Write as _;
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use toml_edit::{DocumentMut, Item, Table};
+use toml_edit::{DocumentMut, Item};
 
-use super::{ConfigError, Key, Value};
+use super::{ConfigError, Conflict, Key, Origin, Value};
+use crate::fs_util::write_atomic;
 
 /// A config file (`paper.toml` or the user `config.toml`), kept as TOML text with its comments.
 #[derive(Debug, Clone, Default)]
 pub struct ConfigFile {
     doc: DocumentMut,
+    /// Where it was loaded from, to name it in errors.
+    path: Option<PathBuf>,
+    /// The file uses Windows line endings; lines we add do too.
+    crlf: bool,
 }
 
 impl ConfigFile {
@@ -33,7 +38,12 @@ impl ConfigFile {
     pub fn load(path: &Path) -> Result<Self, ConfigError> {
         let text = match fs::read_to_string(path) {
             Ok(text) => text,
-            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Self::empty()),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => {
+                return Ok(Self {
+                    path: Some(path.to_owned()),
+                    ..Self::empty()
+                });
+            }
             Err(source) => {
                 return Err(ConfigError::Io {
                     path: path.to_owned(),
@@ -52,7 +62,11 @@ impl ConfigFile {
                 message: err.message().to_owned(),
             }
         })?;
-        Ok(Self { doc })
+        Ok(Self {
+            doc,
+            path: Some(path.to_owned()),
+            crlf: text.contains("\r\n"),
+        })
     }
 
     fn item(&self, key: Key) -> Option<&Item> {
@@ -62,11 +76,21 @@ impl ConfigFile {
         }
     }
 
+    /// Whether the file has anything under `key`, valid or not.
+    pub fn has(&self, key: Key) -> bool {
+        self.item(key).is_some()
+    }
+
+    fn origin(&self) -> Option<Origin> {
+        self.path.clone().map(Origin::File)
+    }
+
     /// The value stored for `key`, if any.
     ///
     /// # Errors
     ///
-    /// [`ConfigError::InvalidValue`] if the file holds the wrong type or an unusable value.
+    /// [`ConfigError::InvalidValue`] (naming the file) if the file holds the wrong type or an
+    /// unusable value.
     ///
     /// # Panics
     ///
@@ -76,20 +100,20 @@ impl ConfigFile {
             return Ok(None);
         };
         let shown = item.to_string().trim().to_owned();
-        let typed = if key.is_megabytes() {
-            item.as_integer().and_then(|n| u64::try_from(n).ok())
-        } else {
-            None
-        };
-        if key.is_megabytes() {
-            return match typed {
-                Some(mb) if mb >= 1 => Ok(Some(Value::Megabytes(mb))),
+        let result = if key.is_megabytes() {
+            match item.as_integer().and_then(|n| u64::try_from(n).ok()) {
+                Some(mb) if mb >= 1 => Ok(Value::Megabytes(mb)),
                 _ => Err(key.invalid(&shown, key.expected())),
-            };
-        }
-        match item.as_str() {
-            Some(text) => key.parse_value(text).map(Some),
-            None => Err(key.invalid(&shown, format!("text; {}", key.expected()))),
+            }
+        } else {
+            match item.as_str() {
+                Some(text) => key.parse_value(text),
+                None => Err(key.invalid(&shown, format!("text; {}", key.expected()))),
+            }
+        };
+        match (result, self.origin()) {
+            (Err(error), Some(origin)) => Err(error.with_origin(origin)),
+            (result, _) => result.map(Some),
         }
     }
 
@@ -98,7 +122,8 @@ impl ConfigFile {
     /// # Errors
     ///
     /// [`ConfigError::InvalidValue`] if `value` has the wrong type for `key`, or
-    /// `large_files.max_mb` would be below `large_files.warn_mb` as written in this file.
+    /// `large_files.max_mb` would be below `large_files.warn_mb` as written in this file;
+    /// [`ConfigError::Blocked`] if the table is a plain value.
     ///
     /// # Panics
     ///
@@ -121,14 +146,21 @@ impl ConfigFile {
                 return self.with_new_table(key, &toml_value);
             }
             Some((table_name, name)) => {
-                let Some(table) = doc[table_name].as_table_mut() else {
-                    return Err(key.invalid(table_name, format!("`{table_name}` must be a table")));
+                let Some(table) = doc[table_name].as_table_like_mut() else {
+                    return Err(ConfigError::Blocked {
+                        path: self.path.clone(),
+                        table: table_name.to_owned(),
+                        key: key.as_str().to_owned(),
+                    });
                 };
                 set_keeping_decor(table, name, toml_value);
             }
             None => set_keeping_decor(doc.as_table_mut(), key.as_str(), toml_value),
         }
-        Ok(Self { doc })
+        Ok(Self {
+            doc,
+            ..self.clone()
+        })
     }
 
     /// Appends `[table]` with the key after the existing text, which stays byte for byte
@@ -136,17 +168,25 @@ impl ConfigFile {
     fn with_new_table(&self, key: Key, value: &Item) -> Result<Self, ConfigError> {
         let (table, name) = key.as_str().split_once('.').unwrap_or(("", key.as_str()));
         let mut text = self.render();
+        let eol = if self.crlf { "\r\n" } else { "\n" };
         if !text.is_empty() && !text.ends_with('\n') {
-            text.push('\n');
+            text.push_str(eol);
         }
-        if !text.is_empty() && !text.ends_with("\n\n") {
-            text.push('\n');
+        if !text.is_empty() && !text.ends_with(&format!("{eol}{eol}")) {
+            text.push_str(eol);
         }
-        let _ = writeln!(text, "[{table}]\n{name} = {}", value.to_string().trim());
+        let _ = write!(
+            text,
+            "[{table}]{eol}{name} = {}{eol}",
+            value.to_string().trim()
+        );
         let doc = text
             .parse::<DocumentMut>()
             .map_err(|err| key.invalid(&value.to_string(), err.message().to_owned()))?;
-        Ok(Self { doc })
+        Ok(Self {
+            doc,
+            ..self.clone()
+        })
     }
 
     /// `large_files.max_mb` must not be below `large_files.warn_mb` in the same file.
@@ -158,28 +198,38 @@ impl ConfigFile {
             Ok(Some(Value::Megabytes(mb))) => Some(mb),
             _ => None,
         };
-        match key {
-            Key::LargeFilesMaxMb => match stored(Key::LargeFilesWarnMb) {
-                Some(warn) if *new < warn => Err(key.invalid(
-                    &new.to_string(),
-                    format!("it can't be below large_files.warn_mb, which is {warn} here"),
-                )),
-                _ => Ok(()),
-            },
-            Key::LargeFilesWarnMb => match stored(Key::LargeFilesMaxMb) {
-                Some(max) if *new > max => Err(key.invalid(
-                    &new.to_string(),
-                    format!("it can't be above large_files.max_mb, which is {max} here"),
-                )),
-                _ => Ok(()),
-            },
+        let (other, clashes) = match key {
+            Key::LargeFilesMaxMb => (Key::LargeFilesWarnMb, below as fn(u64, u64) -> bool),
+            Key::LargeFilesWarnMb => (Key::LargeFilesMaxMb, above as fn(u64, u64) -> bool),
+            _ => return Ok(()),
+        };
+        match stored(other) {
+            Some(other_value) if clashes(*new, other_value) => {
+                let relation = if key == Key::LargeFilesMaxMb {
+                    "below"
+                } else {
+                    "above"
+                };
+                Err(ConfigError::InvalidValue {
+                    key: key.as_str().to_owned(),
+                    value: new.to_string(),
+                    expected: format!("it can't be {relation} {} ({other_value})", other.as_str()),
+                    origin: self.origin(),
+                    conflict: Some(Conflict { other, other_value }),
+                })
+            }
             _ => Ok(()),
         }
     }
 
     /// The file's text.
     pub fn render(&self) -> String {
-        self.doc.to_string()
+        let text = self.doc.to_string();
+        if self.crlf {
+            text.replace("\r\n", "\n").replace('\n', "\r\n")
+        } else {
+            text
+        }
     }
 
     /// Writes the file, creating missing parent folders.
@@ -199,16 +249,24 @@ impl ConfigFile {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(io_error)?;
         }
-        fs::write(path, self.render()).map_err(io_error)
+        write_atomic(path, self.render().as_bytes()).map_err(io_error)
     }
 }
 
 /// Sets `table[name]`, keeping the comment and spacing around an existing value.
-fn set_keeping_decor(table: &mut Table, name: &str, mut new: Item) {
+fn set_keeping_decor(table: &mut dyn toml_edit::TableLike, name: &str, mut new: Item) {
     if let (Some(old), Some(new_value)) =
         (table.get(name).and_then(Item::as_value), new.as_value_mut())
     {
         *new_value.decor_mut() = old.decor().clone();
     }
     table.insert(name, new);
+}
+
+fn below(new: u64, other: u64) -> bool {
+    new < other
+}
+
+fn above(new: u64, other: u64) -> bool {
+    new > other
 }
