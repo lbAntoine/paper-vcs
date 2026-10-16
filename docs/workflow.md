@@ -116,7 +116,7 @@ semver such as `v0.1.0` or `v0.2.0-rc.1`. Only the maintainer approves a release
    `git rev-parse HEAD` equals `git rev-parse origin/main`, then
    `git tag vX.Y.Z && git push origin vX.Y.Z`.
 5. Watch the Release workflow without prompts:
-   `gh run list --workflow=v-release.yml --limit 1 --json databaseId`, then
+   `gh run list --workflow=v-release.yml --event push --branch vX.Y.Z --limit 1 --json databaseId --jq '.[0].databaseId'`, then
    `gh run watch <id> --exit-status`. It builds the five targets, then creates the release.
 6. Pre-releases only: cargo-dist marks a release as a pre-release only when the version has
    a suffix such as `-rc.1`. v0.1.0 is a pre-release without one, so right after publishing

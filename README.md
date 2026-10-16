@@ -13,7 +13,7 @@
 Installers for macOS, Linux and Windows are attached to the
 [v0.1.0 release](https://github.com/lbAntoine/paper-vcs/releases/tag/v0.1.0), a GitHub
 pre-release. Each one downloads the right build for your machine, checks it and puts `paper`
-in `~/.cargo/bin`.
+in `~/.cargo/bin` (`%USERPROFILE%\.cargo\bin` on Windows).
 
 macOS and Linux:
 
@@ -27,7 +27,7 @@ Windows (PowerShell):
 > powershell -ExecutionPolicy Bypass -c "irm https://github.com/lbAntoine/paper-vcs/releases/download/v0.1.0/paper-cli-installer.ps1 | iex"
 ```
 
-Then open a new terminal (the installer adds `~/.cargo/bin` to your PATH) and run
+Then open a new terminal (the installer adds `~/.cargo/bin`, or `%USERPROFILE%\.cargo\bin` on Windows, to your PATH) and run
 `paper --version`, which prints `paper 0.1.0`. You can also download an
 archive and its `.sha256` checksum from the release page. To build from source instead, see
 [Building from source](#building-from-source).

@@ -279,10 +279,11 @@ Reference repo: 5,000 files, 500 MB, 2,000 saves, on a 2022 laptop with an SSD.
 ## Distribution
 
 **Ships now (v0.1.0, a pre-release).** `cargo-dist` (pinned in `dist-workspace.toml`) generates
-``.github/workflows/v-release.yml`. A tag matching `v**[0-9]+.[0-9]+.[0-9]+*` (`tag-namespace = "v"`) builds archives for `x86_64-apple-darwin`,
-`aarch64-apple-darwin`, `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu` and
-`x86_64-pc-windows-msvc`, a shell installer, a PowerShell installer and SHA-256 checksums (no source tarball), and
-publishes them as a GitHub Release. Pull requests run `dist plan`. The package is named
+`.github/workflows/v-release.yml`. A tag matching `v**[0-9]+.[0-9]+.[0-9]+*`
+(`tag-namespace = "v"`) builds archives for `x86_64-apple-darwin`, `aarch64-apple-darwin`,
+`x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu` and `x86_64-pc-windows-msvc`, a shell
+installer, a PowerShell installer and SHA-256 checksums (no source tarball), and publishes them
+as a GitHub Release. Pull requests run `dist plan`. The package is named
 `paper-cli`, so the installers are `paper-cli-installer.sh` and `.ps1`; the binary is `paper`.
 See [workflow § Releasing](../workflow.md#releasing).
 
