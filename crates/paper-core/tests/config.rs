@@ -876,3 +876,44 @@ fn a_relative_xdg_config_home_is_ignored() {
         )
     );
 }
+
+// ---- mixed line endings (PV-014 item 12) ----
+
+#[test]
+fn a_mixed_file_keeps_its_existing_line_endings_when_a_key_changes() {
+    let original = "# mine\r\n[ui]\r\ncolor = \"auto\"\nother = 1\r\n";
+    let (_dir, file) = file_with(original);
+
+    let rendered = file.with(Key::UiColor, text("never")).unwrap().render();
+
+    assert_eq!(
+        rendered,
+        "# mine\r\n[ui]\r\ncolor = \"never\"\nother = 1\r\n"
+    );
+}
+
+#[test]
+fn a_new_table_in_a_mixed_file_uses_the_ending_of_the_first_line_and_keeps_old_bytes() {
+    let original = "# mine\r\n[user]\nname = \"Mina Park\"\r\n";
+    let (_dir, file) = file_with(original);
+
+    let rendered = file.with(Key::UiColor, text("never")).unwrap().render();
+
+    assert!(rendered.starts_with(original), "{rendered:?}");
+    let added = &rendered[original.len()..];
+    assert!(added.contains("color = \"never\"\r\n"), "{added:?}");
+    assert!(!added.replace("\r\n", "").contains('\n'), "{added:?}");
+}
+
+#[test]
+fn a_new_table_in_an_lf_first_file_uses_lf_even_if_later_lines_are_crlf() {
+    let original = "# mine\n[user]\r\nname = \"Mina Park\"\r\n";
+    let (_dir, file) = file_with(original);
+
+    let rendered = file.with(Key::UiColor, text("never")).unwrap().render();
+
+    assert!(rendered.starts_with(original), "{rendered:?}");
+    let added = &rendered[original.len()..];
+    assert!(added.contains("color = \"never\"\n"), "{added:?}");
+    assert!(!added.contains('\r'), "{added:?}");
+}

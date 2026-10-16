@@ -437,7 +437,8 @@ fn list_json_has_schema_1_and_a_fixed_key_set() {
 
     run.assert_code(0);
     let json = run.json();
-    assert_keys(&json, &["schema", "settings"]);
+    assert_keys(&json, &["schema", "settings", "notes"]);
+    assert_eq!(json["notes"], serde_json::json!([]));
     assert_eq!(json["schema"], 1);
     let rows = json["settings"].as_array().unwrap();
     let keys: Vec<&str> = rows.iter().map(|r| r["key"].as_str().unwrap()).collect();
@@ -618,7 +619,8 @@ fn get_and_set_json_have_a_fixed_shape() {
     let get = env.paper(&["config", "get", "--json", "large_files.max_mb"]);
     get.assert_code(0);
     let json = get.json();
-    assert_keys(&json, &["schema", "key", "value", "source"]);
+    assert_keys(&json, &["schema", "key", "value", "source", "notes"]);
+    assert_eq!(json["notes"], serde_json::json!([]));
     assert_eq!(json["value"], 7);
     assert_eq!(json["source"], "user");
 }
@@ -703,4 +705,126 @@ fn set_project_profile_with_a_gitignore_that_is_not_utf8_is_a_user_error() {
         b"caf\xe9\n"
     );
     assert_eq!(env.read("paper.toml"), toml);
+}
+
+// ---- review follow-ups (PV-014) ----
+
+const WORDS_NOTE: &str =
+    "`diff.default = words` has no effect until v0.3; comparisons stay line by line.";
+
+#[test]
+fn the_words_note_is_one_clear_sentence() {
+    let env = project();
+    set(&env, &["diff.default", "words"]);
+
+    let get = env.paper(&["config", "get", "diff.default"]);
+    let list = env.paper(&["config", "list"]);
+
+    for run in [&get, &list] {
+        run.assert_code(0);
+        assert!(
+            run.stderr.contains(&format!("note: {WORDS_NOTE}")),
+            "{run:#?}"
+        );
+        assert!(!run.stderr.contains("(lines until v0.3)"), "{run:#?}");
+    }
+}
+
+#[test]
+fn a_warn_level_above_the_max_is_told_to_lower_the_warn_level() {
+    let env = project();
+    set(&env, &["--project", "large_files.max_mb", "5"]);
+
+    let run = env.paper(&["config", "set", "--project", "large_files.warn_mb", "8"]);
+
+    run.assert_three_part_error(1);
+    assert!(
+        run.stderr
+            .contains("large_files.warn_mb (8) can't be above large_files.max_mb (5)"),
+        "{run:#?}"
+    );
+    assert!(
+        run.stderr.contains("at most 5"),
+        "warn_mb must be lowered, so the advice is `at most`: {run:#?}"
+    );
+    assert!(!run.stderr.contains("at least"), "{run:#?}");
+}
+
+#[test]
+fn a_max_below_the_warn_level_is_still_told_to_raise_the_max() {
+    let env = project();
+    set(&env, &["--project", "large_files.warn_mb", "5"]);
+
+    let run = env.paper(&["config", "set", "--project", "large_files.max_mb", "3"]);
+
+    run.assert_three_part_error(1);
+    assert!(run.stderr.contains("at least 5"), "{run:#?}");
+}
+
+#[test]
+fn get_json_carries_the_privacy_note_and_keeps_stderr_empty() {
+    let env = project();
+    std::fs::write(env.paper_toml(), "[user]\nname = \"Leaked Person\"\n").unwrap();
+
+    let run = env.paper(&["config", "get", "user.name", "--json"]);
+
+    run.assert_code(0);
+    assert_eq!(run.stderr, "", "under --json the notes move into the field");
+    let json = run.json();
+    let notes = json["notes"].as_array().unwrap();
+    assert_eq!(notes.len(), 1, "{json}");
+    assert!(
+        notes[0]
+            .as_str()
+            .unwrap()
+            .contains("user.name in paper.toml is ignored"),
+        "{json}"
+    );
+}
+
+#[test]
+fn get_json_carries_the_words_note() {
+    let env = project();
+    set(&env, &["diff.default", "words"]);
+
+    let run = env.paper(&["config", "get", "diff.default", "--json"]);
+
+    run.assert_code(0);
+    assert_eq!(run.stderr, "");
+    assert_eq!(run.json()["notes"], serde_json::json!([WORDS_NOTE]));
+}
+
+#[test]
+fn list_json_carries_every_note_and_keeps_stderr_empty() {
+    let env = project();
+    set(&env, &["diff.default", "words"]);
+    std::fs::write(
+        env.paper_toml(),
+        "[user]\nname = \"Leaked Person\"\nemail = \"leak@lab.example\"\n",
+    )
+    .unwrap();
+
+    let run = env.paper(&["config", "list", "--json"]);
+
+    run.assert_code(0);
+    assert_eq!(run.stderr, "");
+    let json = run.json();
+    let notes: Vec<&str> = json["notes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|n| n.as_str().unwrap())
+        .collect();
+    assert_eq!(notes.len(), 3, "{json}");
+    assert!(
+        notes
+            .iter()
+            .any(|n| n.contains("user.name in paper.toml is ignored"))
+    );
+    assert!(
+        notes
+            .iter()
+            .any(|n| n.contains("user.email in paper.toml is ignored"))
+    );
+    assert!(notes.contains(&WORDS_NOTE), "{json}");
 }

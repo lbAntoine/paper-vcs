@@ -104,3 +104,22 @@ Source tickets in brackets. "Test" means a test that fails before the fix.
 ## Summary
 
 ## Handoff log
+
+### RED · test-author · 2026-10-16
+
+22 tests fail (all on `todo!()` or an assertion); every other pre-existing test passes.
+
+- **Item 1** `crates/paper-cli/tests/redaction.rs` (+5 tests): `redact_ids(text, &[(change_id, hash)])` is a new pure stub (`todo!()`) in `tests/common/mod.rs`. `Env::redact` is untouched (so no snapshot test fails now); GREEN makes it call `redact_ids` for the id/hash part. Contract: whole alphanumeric tokens that are a prefix of a known id (>= 4 chars) or hash (>= 7 chars); words like "yourself" and "mostly" stay; JSON strings via `redact_strings`.
+- **Item 3** `init.rs`: `a_damaged_block_during_init_suggests_running_init_again` now asserts `next: paper init` (changed assertion, tighter; passes today).
+- **Item 4** `diff.rs` (+2): file wording for `sections/nope.tex` (fails); point wording kept for `lsat` (guard, passes).
+- **Item 5** `init.rs` (+1): empty `.git` directory is a three-part user error, "damaged .git", no "report it" (fails: exit 3 today).
+- **Item 6** `config.rs` (+2): warn above max says "at most 5", never "at least" (fails); max below warn still says "at least 5" (guard).
+- **Item 7** `config.rs` (+1): exact sentence on stderr for get and list (fails).
+- **Item 8** `paper-core/src/error.rs` (+2 unit): stub `unset_suggestion(var, windows) -> Suggestion` (`todo!()`, `#[allow(dead_code)]` until GREEN wires it into `invalid_value` with `cfg!(windows)`, then remove the allow). Posix: `unset VAR`; Windows: `Remove-Item Env:VAR`, explanation names `set VAR=`.
+- **Item 9** `error.rs` (+3 unit): `GitignoreError::Io` is split into `Read` and `Write` (same fields, Display still "could not update", match arm in `from_gitignore` unchanged in behaviour). Tests want Display "could not read {path}" / "could not write {path}", and PermissionDenied on either to be a user error naming the file with `retry` as first next. No permission-based filesystem test (unreliable as root).
+- **Item 12** `paper-core/tests/config.rs` (+3): mixed endings keep existing bytes on a key change; a new table uses the first line's ending (CRLF-first and LF-first cases). Fail today.
+- **Item 14** `config.rs` (+3): `notes` in get/list JSON, stderr empty under `--json`.
+
+Existing tests changed: `get_and_set_json_have_a_fixed_shape` and `list_json_has_schema_1_and_a_fixed_key_set` now expect the `notes` key (spec change, item 14); snapshot `config__config_list_json.snap` gets `"notes": []` (hand-edited, keys sort alphabetically). Both fail until GREEN. Item 3 as above.
+
+Questions for GREEN/coordinator: (a) a lone 4-letter word equal to an id's first four letters ("your" alone) is still a whole token that is a prefix; the ticket's rule can't tell it from a real short id, so tests use longer words; GREEN may raise the minimum if it wants. (b) Whether `--quiet` suppresses JSON `notes` is unspecified; not tested. (c) Item 4's "could be a point" rule is left to GREEN; only `sections/nope.tex` (file) and `lsat` (point) are pinned.

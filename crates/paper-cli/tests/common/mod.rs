@@ -306,6 +306,17 @@ impl Env {
     }
 }
 
+/// Replaces whole tokens of `text` that are a prefix of a known change id (at least four
+/// characters, the shortest ID paper shows) or of a known commit hash (at least seven) with
+/// `[ID]` / `[HASH]`. A token is a run of alphanumeric characters, so a word that merely
+/// contains an id prefix ("yourself" next to the id "yourk...") is left alone.
+///
+/// `ids` holds `(change id, commit hash)` pairs. The temp root is not touched here: see
+/// [`redact_root`].
+pub fn redact_ids(_text: &str, _ids: &[(String, String)]) -> String {
+    todo!("PV-014 item 1: redact whole tokens only")
+}
+
 /// Backslashes become `/` (so Windows and Unix agree) and the temp root becomes `[TMP]`.
 pub fn redact_root(text: &str, root: &str) -> String {
     let root = root.replace('\\', "/");

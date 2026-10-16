@@ -261,7 +261,7 @@ impl PaperError {
                     "run it again after saving .gitignore as UTF-8 text in your editor",
                 )],
             ),
-            GitignoreError::Io { .. } => {
+            GitignoreError::Read { .. } | GitignoreError::Write { .. } => {
                 Self::project_failure("Paper could not update .gitignore", error)
             }
         }
@@ -400,6 +400,15 @@ fn invalid_value(
         format!("{key} takes {expected}."),
         next,
     )
+}
+
+/// The suggestion that removes the environment variable `var`: `unset` on POSIX shells,
+/// PowerShell's `Remove-Item Env:` when `windows` is true (with `cmd`'s `set VAR=` named in the
+/// explanation).
+// Used by `invalid_value` once PV-014 wires it in.
+#[allow(dead_code)]
+fn unset_suggestion(_var: &str, _windows: bool) -> Suggestion {
+    todo!("PV-014 item 8")
 }
 
 fn order_conflict(
@@ -1191,6 +1200,82 @@ mod tests {
                 !message.contains("`paper "),
                 "a message states what happened; commands go in `next`: {message}"
             );
+        }
+    }
+
+    // ---- PV-014 ----
+
+    #[test]
+    fn unsetting_a_variable_on_unix_uses_unset() {
+        let suggestion = unset_suggestion("PAPER_UI_COLOR", false);
+        assert_eq!(suggestion.command, "unset PAPER_UI_COLOR");
+    }
+
+    #[test]
+    fn unsetting_a_variable_on_windows_uses_powershell_and_names_cmd() {
+        let suggestion = unset_suggestion("PAPER_UI_COLOR", true);
+        assert_eq!(suggestion.command, "Remove-Item Env:PAPER_UI_COLOR");
+        assert!(
+            suggestion.explanation.contains("set PAPER_UI_COLOR="),
+            "the cmd form is named: {suggestion:?}"
+        );
+    }
+
+    fn gitignore_path() -> PathBuf {
+        PathBuf::from("/work/.gitignore")
+    }
+
+    fn permission_denied() -> io::Error {
+        io::Error::from(io::ErrorKind::PermissionDenied)
+    }
+
+    #[test]
+    fn a_gitignore_that_cannot_be_read_says_read() {
+        let cause = GitignoreError::Read {
+            path: gitignore_path(),
+            source: io_error(),
+        };
+        assert_eq!(
+            cause.to_string(),
+            "could not read /work/.gitignore",
+            "the message names the action that failed"
+        );
+        let error = PaperError::from_gitignore(&cause, "paper init");
+        assert_project(&error);
+        assert_eq!(error.message, "Paper could not update .gitignore");
+        assert!(error.why.contains("could not read"), "{error:?}");
+    }
+
+    #[test]
+    fn a_gitignore_that_cannot_be_written_says_write() {
+        let cause = GitignoreError::Write {
+            path: gitignore_path(),
+            source: io_error(),
+        };
+        assert_eq!(cause.to_string(), "could not write /work/.gitignore");
+        let error = PaperError::from_gitignore(&cause, "paper init");
+        assert_project(&error);
+        assert!(error.why.contains("could not write"), "{error:?}");
+    }
+
+    #[test]
+    fn permission_denied_on_gitignore_is_a_user_error_naming_the_file() {
+        for cause in [
+            GitignoreError::Read {
+                path: gitignore_path(),
+                source: permission_denied(),
+            },
+            GitignoreError::Write {
+                path: gitignore_path(),
+                source: permission_denied(),
+            },
+        ] {
+            let error = PaperError::from_gitignore(&cause, "paper init");
+            assert_user(&error);
+            let text = format!("{} {}", error.message, error.why);
+            assert!(text.contains(".gitignore"), "{error:?}");
+            assert!(error.why.contains("/work/.gitignore"), "{error:?}");
+            assert_eq!(error.next[0].command, "paper init", "{error:?}");
         }
     }
 }
