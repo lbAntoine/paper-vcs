@@ -129,3 +129,16 @@ full suite pass.
 - MINOR, follow-up (PV-014): the CLI test helper `Env::redact` replaces any 4+ letter prefix of a change ID, so an ID starting with a k–z word ("your", "most") rewrites snapshot text.
 - NITs, follow-up (PV-014): `change_id.rs` doc says `l..=z`; history.rs comment's odds are conservative.
 - Coordinator decisions: keep the long-prefix test, and add a short-prefix test that rebuilds the project (bounded, with a clear panic) while any random change ID starts with the short prefix, then checks `km` ambiguous and `kmn`/`kmp` unique, with exact short ids. Bound the unique-tip loop the same way. Fix the NOTES wording.
+
+### FIX (review round 1) · test-author · 2026-10-16
+
+- MAJOR: added `a_short_change_id_prefix_is_ambiguous_between_two_saves_and_longer_ones_are_not`
+  (`kmnn…`/`kmpp…`). It rebuilds the project (helper `build_avoiding_random_prefix`, at most
+  50 attempts, then a clear panic) while any other commit's change ID starts with `km`, then
+  asserts `km` is Ambiguous with exactly Left and Right and short ids `kmnn`/`kmpp` (the
+  4-letter floor, not vacuous), and that `kmn` and `kmp` resolve uniquely. The long-prefix test
+  is kept. Also added `..._resolve_to_the_newest_from_a_short_prefix` (`knn`, same helper).
+- `project_with_unambiguous_tip` is bounded to 20 attempts with a panic message.
+- NOTES.md wording fixed (short 2 to 4 letter prefixes; 0.5% for the 2-letter one; "8 or more").
+- Resolve binary: 500/500 passes after the change (0 failures). fmt, clippy and the full
+  suite pass.

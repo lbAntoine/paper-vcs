@@ -72,7 +72,7 @@ fn project_with_saves(saves: usize) -> (TempDir, Project) {
 /// match no other commit in the repository (hashes of fresh saves are random-ish, so a
 /// short prefix can otherwise clash: about 1 in 65 000 per other commit for four characters).
 fn project_with_unambiguous_tip(length: usize) -> (TempDir, Project) {
-    loop {
+    for _ in 0..20 {
         let (dir, project) = project_with_saves(2);
         let tip = project.view().current().tip.clone();
         let objects = git(
@@ -91,6 +91,38 @@ fn project_with_unambiguous_tip(length: usize) -> (TempDir, Project) {
             return (dir, project);
         }
     }
+    panic!("no project with a unique {length}-character tip prefix after 20 attempts");
+}
+
+/// Builds a project with `make` until no commit outside `fixed` has a change ID starting
+/// with `prefix` (a random ID does that with odds 16^-len per ID), so a short prefix can be
+/// tested without depending on luck. Panics after 50 attempts.
+fn build_avoiding_random_prefix(
+    prefix: &str,
+    make: impl Fn() -> (TempDir, Project, Vec<CommitId>),
+) -> (TempDir, Project, Vec<CommitId>) {
+    for _ in 0..50 {
+        let (dir, project, fixed) = make();
+        let objects = git(
+            dir.path(),
+            &[
+                "cat-file",
+                "--batch-all-objects",
+                "--batch-check=%(objectname) %(objecttype)",
+            ],
+        );
+        let clash = objects
+            .lines()
+            .filter_map(|l| l.strip_suffix(" commit"))
+            .map(commit_id)
+            .filter(|id| !fixed.contains(id))
+            .filter_map(|id| project.repo().read_commit(&id).unwrap().change_id)
+            .any(|id| id.to_string().starts_with(prefix));
+        if !clash {
+            return (dir, project, fixed);
+        }
+    }
+    panic!("a random change ID kept starting with {prefix:?} in 50 attempts");
 }
 
 /// A repository built commit by commit, then adopted as a project.
@@ -347,6 +379,55 @@ fn an_ambiguous_change_id_prefix_lists_its_candidates() {
 }
 
 #[test]
+fn a_short_change_id_prefix_is_ambiguous_between_two_saves_and_longer_ones_are_not() {
+    let (_dir, project, fixed) = build_avoiding_random_prefix("km", || {
+        let plain = Plain::new();
+        let root = plain.commit(&[("a.txt", "a")], "Root", &[], at(1_000), None);
+        let left = plain.commit(
+            &[("a.txt", "l")],
+            "Left",
+            &[&root],
+            at(2_000),
+            Some(&change_id("kmnn", 'k')),
+        );
+        let right = plain.commit(
+            &[("a.txt", "r")],
+            "Right",
+            &[&root],
+            at(3_000),
+            Some(&change_id("kmpp", 'k')),
+        );
+        plain.branch("main", &left);
+        plain.branch("side", &right);
+        let (dir, project) = plain.adopt(&[("a.txt", "l")]);
+        (dir, project, vec![root, left, right])
+    });
+    let (left, right) = (fixed[1].clone(), fixed[2].clone());
+
+    match project.resolve(&point("km")) {
+        Err(ResolveError::Ambiguous { prefix, candidates }) => {
+            assert_eq!(prefix, "km");
+            let mut found: Vec<_> = candidates
+                .iter()
+                .map(|c| (c.commit.clone(), c.message.as_str(), c.short_id.as_str()))
+                .collect();
+            found.sort_by_key(|(_, message, _)| *message);
+            // No other ID starts with `km`, so the floor of four letters decides the length.
+            assert_eq!(
+                found,
+                [
+                    (left.clone(), "Left", "kmnn"),
+                    (right.clone(), "Right", "kmpp")
+                ]
+            );
+        }
+        other => panic!("expected Ambiguous, got {other:?}"),
+    }
+    assert_eq!(resolved(&project, "kmn").commit, left);
+    assert_eq!(resolved(&project, "kmp").commit, right);
+}
+
+#[test]
 fn commits_sharing_one_change_id_resolve_to_the_newest() {
     let plain = Plain::new();
     // Eight letters are looked up below: a random ID matching them is a 1 in 16^8 chance.
@@ -365,6 +446,29 @@ fn commits_sharing_one_change_id_resolve_to_the_newest() {
 
     let found = resolved(&project, "knnnrstw");
     assert_eq!(found.commit, newer);
+    assert_eq!(found.matched, PointKind::ChangeId);
+}
+
+#[test]
+fn commits_sharing_one_change_id_resolve_to_the_newest_from_a_short_prefix() {
+    let (_dir, project, fixed) = build_avoiding_random_prefix("knn", || {
+        let plain = Plain::new();
+        let same = change_id("knnn", 'q');
+        let older = plain.commit(&[("a.txt", "a")], "Older", &[], at(1_000), Some(&same));
+        let newer = plain.commit(
+            &[("a.txt", "b")],
+            "Newer",
+            &[&older],
+            at(2_000),
+            Some(&same),
+        );
+        plain.branch("main", &newer);
+        plain.branch("old", &older);
+        let (dir, project) = plain.adopt(&[("a.txt", "b")]);
+        (dir, project, vec![older, newer])
+    });
+    let found = resolved(&project, "knn");
+    assert_eq!(found.commit, fixed[1]);
     assert_eq!(found.matched, PointKind::ChangeId);
 }
 

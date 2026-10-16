@@ -8,9 +8,10 @@ Newest first.
 Two lessons from PV-003 and PV-010:
 
 - **A test that assumes random IDs avoid a fixed prefix is flaky.** Change IDs are random
-  (16 values per letter), so fixed IDs with 2 to 4 letter prefixes clashed with the draft's
-  random ID in about 0.5% of runs. Give fixed IDs long shared prefixes (9 to 10 letters, odds
-  below 1 in 10^9) and look up the long prefix.
+  (16 values per letter), so fixed IDs with short (2 to 4 letter) prefixes clashed with the
+  draft's random ID now and then (0.5% of runs for the 2-letter one). Give fixed IDs long
+  shared prefixes (8 or more letters, odds below 1 in 10^9) and look up the long prefix. To
+  test short prefixes on purpose, rebuild the project, bounded, while a random ID clashes.
 - **CI stopped at the first failing test binary**, which hid whether later CLI test binaries
   passed on Windows. CI now runs `cargo test --workspace --all-targets --no-fail-fast`.
   Redact JSON snapshots on parsed values, not on escaped text (Windows paths are escaped in
