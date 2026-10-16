@@ -314,7 +314,8 @@ fn first_line_is_crlf(text: &str) -> bool {
 /// did not, so a file without a final newline gets one here (the same ending as the file's
 /// first line) rather than letting the next appended key land on the same line.
 fn consistent_raw(raw: String, doc: &DocumentMut, crlf: bool) -> String {
-    let lf = doc.to_string();
+    // `toml_edit` keeps the bytes of multi-line strings, so compare with CRLF normalised.
+    let lf = doc.to_string().replace("\r\n", "\n");
     if raw.replace("\r\n", "\n") == lf {
         return raw;
     }

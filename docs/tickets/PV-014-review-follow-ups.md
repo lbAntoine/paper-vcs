@@ -161,3 +161,7 @@ Deviations to review:
 - **Comments:** item-4 comment and 02-cli reworded (such words are treated as files, a line name with `/` or `.` also gets the file wording); history.rs odds now "about 1 in 9 x 10^12"; profile.rs asserts `Chosen` and adds `PaperToml`; redaction comment covers longer k-z words (16^-n); 02-cli rewrapping finished.
 - **Comment above a key (pre-existing):** `set_keeping_decor` replaced the key and dropped its leading comment; it now replaces the item in place. Tests for a top-level key and a key in a table.
 - Full suite (`--no-fail-fast`, `INSTA_UPDATE=no`): **20 of 20 consecutive runs, 0 failures**. fmt and clippy (`-D warnings`) clean.
+
+### GREEN (post-approval) · rust-engineer · 2026-10-16
+
+`consistent_raw` and its `debug_assert` compare with CRLF normalised on both sides (multi-line strings keep their CRLF); two tests added; the item-4 comment in inspect.rs reworded. fmt, clippy and the full suite pass.

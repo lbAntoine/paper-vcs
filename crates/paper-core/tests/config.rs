@@ -984,3 +984,29 @@ fn a_comment_above_a_key_in_a_table_survives_changing_it() {
     let rendered = file.with(Key::UiColor, text("never")).unwrap().render();
     assert_eq!(rendered, "[ui]\n# I like colour\ncolor = \"never\"\n");
 }
+
+// ---- CRLF inside multi-line strings (PV-014 post-approval) ----
+
+#[test]
+fn a_crlf_file_with_a_multi_line_string_keeps_its_bytes_when_a_key_changes() {
+    let original = "[user]\r\nname = \"\"\"a\r\nb\"\"\"\r\n";
+    let (_dir, file) = file_with(original);
+    let updated = file.with(Key::UserEmail, text("a@b.org")).unwrap();
+    let (_d, again, bytes) = reloaded(&updated);
+    assert!(bytes.starts_with(original), "{bytes:?}");
+    assert_eq!(bytes, format!("{original}email = \"a@b.org\"\r\n"));
+    assert_eq!(
+        again.get(Key::UserName).unwrap(),
+        file.get(Key::UserName).unwrap()
+    );
+}
+
+#[test]
+fn an_lf_first_file_keeps_a_crlf_multi_line_string_in_an_unknown_table() {
+    let original = "# mine\n[notes]\ntext = \"\"\"x\r\ny\"\"\"\n";
+    let (_dir, file) = file_with(original);
+    let updated = file.with(Key::UiColor, text("never")).unwrap();
+    let (_d, again, bytes) = reloaded(&updated);
+    assert!(bytes.starts_with(original), "{bytes:?}");
+    assert_eq!(again.get(Key::UiColor).unwrap(), Some(text("never")));
+}
