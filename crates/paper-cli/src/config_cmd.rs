@@ -3,6 +3,7 @@
 use std::fmt::Write as _;
 
 use paper_core::config::{ConfigFile, Key, Scope, Settings, Value};
+use paper_core::profile::{Profile, gitignore};
 use paper_core::{ErrorKind, PaperError, Suggestion};
 use paper_git::GitRepo;
 use serde_json::json;
@@ -88,22 +89,39 @@ fn set(cli: &Cli, key: &str, text: &str, project: bool) -> Output {
     let fail = |error| PaperError::from_config(&error, scope);
     key.check_scope(scope).map_err(fail)?;
     let value = key.parse_value(text).map_err(fail)?;
-    let path = if project {
+    let (path, workdir) = if project {
         let start = start_dir(cli)?;
         let Some(workdir) = GitRepo::enclosing_workdir(&start) else {
             return Err(PaperError::not_a_project(&start, false));
         };
-        workdir.join(PROJECT_FILE)
+        (workdir.join(PROJECT_FILE), Some(workdir))
     } else {
-        settings::user_config_file().ok_or_else(no_settings_folder)?
+        (
+            settings::user_config_file().ok_or_else(no_settings_folder)?,
+            None,
+        )
     };
     let updated = ConfigFile::load(&path)?
         .with(key, value.clone())
         .map_err(fail)?;
+    // The profile also decides the .gitignore block; a damaged block stops before any write.
+    let gitignore_updated = match (&workdir, key, &value) {
+        (Some(workdir), Key::Profile, Value::Text(name)) => Profile::builtin(name)
+            .map(|profile| gitignore::apply_to_file(workdir, profile))
+            .transpose()?
+            .unwrap_or(false),
+        _ => false,
+    };
     updated.write(&path)?;
     Ok(finish(
         cli,
-        || format!("Set {} = {value} in {}\n", key.as_str(), path.display()),
+        || {
+            let mut text = format!("Set {} = {value} in {}\n", key.as_str(), path.display());
+            if gitignore_updated {
+                text.push_str("Updated the profile block in .gitignore.\n");
+            }
+            text
+        },
         || {
             let row = json!({
                 "schema": 1,

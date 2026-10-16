@@ -30,7 +30,8 @@ fn init_reports_the_number_of_tracked_files() {
     env.write("b.txt", "b\n");
     let run = env.paper(&["init"]);
     run.assert_code(0);
-    assert!(run.stdout.contains('2'), "{run:#?}");
+    // The two files plus the `.gitignore` and `paper.toml` that init writes.
+    assert!(run.stdout.contains("Tracking 4 files"), "{run:#?}");
 }
 
 #[test]
@@ -116,7 +117,7 @@ fn init_json_has_schema_1_and_the_counts() {
     let json = run.json();
     assert_eq!(json["schema"], 1);
     assert_eq!(json["adopted"], false);
-    assert_eq!(json["tracked_files"], 2);
+    assert_eq!(json["tracked_files"], 4); // plus .gitignore and paper.toml
     settings().bind(|| {
         insta::assert_snapshot!("init_json", env.redact_json(&run.stdout));
     });
@@ -217,14 +218,17 @@ fn init_json_reports_a_chosen_profile_as_not_detected() {
 fn adopting_leaves_the_block_and_paper_toml_as_unsaved_changes() {
     let env = Env::new();
     env.plain_git_repo_with_side_branch();
-    let before = env.git_work(&["log", "--format=%H %s", "--all"]);
+    let before = env.git_work(&["log", "--format=%H %s", "--branches"]);
 
     let run = env.paper(&["init"]);
 
     run.assert_code(0);
     assert!(run.stdout.contains("Profile: generic"), "{run:#?}");
     assert!(run.stdout.contains(".gitignore"), "{run:#?}");
-    assert_eq!(env.git_work(&["log", "--format=%H %s", "--all"]), before);
+    assert_eq!(
+        env.git_work(&["log", "--format=%H %s", "--branches"]),
+        before
+    );
     let status = env.git_work(&["status", "--porcelain"]);
     assert!(
         status.contains(".gitignore") && status.contains("paper.toml"),

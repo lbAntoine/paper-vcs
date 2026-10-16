@@ -38,7 +38,12 @@ fn a_first_save_shows_every_file_as_added() {
 
     assert_eq!(
         summary(&entries),
-        vec![("a.tex", ChangeKind::Added), ("d/b.tex", ChangeKind::Added)]
+        vec![
+            (".gitignore", ChangeKind::Added),
+            ("a.tex", ChangeKind::Added),
+            ("d/b.tex", ChangeKind::Added),
+            ("paper.toml", ChangeKind::Added)
+        ]
     );
 }
 

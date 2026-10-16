@@ -5,6 +5,10 @@
 
 pub mod gitignore;
 
+use std::sync::OnceLock;
+
+use toml_edit::{DocumentMut, Item};
+
 /// A built-in profile, read from `profiles/<name>.toml`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Profile {
@@ -25,13 +29,92 @@ impl Profile {
     ///
     /// Never (the embedded files are checked by tests).
     pub fn all() -> &'static [Profile] {
-        todo!("PV-004: embedded profiles")
+        static ALL: OnceLock<Vec<Profile>> = OnceLock::new();
+        ALL.get_or_init(|| {
+            let shared = strings(&parse(SHARED), "ignore");
+            SOURCES
+                .iter()
+                .map(|source| Profile::from_toml(source, &shared))
+                .collect()
+        })
     }
 
     /// The built-in profile called `name`, if there is one.
-    pub fn builtin(_name: &str) -> Option<&'static Profile> {
-        todo!("PV-004: embedded profiles")
+    pub fn builtin(name: &str) -> Option<&'static Profile> {
+        Self::all().iter().find(|profile| profile.name == name)
     }
+
+    /// The names of the built-in profiles, in the order `Profile::all` lists them.
+    pub fn names() -> impl Iterator<Item = &'static str> {
+        Self::all().iter().map(|profile| profile.name.as_str())
+    }
+
+    /// Own lines first, then the shared ones that aren't already there.
+    fn from_toml(source: &str, shared: &[String]) -> Self {
+        let doc = parse(source);
+        let mut ignore = strings(&doc, "ignore");
+        for line in shared {
+            if !ignore.contains(line) {
+                ignore.push(line.clone());
+            }
+        }
+        Self {
+            name: doc["name"]
+                .as_str()
+                .expect("a built-in profile has a name")
+                .to_owned(),
+            detect: strings(&doc, "detect"),
+            ignore,
+            tips: strings(&doc, "tips"),
+        }
+    }
+
+    /// The `detect` pattern that matches a file name: `*.tex` by suffix, others exactly.
+    fn matches(&self, file_name: &str) -> bool {
+        self.detect
+            .iter()
+            .any(|pattern| match pattern.strip_prefix('*') {
+                Some(suffix) => file_name.len() > suffix.len() && file_name.ends_with(suffix),
+                None => file_name == pattern,
+            })
+    }
+}
+
+const SHARED: &str = include_str!("../../profiles/shared.toml");
+
+const SOURCES: [&str; 6] = [
+    include_str!("../../profiles/latex.toml"),
+    include_str!("../../profiles/markdown.toml"),
+    include_str!("../../profiles/typst.toml"),
+    include_str!("../../profiles/quarto.toml"),
+    include_str!("../../profiles/jupyter.toml"),
+    include_str!("../../profiles/generic.toml"),
+];
+
+/// Detection order: the most specific signal wins.
+const DETECTION_ORDER: [&str; 5] = ["quarto", "latex", "typst", "jupyter", "markdown"];
+
+fn parse(source: &str) -> DocumentMut {
+    source
+        .parse()
+        .expect("the built-in profile files are valid TOML")
+}
+
+fn strings(doc: &DocumentMut, key: &str) -> Vec<String> {
+    doc.get(key)
+        .and_then(Item::as_array)
+        .map(|array| {
+            array
+                .iter()
+                .map(|value| {
+                    value
+                        .as_str()
+                        .expect("profile lists hold only text")
+                        .to_owned()
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Picks the profile for a project from the paths (relative, `/`-separated) of the files in it.
@@ -42,8 +125,16 @@ impl Profile {
 /// # Panics
 ///
 /// Never.
-pub fn detect<S: AsRef<str>>(_files: &[S]) -> &'static Profile {
-    todo!("PV-004: detection")
+pub fn detect<S: AsRef<str>>(files: &[S]) -> &'static Profile {
+    let names: Vec<&str> = files
+        .iter()
+        .map(|file| file.as_ref().rsplit('/').next().unwrap_or_default())
+        .collect();
+    DETECTION_ORDER
+        .iter()
+        .filter_map(|name| Profile::builtin(name))
+        .find(|profile| names.iter().any(|name| profile.matches(name)))
+        .unwrap_or_else(|| Profile::builtin("generic").expect("generic is built in"))
 }
 
 #[cfg(test)]

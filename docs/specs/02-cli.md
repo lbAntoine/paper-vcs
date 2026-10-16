@@ -89,18 +89,28 @@ with `from` the commit the files were restored from.
 
 ### `paper init [--profile <name>] [<path>]` (since v0.1)
 
-- **Empty folder, or files without git:** create a git repo, write the profile's ignores to
-  `.gitignore` (merging, never overwriting), write `paper.toml`, create line `main`, and
-  make an initial save `"Start project"` containing the existing files (subject to large-file rules).
+- **Empty folder, or files without git:** create a git repo, write the profile's block to
+  `.gitignore` (merging, never overwriting), write `paper.toml` (`profile = "<name>"`), create
+  line `main`, and make an initial save `"Start project"` containing the existing files
+  (subject to large-file rules) plus those two files, and none of the ignored ones.
 - **Existing git repo:** adopt it. Import all local branches as lines. The current git branch
-  becomes the current line. Uncommitted git changes become that line's draft. Nothing is rewritten.
+  becomes the current line. Uncommitted git changes become that line's draft. History is never
+  rewritten: the profile block and `paper.toml` are written to the working files, so they show
+  up in the draft as unsaved changes, and files already saved stay tracked even when the new
+  ignores match them. A `profile` already in `paper.toml` wins over detection, and a
+  `--profile` that disagrees with it is a user error (exit 1) pointing to
+  `paper config set --project profile <name>`.
 - **Detached HEAD in an existing repo:** refuse, and suggest `git switch <branch>` first.
 - `--profile` accepts `latex | markdown | typst | quarto | jupyter | generic`. The default is
-  auto-detected from the files present (`*.tex` → latex, …), falling back to generic.
-  *Not yet effective:* the name is validated, but profiles (ignores, `paper.toml`) arrive
-  later, and `--help` says so.
+  auto-detected from the files the snapshot would see (`_quarto.yml` → quarto, `*.tex` →
+  latex, `*.typ` → typst, `*.ipynb` → jupyter, `*.md` → markdown, in that order), falling back
+  to generic. A damaged paper block in `.gitignore` (a start marker without its end, or two
+  blocks) is a user error and nothing is written.
 - It reports whether the project was created or adopted, how many files are tracked, the
-  files left out (too large, symlinks, nested repositories) and any branches skipped.
+  profile (`Profile: latex (detected from *.tex)`, `Profile: markdown (chosen)` or
+  `Profile: latex (from paper.toml)`), the files it wrote (`.gitignore`, `paper.toml`), the
+  profile's tips, the files left out (too large, symlinks, nested repositories) and any
+  branches skipped. `--json` adds `profile`, `detected`, `written` and `tips`.
 - If no identity is found in the environment, paper config or git config, ask for name and
   email once on a terminal and store them in the user config (see Global behaviour).
   Without a terminal `init` fails with the `paper config set user.…` commands (then the
@@ -341,7 +351,9 @@ are local until `paper share <line>`. This means experiments are private by defa
 - `paper config set <key> <value> [--project]` validates, writes, and prints
   `Set <key> = <value> in <file>`. It writes the user config by default and the project's
   `paper.toml` (at the project root, created on first use) with `--project`. Comments, layout
-  and other keys in the file are kept. Invalid values, unknown keys, a section that is a plain value and a key in the wrong
+  and other keys in the file are kept. `set --project profile <name>` also replaces the
+  profile block in `.gitignore` (created if missing, your own lines untouched) and says so; a
+  damaged block stops it before anything is written. Invalid values, unknown keys, a section that is a plain value and a key in the wrong
   file are user errors and nothing is written.
 - `paper config list` prints every key with its value and its source (`env`, `project`,
   `user`, `git` or `default`). With `--json`:
@@ -372,7 +384,7 @@ A malformed file is a user error naming the file and line. See
 | `large_files.warn_mb` | integer ≥ 1 | project or user | snapshot warning threshold |
 | `large_files.max_mb` | integer ≥ 1, not below `warn_mb` in the same file | project or user | snapshot skip threshold |
 | `diff.default` | `lines` or `words` | project or user | none until v0.3 (comparisons stay by line; `get` and `list` say so) |
-| `profile` | the six profile names | project only | stored; used by profiles later |
+| `profile` | the six profile names | project only | the project's profile; setting it also replaces the block in `.gitignore` |
 
 Identity and looks are never written to `paper.toml`: it is saved with the project, which
 may be shared or public. `profile` describes the project, so it needs `--project`. When

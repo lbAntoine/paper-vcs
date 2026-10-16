@@ -42,8 +42,9 @@ pub enum ColorChoice {
 pub enum Command {
     /// Make a folder a paper project, or adopt an existing git repository.
     Init {
-        /// Kind of project: latex, markdown, typst, quarto, jupyter or generic. Accepted and
-        /// checked, but it has no effect yet (profiles are not yet implemented).
+        /// Kind of project: latex, markdown, typst, quarto, jupyter or generic (default: guessed
+        /// from the files). It decides what paper keeps out of saves, through a marked block in
+        /// .gitignore.
         #[arg(long, value_parser = ["latex", "markdown", "typst", "quarto", "jupyter", "generic"])]
         profile: Option<String>,
         /// The folder to make a project (default: the current folder).

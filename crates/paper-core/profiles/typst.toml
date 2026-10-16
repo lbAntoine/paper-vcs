@@ -1,0 +1,4 @@
+name = "typst"
+detect = ["*.typ"]
+ignore = []
+tips = ["Write one sentence per line: diffs and merges become much cleaner."]

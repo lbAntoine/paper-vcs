@@ -1,0 +1,21 @@
+---
+source: crates/paper-cli/tests/init.rs
+expression: env.redact_json(&run.stdout)
+---
+{
+  "adopted": false,
+  "detected": true,
+  "large": [],
+  "profile": "latex",
+  "schema": 1,
+  "skipped": [],
+  "skipped_branches": [],
+  "tips": [
+    "Write one sentence per line: diffs and merges become much cleaner."
+  ],
+  "tracked_files": 3,
+  "written": [
+    ".gitignore",
+    "paper.toml"
+  ]
+}

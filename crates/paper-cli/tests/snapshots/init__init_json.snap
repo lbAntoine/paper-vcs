@@ -4,9 +4,16 @@ expression: env.redact_json(&run.stdout)
 ---
 {
   "adopted": false,
+  "detected": true,
   "large": [],
+  "profile": "generic",
   "schema": 1,
   "skipped": [],
   "skipped_branches": [],
-  "tracked_files": 2
+  "tips": [],
+  "tracked_files": 4,
+  "written": [
+    ".gitignore",
+    "paper.toml"
+  ]
 }

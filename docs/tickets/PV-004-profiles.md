@@ -149,3 +149,28 @@ never touches the user's own lines, and records the choice in `paper.toml`.
   `init__init_json_latex`. Other tests that run init (CLI `Env::project_with_three_saves`, core tests) now
   also get `.gitignore`/`paper.toml`; GREEN to check they still pass.
 - Questions: none.
+
+### GREEN · rust-engineer · 2026-10-16
+- Implemented: `profile` module (embedded `crates/paper-core/profiles/*.toml` + `shared.toml`,
+  parsed once with `toml_edit`; `Profile::{all, builtin, names}`, `detect`), `gitignore::{apply,
+  apply_to_file}`, `project/init_profile.rs` (pure `ProfilePlan::prepare` then `write`, so errors
+  leave the folder untouched), `Project::init` delegating to `init_with_profile(.., None)`,
+  `snapshot::visible_files` (the walk's file list, for detection). `config::keys` takes profile names
+  from `Profile::names()`. CLI: `init --profile` effective, human and JSON output, `config set
+  --project profile` applies the block (before writing `paper.toml`, so a damaged block writes
+  nothing). `ProfileConflict` and `Gitignore` are three-part user errors (exit 1); `InitError::Config`
+  now renders as a settings error (user) instead of a project one.
+- Added `Initialized.from_paper_toml` (not in JSON) so the human line can read
+  `Profile: latex (from paper.toml)`; generic reads `Profile: generic (nothing more specific found)`.
+  Adoption output adds "They show up as unsaved changes in your draft."
+- Specs: 02-cli (init, config), 04-content (Profiles: v0.1 fields, detection, block rules).
+  Shared lines also include `*.swp`, `*.swo`, `*~` (editor swap files); bare `*.tmp` is not ignored.
+- Existing tests updated because `init` now writes and saves `.gitignore` and `paper.toml`:
+  core `save.rs`, `history.rs`, `show_diff.rs` (expected file lists), `restore.rs` (one test now
+  uses `a.txt`, since the latex profile ignores `*.log`); cli `config.rs` (profile is now set after
+  init), `basics.rs` (old "no effect yet" help test now checks the option is described), `init.rs`
+  counts (2 -> 4). In the RED tests `git log --all` became `--branches`: `--all` also lists the
+  draft commits under `refs/paper/`, which adoption legitimately adds.
+- Snapshots accepted: new `init__init_json_latex`; changed `init__init_created`, `init__init_adopted`,
+  `init__init_json`, `config__config_list`, `config__config_list_json`. `init__init_twice` unchanged.
+- Follow-up ideas: JSON for `config set` could say whether `.gitignore` changed.

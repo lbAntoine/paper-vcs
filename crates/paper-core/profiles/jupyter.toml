@@ -1,0 +1,4 @@
+name = "jupyter"
+detect = ["*.ipynb"]
+ignore = [".ipynb_checkpoints/"]
+tips = []

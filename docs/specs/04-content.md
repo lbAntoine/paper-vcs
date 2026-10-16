@@ -224,7 +224,8 @@ a conflict involves a line over 400 characters, the output adds a single hint. T
 
 ## Profiles
 
-A profile is a built-in TOML file. It is cheap to add, and community pull requests are welcome.
+A profile is a built-in TOML file (`crates/paper-core/profiles/<name>.toml`, compiled in). It
+is cheap to add, and community pull requests are welcome.
 
 ```toml
 # profiles/latex.toml
@@ -234,11 +235,14 @@ ignore = [
   "*.aux", "*.log", "*.out", "*.toc", "*.lof", "*.lot", "*.fls", "*.fdb_latexmk",
   "*.synctex.gz", "*.bbl", "*.blg", "*.bcf", "*.run.xml", "_minted-*/", "build/",
 ]
-text_extensions   = ["tex", "bib", "sty", "cls", "bst"]
-binary_extensions = ["pdf", "png", "jpg", "eps"]
-tokenizer = { "tex" = "latex", "bib" = "latex" }
 tips = ["Write one sentence per line: diffs and merges become much cleaner."]
 ```
+
+In v0.1 a profile has `name`, `detect` (file names or `*.ext` patterns, matched against file
+names in any folder), `ignore` (its own lines for `.gitignore`) and `tips`. The shared lines
+below live in `profiles/shared.toml` and are appended to every profile's list.
+`text_extensions`, `binary_extensions` and `tokenizer` arrive with the features that read them
+(v0.3).
 
 | Profile | Detect | Notable ignores |
 |---|---|---|
@@ -251,10 +255,15 @@ tips = ["Write one sentence per line: diffs and merges become much cleaner."]
 
 Every profile also includes the generic ignores, plus:
 - common Python and R environment folders (`.venv/`, `__pycache__/`, `.Rproj.user/`, `renv/library/`);
-- Office and LibreOffice lock and temporary files (`~$*`, `.~lock.*#`, `~WRL*.tmp`, `*.tmp` next to Office files).
+- Office and LibreOffice lock and temporary files (`~$*`, `.~lock.*#`, `~WRL*.tmp`). A bare
+  `*.tmp` is not ignored, since a `.gitignore` can't limit it to files next to Office files.
 
 There's no `office` profile. Office files work in every profile, because a LaTeX project
 often includes a supervisor's `.docx` or a results `.xlsx`.
+
+**Detection** (when `--profile` isn't given) looks at the files a snapshot would see, so
+existing ignores apply, and picks the first match in this order: `quarto`, `latex`, `typst`,
+`jupyter`, `markdown`, else `generic`.
 
 Profiles only ever **add** lines to `.gitignore`, inside a marked block, so re-running is
 idempotent and user lines are never touched:
@@ -264,6 +273,16 @@ idempotent and user lines are never touched:
 ...
 # <<< paper-vcs profile: latex <<<
 ```
+
+- No `.gitignore`: it is created with the block.
+- A `.gitignore` without a block: the block is appended after a blank line; every existing
+  byte stays as it was.
+- An existing paper block (any profile name): replaced in place. Applying the same profile
+  again changes nothing, byte for byte.
+- A start marker without its end marker, or two blocks: an error that says what to fix, and
+  nothing is written.
+- Line endings follow the file: CRLF if its first line ends in CRLF, else LF.
+- Files already saved stay tracked when a new rule matches them, as in git.
 
 ## Large files
 

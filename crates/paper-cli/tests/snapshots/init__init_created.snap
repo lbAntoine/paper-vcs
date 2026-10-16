@@ -3,4 +3,7 @@ source: crates/paper-cli/tests/init.rs
 expression: env.redact(&run.stdout)
 ---
 Created a paper project, with a first save: "Start project".
-Tracking 2 files.
+Tracking 4 files.
+Profile: latex (detected from *.tex)
+Wrote .gitignore and paper.toml.
+Tip: Write one sentence per line: diffs and merges become much cleaner.

@@ -350,7 +350,8 @@ fn a_refused_restore_keeps_the_unsaved_edit_recorded_but_changes_no_file() {
 
 #[test]
 fn restore_never_overwrites_an_ignored_file_sitting_at_a_saved_path() {
-    let (dir, mut project) = project_with(&[("a.tex", "a\n"), ("out.log", "saved log\n")]);
+    // Not a LaTeX folder: the latex profile would ignore `*.log` from the start.
+    let (dir, mut project) = project_with(&[("a.txt", "a\n"), ("out.log", "saved log\n")]);
     // The file is saved, then becomes ignored and untracked in the draft.
     write(dir.path(), ".gitignore", "out.log\n");
     save_all(&mut project, "two");

@@ -8,4 +8,4 @@ ui.color             never             user
 large_files.warn_mb  2                 env
 large_files.max_mb   7                 project
 diff.default         lines             default
-profile              (not set)         -
+profile              latex             project

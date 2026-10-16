@@ -9,10 +9,13 @@
 //! # <<< paper-vcs profile: latex <<<
 //! ```
 
+use std::fmt::Write as _;
+use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
 use super::Profile;
+use crate::fs_util::write_atomic;
 
 /// Why a profile block couldn't be applied. Nothing is written when this happens.
 #[derive(Debug, thiserror::Error)]
@@ -56,11 +59,92 @@ pub enum GitignoreError {
 /// # Panics
 ///
 /// Never.
-pub fn apply(
-    _existing: Option<&str>,
-    _profile: &Profile,
-) -> Result<Option<String>, GitignoreError> {
-    todo!("PV-004: block merge")
+pub fn apply(existing: Option<&str>, profile: &Profile) -> Result<Option<String>, GitignoreError> {
+    let Some(text) = existing else {
+        return Ok(Some(render_block(profile, "\n", true)));
+    };
+    let eol = if text
+        .split_inclusive('\n')
+        .next()
+        .is_some_and(|l| l.ends_with("\r\n"))
+    {
+        "\r\n"
+    } else {
+        "\n"
+    };
+    let result = if let Some(span) = find_block(text)? {
+        let terminated = text[span.start..span.end].ends_with('\n');
+        format!(
+            "{}{}{}",
+            &text[..span.start],
+            render_block(profile, eol, terminated),
+            &text[span.end..]
+        )
+    } else {
+        let mut out = text.to_owned();
+        if !text.is_empty() {
+            if !text.ends_with('\n') {
+                out.push_str(eol);
+            }
+            out.push_str(eol);
+        }
+        out.push_str(&render_block(profile, eol, true));
+        out
+    };
+    Ok((result != text).then_some(result))
+}
+
+/// Byte range of the existing block, from its start marker to the end of its end-marker line.
+struct Span {
+    start: usize,
+    end: usize,
+}
+
+fn find_block(text: &str) -> Result<Option<Span>, GitignoreError> {
+    let mut found: Option<Span> = None;
+    let mut open: Option<(usize, usize)> = None; // (byte offset, line number)
+    let mut offset = 0;
+    for (index, line) in text.split_inclusive('\n').enumerate() {
+        let number = index + 1;
+        let trimmed = line.trim();
+        let is_marker = |open_tag: &str, close_tag: &str| {
+            trimmed.starts_with(open_tag) && trimmed.ends_with(close_tag)
+        };
+        if is_marker("# >>> paper-vcs profile: ", " >>>") {
+            if let Some((_, first)) = open {
+                return Err(GitignoreError::UnterminatedBlock { line: first });
+            }
+            if found.is_some() {
+                return Err(GitignoreError::DuplicateBlock { line: number });
+            }
+            open = Some((offset, number));
+        } else if is_marker("# <<< paper-vcs profile: ", " <<<")
+            && let Some((start, _)) = open.take()
+        {
+            found = Some(Span {
+                start,
+                end: offset + line.len(),
+            });
+        }
+        offset += line.len();
+    }
+    match open {
+        Some((_, line)) => Err(GitignoreError::UnterminatedBlock { line }),
+        None => Ok(found),
+    }
+}
+
+fn render_block(profile: &Profile, eol: &str, terminated: bool) -> String {
+    let mut out = format!("# >>> paper-vcs profile: {} >>>{eol}", profile.name);
+    for line in &profile.ignore {
+        out.push_str(line);
+        out.push_str(eol);
+    }
+    let _ = write!(out, "# <<< paper-vcs profile: {} <<<", profile.name);
+    if terminated {
+        out.push_str(eol);
+    }
+    out
 }
 
 /// Applies `profile`'s block to the `.gitignore` in `workdir`, creating it if needed.
@@ -73,8 +157,24 @@ pub fn apply(
 /// # Panics
 ///
 /// Never.
-pub fn apply_to_file(_workdir: &Path, _profile: &Profile) -> Result<bool, GitignoreError> {
-    todo!("PV-004: write the block")
+pub fn apply_to_file(workdir: &Path, profile: &Profile) -> Result<bool, GitignoreError> {
+    let path = workdir.join(".gitignore");
+    let io_error = |source| GitignoreError::Io {
+        path: path.clone(),
+        source,
+    };
+    let existing = match fs::read_to_string(&path) {
+        Ok(text) => Some(text),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => None,
+        Err(err) => return Err(io_error(err)),
+    };
+    match apply(existing.as_deref(), profile)? {
+        Some(text) => {
+            write_atomic(&path, text.as_bytes()).map_err(io_error)?;
+            Ok(true)
+        }
+        None => Ok(false),
+    }
 }
 
 #[cfg(test)]

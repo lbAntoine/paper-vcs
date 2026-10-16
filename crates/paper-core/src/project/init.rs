@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 use paper_git::{ChangeId, CommitId, GitError, GitRepo, Identity, NewCommit, TreeId};
 
+use super::init_profile::{ProfilePlan, ProfileReport};
 use super::{
     FORMAT_VERSION, Project, VERSION_FILE, draft_ref, line_ref, paper_dir, signature_now,
     write_draft,
@@ -32,9 +33,12 @@ pub struct Initialized {
     pub skipped_branches: Vec<String>,
     /// Name of the profile in effect: `latex`, `markdown`, ...
     pub profile: String,
-    /// `true` when the profile was detected from the files, `false` when chosen (by the caller
-    /// or by an existing `profile` in `paper.toml`).
+    /// `true` when the profile was detected from the files, `false` when it was chosen or read
+    /// from `paper.toml`.
     pub detected: bool,
+    /// `true` when the profile came from an existing `profile` in `paper.toml` (and `detected`
+    /// is `false`).
+    pub from_paper_toml: bool,
     /// Files `init` wrote in the working folder, relative to it: `.gitignore` and/or `paper.toml`.
     pub written: Vec<String>,
     /// The profile's tips.
@@ -88,19 +92,7 @@ impl Project {
         identity: Identity,
         options: &SnapshotOptions,
     ) -> Result<(Self, Initialized), InitError> {
-        // RED stub: GREEN makes this `init_with_profile(.., None)`.
-        fs::create_dir_all(path).map_err(|source| io_error(path, source))?;
-        match GitRepo::enclosing_workdir(path) {
-            None => {
-                let repo = GitRepo::init(path, &identity)?;
-                start_fresh(repo, identity, options, LineName::main(), false)
-            }
-            Some(root) if same_dir(&root, path) => adopt(path, identity, options),
-            Some(root) => Err(InitError::InsideAnotherRepository {
-                path: path.to_owned(),
-                root,
-            }),
-        }
+        Self::init_with_profile(path, identity, options, None)
     }
 }
 
@@ -124,12 +116,25 @@ impl Project {
     ///
     /// Never.
     pub fn init_with_profile(
-        _path: &Path,
-        _identity: Identity,
-        _options: &SnapshotOptions,
-        _choice: Option<&Profile>,
+        path: &Path,
+        identity: Identity,
+        options: &SnapshotOptions,
+        choice: Option<&Profile>,
     ) -> Result<(Self, Initialized), InitError> {
-        todo!("PV-004: profiles in init")
+        fs::create_dir_all(path).map_err(|source| io_error(path, source))?;
+        match GitRepo::enclosing_workdir(path) {
+            None => {
+                let plan = ProfilePlan::prepare(path, choice)?;
+                let repo = GitRepo::init(path, &identity)?;
+                let report = plan.write(path)?;
+                start_fresh(repo, identity, options, LineName::main(), false, report)
+            }
+            Some(root) if same_dir(&root, path) => adopt(path, identity, options, choice),
+            Some(root) => Err(InitError::InsideAnotherRepository {
+                path: path.to_owned(),
+                root,
+            }),
+        }
     }
 }
 
@@ -137,6 +142,7 @@ fn adopt(
     path: &Path,
     identity: Identity,
     options: &SnapshotOptions,
+    choice: Option<&Profile>,
 ) -> Result<(Project, Initialized), InitError> {
     let repo = GitRepo::open(path, &identity)?;
     if paper_dir(&repo).join(VERSION_FILE).exists() {
@@ -149,17 +155,21 @@ fn adopt(
         .parse()
         .map_err(|_| InitError::UnusableBranchName { name: current })?;
     let branches = repo.local_branches()?;
-    if branches.is_empty() {
-        // A repository without commits yet: start like a new project, on its current branch.
-        return start_fresh(repo, identity, options, current_line, true);
-    }
-    if !branches
-        .iter()
-        .any(|(branch, _)| *branch == current_line.as_str())
+    if !branches.is_empty()
+        && !branches
+            .iter()
+            .any(|(branch, _)| *branch == current_line.as_str())
     {
         return Err(InitError::EmptyCurrentBranch {
             name: current_line.to_string(),
         });
+    }
+    // The block and `paper.toml` go to the working files before the snapshot, so they are part
+    // of the draft; nothing is rewritten in history.
+    let report = ProfilePlan::prepare(path, choice)?.write(path)?;
+    if branches.is_empty() {
+        // A repository without commits yet: start like a new project, on its current branch.
+        return start_fresh(repo, identity, options, current_line, true, report);
     }
 
     let paper_dir = create_paper_dir(&repo)?;
@@ -207,11 +217,11 @@ fn adopt(
         skipped: snap.skipped,
         large: snap.large,
         skipped_branches,
-        // RED stub: GREEN fills these in.
-        profile: String::new(),
-        detected: false,
-        written: Vec::new(),
-        tips: Vec::new(),
+        profile: report.profile,
+        detected: report.detected,
+        from_paper_toml: report.from_paper_toml,
+        written: report.written,
+        tips: report.tips,
     };
     finish(
         repo,
@@ -232,6 +242,7 @@ fn start_fresh(
     options: &SnapshotOptions,
     line: LineName,
     adopted: bool,
+    report: ProfileReport,
 ) -> Result<(Project, Initialized), InitError> {
     let paper_dir = create_paper_dir(&repo)?;
     let empty = repo.empty_tree()?;
@@ -251,11 +262,11 @@ fn start_fresh(
         skipped: snap.skipped,
         large: snap.large,
         skipped_branches: Vec::new(),
-        // RED stub: GREEN fills these in.
-        profile: String::new(),
-        detected: false,
-        written: Vec::new(),
-        tips: Vec::new(),
+        profile: report.profile,
+        detected: report.detected,
+        from_paper_toml: report.from_paper_toml,
+        written: report.written,
+        tips: report.tips,
     };
     let view = View::new(line, Line { tip: save, draft });
     finish(

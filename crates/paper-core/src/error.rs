@@ -7,6 +7,7 @@ use std::path::Path;
 
 use crate::config::{ConfigError, Conflict, Key, Origin, Scope};
 use crate::point::ParsePointError;
+use crate::profile::gitignore::GitignoreError;
 use crate::project::{
     DiffError, HistoryError, InitError, OpenError, ResolveError, RestoreError, SaveError,
     ShowError, StatusError,
@@ -200,14 +201,63 @@ impl From<InitError> for PaperError {
                     "move to a branch that has history, then run paper init again",
                 )],
             ),
+            InitError::ProfileConflict {
+                requested,
+                existing,
+            } => Self::user(
+                format!("This project's profile is '{existing}', not '{requested}'"),
+                format!(
+                    "paper.toml already says profile = \"{existing}\", and init does not \
+                     override it silently."
+                ),
+                vec![
+                    Suggestion::new(
+                        format!("paper init --profile {existing}"),
+                        "adopt the project with the profile it already has",
+                    ),
+                    Suggestion::new(
+                        format!("paper config set --project profile {requested}"),
+                        format!("or change the project to '{requested}' (run it after init)"),
+                    ),
+                ],
+            ),
+            InitError::Gitignore(error) => gitignore_error(&error),
+            InitError::Config(error) => Self::from_config(&error, Scope::Project),
             InitError::Git(_)
-            | InitError::ProfileConflict { .. }
-            | InitError::Gitignore(_)
-            | InitError::Config(_)
             | InitError::Snapshot(_)
             | InitError::View(_)
             | InitError::Io { .. } => Self::project("Paper could not set up this folder", &error),
         }
+    }
+}
+
+/// A `.gitignore` the profile block can't be merged into (nothing was written), or couldn't be
+/// written.
+pub(crate) fn gitignore_error(error: &GitignoreError) -> PaperError {
+    match error {
+        GitignoreError::UnterminatedBlock { .. } | GitignoreError::DuplicateBlock { .. } => {
+            PaperError::user(
+                "The paper block in .gitignore is damaged",
+                format!(
+                    "{error}. Paper keeps its lines between two marker lines, \
+                     `# >>> paper-vcs profile: <name> >>>` and `# <<< paper-vcs profile: <name> <<<`, \
+                     and needs exactly one such pair. Nothing was changed."
+                ),
+                vec![Suggestion::new(
+                    "paper init",
+                    "run it again after fixing .gitignore: delete the stray marker line, or the whole block",
+                )],
+            )
+        }
+        GitignoreError::Io { .. } => {
+            PaperError::project_failure("Paper could not update .gitignore", error)
+        }
+    }
+}
+
+impl From<GitignoreError> for PaperError {
+    fn from(error: GitignoreError) -> Self {
+        gitignore_error(&error)
     }
 }
 
@@ -695,6 +745,11 @@ mod tests {
             InitError::EmptyCurrentBranch {
                 name: "main".to_owned(),
             },
+            InitError::ProfileConflict {
+                requested: "latex".to_owned(),
+                existing: "typst".to_owned(),
+            },
+            InitError::Gitignore(GitignoreError::UnterminatedBlock { line: 3 }),
         ];
         for error in user {
             assert_user(&PaperError::from(error));

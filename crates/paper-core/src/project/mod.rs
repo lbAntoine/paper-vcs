@@ -3,6 +3,7 @@
 mod diff;
 mod history;
 mod init;
+mod init_profile;
 mod resolve;
 mod restore;
 mod save;

@@ -3,4 +3,6 @@ source: crates/paper-cli/tests/init.rs
 expression: env.redact(&run.stdout)
 ---
 Adopted this git repository as a paper project. Nothing in it was rewritten.
-Tracking 2 files.
+Tracking 4 files.
+Profile: generic (nothing more specific found)
+Wrote .gitignore and paper.toml. They show up as unsaved changes in your draft.

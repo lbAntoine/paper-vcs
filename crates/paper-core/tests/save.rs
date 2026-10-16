@@ -172,7 +172,12 @@ fn snapshot_after_an_edit_rewrites_the_draft_keeping_its_change_id_and_parent() 
     assert_ne!(new_draft.tree, old_draft.tree);
     assert_eq!(
         draft_files(&project),
-        vec!["abstract.tex".to_owned(), "main.tex".to_owned()]
+        vec![
+            ".gitignore".to_owned(),
+            "abstract.tex".to_owned(),
+            "main.tex".to_owned(),
+            "paper.toml".to_owned()
+        ]
     );
     fsck(dir.path());
 }
@@ -322,7 +327,7 @@ fn new_modified_and_deleted_files_are_all_saved() {
     );
     assert_eq!(
         git(dir.path(), &["ls-tree", "-r", "--name-only", "main"]),
-        "a.tex\nsections/c.tex\n"
+        ".gitignore\na.tex\npaper.toml\nsections/c.tex\n"
     );
     assert_eq!(git(dir.path(), &["show", "main:a.tex"]), "a2");
     assert_eq!(git(dir.path(), &["status", "--porcelain"]), "");
@@ -352,7 +357,7 @@ fn saving_only_some_paths_keeps_the_rest_in_the_new_draft() {
     );
     assert_eq!(
         git(dir.path(), &["ls-tree", "-r", "--name-only", "main"]),
-        "a.tex\nb.tex\n"
+        ".gitignore\na.tex\nb.tex\npaper.toml\n"
     );
     assert_eq!(git(dir.path(), &["show", "main:a.tex"]), "a2");
     assert_eq!(git(dir.path(), &["show", "main:b.tex"]), "b");
@@ -362,7 +367,13 @@ fn saving_only_some_paths_keeps_the_rest_in_the_new_draft() {
     );
     assert_eq!(
         draft_files(&project),
-        vec!["a.tex".to_owned(), "b.tex".to_owned(), "c.tex".to_owned()]
+        vec![
+            ".gitignore".to_owned(),
+            "a.tex".to_owned(),
+            "b.tex".to_owned(),
+            "c.tex".to_owned(),
+            "paper.toml".to_owned()
+        ]
     );
     let draft = project
         .repo()
@@ -394,7 +405,7 @@ fn saving_only_a_deletion_removes_just_that_file() {
     assert_eq!(result.saved, vec![change("a.tex", ChangeKind::Deleted)]);
     assert_eq!(
         git(dir.path(), &["ls-tree", "-r", "--name-only", "main"]),
-        "b.tex\n"
+        ".gitignore\nb.tex\npaper.toml\n"
     );
     assert_eq!(git(dir.path(), &["show", "main:b.tex"]), "b");
     assert_eq!(git(dir.path(), &["status", "--porcelain"]), " M b.tex\n");
@@ -719,7 +730,7 @@ fn a_file_turning_into_a_directory_takes_its_deletion_along() {
     );
     assert_eq!(
         git(dir.path(), &["ls-tree", "-r", "--name-only", "main"]),
-        "notes/a.tex\nx.tex\n"
+        ".gitignore\nnotes/a.tex\npaper.toml\nx.tex\n"
     );
     assert_eq!(git(dir.path(), &["status", "--porcelain"]), " M x.tex\n");
     fsck(dir.path());
@@ -754,7 +765,7 @@ fn a_directory_turning_into_a_file_takes_its_deletions_along() {
     );
     assert_eq!(
         git(dir.path(), &["ls-tree", "-r", "--name-only", "main"]),
-        "notes\nx.tex\n"
+        ".gitignore\nnotes\npaper.toml\nx.tex\n"
     );
     assert_eq!(git(dir.path(), &["status", "--porcelain"]), " M x.tex\n");
     fsck(dir.path());
@@ -793,7 +804,10 @@ fn saving_a_deletion_inside_a_folder_that_became_a_file_forces_nothing() {
             change("notes/b.tex", ChangeKind::Deleted),
         ]
     );
-    assert_eq!(ls_main(dir.path()), "notes/b.tex\nx.tex\n");
+    assert_eq!(
+        ls_main(dir.path()),
+        ".gitignore\nnotes/b.tex\npaper.toml\nx.tex\n"
+    );
     fsck(dir.path());
 }
 
@@ -822,7 +836,10 @@ fn saving_the_file_that_replaced_a_folder_takes_every_deletion_under_it() {
         ]
     );
     assert_eq!(result.remaining, vec![]);
-    assert_eq!(ls_main(dir.path()), "notes\nx.tex\n");
+    assert_eq!(
+        ls_main(dir.path()),
+        ".gitignore\nnotes\npaper.toml\nx.tex\n"
+    );
     fsck(dir.path());
 }
 
@@ -853,7 +870,7 @@ fn saving_one_file_of_a_new_folder_takes_only_the_old_file_it_replaces() {
         result.remaining,
         vec![change("notes/b.tex", ChangeKind::Added)]
     );
-    assert_eq!(ls_main(dir.path()), "notes/a.tex\n");
+    assert_eq!(ls_main(dir.path()), ".gitignore\nnotes/a.tex\npaper.toml\n");
     fsck(dir.path());
 }
 
@@ -886,7 +903,10 @@ fn all_but_still_saves_an_excluded_path_that_a_selected_change_forces() {
         result.remaining,
         vec![change("x.tex", ChangeKind::Modified)]
     );
-    assert_eq!(ls_main(dir.path()), "notes\nx.tex\n");
+    assert_eq!(
+        ls_main(dir.path()),
+        ".gitignore\nnotes\npaper.toml\nx.tex\n"
+    );
     fsck(dir.path());
 }
 

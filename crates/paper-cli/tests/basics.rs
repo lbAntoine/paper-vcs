@@ -26,16 +26,12 @@ fn help_lists_the_four_commands() {
 }
 
 #[test]
-fn init_help_says_profile_has_no_effect_yet() {
+fn init_help_describes_the_profile_option() {
     let env = Env::new();
     let run = env.paper(&["init", "--help"]);
     run.assert_code(0);
     assert!(run.stdout.contains("--profile"), "{}", run.stdout);
-    assert!(
-        run.stdout.contains("no effect") || run.stdout.contains("not yet"),
-        "{}",
-        run.stdout
-    );
+    assert!(run.stdout.contains(".gitignore"), "{}", run.stdout);
 }
 
 #[test]

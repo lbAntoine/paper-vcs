@@ -52,6 +52,10 @@ struct InitOut {
     skipped: Vec<SkippedFile>,
     large: Vec<LargeFile>,
     skipped_branches: Vec<String>,
+    profile: String,
+    detected: bool,
+    written: Vec<String>,
+    tips: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -173,6 +177,10 @@ pub fn init(initialized: &Initialized) -> String {
         skipped: initialized.skipped.iter().map(skipped).collect(),
         large: large(&initialized.large),
         skipped_branches: initialized.skipped_branches.clone(),
+        profile: initialized.profile.clone(),
+        detected: initialized.detected,
+        written: initialized.written.clone(),
+        tips: initialized.tips.clone(),
     })
 }
 

@@ -1,0 +1,4 @@
+name = "quarto"
+detect = ["_quarto.yml"]
+ignore = ["_freeze/", "_site/", "*_files/", ".quarto/"]
+tips = []

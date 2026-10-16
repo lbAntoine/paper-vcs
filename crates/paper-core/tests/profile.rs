@@ -205,7 +205,7 @@ fn committed_repo(dir: &Path) {
 fn adoption_puts_the_block_and_paper_toml_in_the_draft_and_leaves_history_alone() {
     let dir = tempfile::tempdir().unwrap();
     committed_repo(dir.path());
-    let log_before = git(dir.path(), &["log", "--format=%H %s", "--all"]);
+    let log_before = git(dir.path(), &["log", "--format=%H %s", "--branches"]);
 
     let (project, initialized) = init(dir.path(), None).unwrap();
 
@@ -214,7 +214,7 @@ fn adoption_puts_the_block_and_paper_toml_in_the_draft_and_leaves_history_alone(
     assert!(initialized.detected);
     assert_eq!(initialized.written, [".gitignore", "paper.toml"]);
     assert_eq!(
-        git(dir.path(), &["log", "--format=%H %s", "--all"]),
+        git(dir.path(), &["log", "--format=%H %s", "--branches"]),
         log_before
     );
     // Committed files that match the new ignores stay tracked.

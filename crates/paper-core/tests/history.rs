@@ -465,7 +465,9 @@ fn show_of_the_first_save_lists_every_file_as_added() {
     assert_eq!(
         shown.changes,
         [
+            change(".gitignore", ChangeKind::Added),
             change("main.tex", ChangeKind::Added),
+            change("paper.toml", ChangeKind::Added),
             change("sections/intro.tex", ChangeKind::Added),
         ]
     );
