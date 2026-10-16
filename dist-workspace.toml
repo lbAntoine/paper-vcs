@@ -21,4 +21,3 @@ install-updater = false
 tag-namespace = "v"
 # Ship exactly the archives, checksums and installers (no source tarball)
 source-tarball = false
-pr-run-mode = "upload"
