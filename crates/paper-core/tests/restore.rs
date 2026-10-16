@@ -753,7 +753,7 @@ fn a_tracked_ignored_file_whose_case_changed_is_not_found_under_its_old_spelling
 fn a_tracked_symlink_whose_case_changed_is_not_found_under_its_old_spelling() {
     let dir = tempfile::tempdir().unwrap();
     write(dir.path(), "a.tex", "a\n");
-    git(dir.path(), &["init", "-q"]);
+    git(dir.path(), &["init", "-q", "-b", "main"]);
     std::os::unix::fs::symlink("a.tex", dir.path().join("link")).unwrap();
     git(dir.path(), &["add", "."]);
     git(dir.path(), &["commit", "-qm", "start"]);

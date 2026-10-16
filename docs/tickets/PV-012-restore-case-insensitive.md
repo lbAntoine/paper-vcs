@@ -175,3 +175,6 @@ cache; a stronger Linux branch in the case-renamed folder test.
 ### Review round 2 · reviewer · 2026-10-17
 - Verdict: APPROVE. Every round-1 finding re-checked with release-build probes (status 0.05 s with 3 000 tracked-but-ignored files; the folder-with-obstacle and single-spelling cases; the flip wording; the unreadable-folder fallback). Linux expectations of the new tests checked by reasoning (CI is their first run).
 - Deferred to PV-016: folder-level `CaseAlias`; CLI tests pinning the two new reasons in human and JSON output; a per-restore listing cache; three extra checks in the Linux branch of the folder test.
+
+### GREEN (CI fix) · rust-engineer · 2026-10-17
+- The symlink test now runs `git init -q -b main`, so it no longer depends on the developer's default branch; passes with an empty global git config.
