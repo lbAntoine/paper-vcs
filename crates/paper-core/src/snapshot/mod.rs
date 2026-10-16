@@ -157,7 +157,15 @@ pub fn snapshot(
             continue;
         }
         let absolute = repo.workdir().join(path);
-        match fs::symlink_metadata(&absolute) {
+        match fs::symlink_metadata(&absolute).and_then(|meta| {
+            // On a filesystem that ignores case, `Notes.tex` finds a file spelled `notes.tex`:
+            // the draft records the spelling the walk sees, so that is not this file.
+            if has_exact_name(repo.workdir(), path)? {
+                Ok(meta)
+            } else {
+                Err(io::ErrorKind::NotFound.into())
+            }
+        }) {
             // NotADirectory: a parent that was a directory is now a file.
             Err(err)
                 if matches!(
@@ -304,6 +312,21 @@ impl State<'_> {
             kind: ChangeKind::Deleted,
         });
     }
+}
+
+/// Whether every part of `path` (relative to `root`) is listed with exactly that spelling.
+fn has_exact_name(root: &Path, path: &str) -> io::Result<bool> {
+    let mut folder = root.to_owned();
+    for part in path.split('/') {
+        if !fs::read_dir(&folder)?
+            .flatten()
+            .any(|e| e.file_name() == part)
+        {
+            return Ok(false);
+        }
+        folder.push(part);
+    }
+    Ok(true)
 }
 
 fn metadata(path: &Path) -> Result<Metadata, SnapshotError> {

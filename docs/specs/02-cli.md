@@ -264,7 +264,11 @@ stays (your unsaved edits are recorded), but no working file is changed. Files t
 directories are removed, and a file can be restored over a directory of the same name (and
 back). Files `paper` never records (symlinks, over-size files, nested repositories, ignored files)
 are never overwritten or deleted, nor is anything reached through a symlinked folder; they
-are listed as skipped. Git's index and HEAD are untouched, so
+are listed as skipped. A file or folder that differs from the save only in letter case ends with the save's
+spelling, on every filesystem. If something paper doesn't track blocks a write, restore also
+leaves alone the deletions that were only there to make room for it, so a blocked
+file/folder swap changes neither side; both are listed as skipped (`blocked`), and unrelated
+deletions in the same restore still happen. Git's index and HEAD are untouched, so
 plain `git status` shows the restored files as unstaged changes. It prints the files
 restored or deleted, then the skipped ones with the reason for each (a symbolic link, a
 folder that is a symbolic link, too large to track, inside a separate git repository, a file
