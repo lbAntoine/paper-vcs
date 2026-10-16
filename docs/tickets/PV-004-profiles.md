@@ -1,6 +1,6 @@
 # PV-004: profiles: .gitignore block merge, auto-detect, paper.toml
 
-- **Status:** In progress
+- **Status:** Done
 - **Branch:** `feat/PV-004-profiles`
 - **Depends on:** PV-005 (the `profile` key in `paper.toml`), merged. Runs alone.
 - **Touches:** `crates/paper-core/profiles/*.toml` (new), `crates/paper-core/src/profile/` (new),
@@ -113,6 +113,29 @@ never touches the user's own lines, and records the choice in `paper.toml`.
 
 ## Summary
 
+Built-in profiles (`latex`, `markdown`, `typst`, `quarto`, `jupyter`, `generic`) with detection,
+a marked `.gitignore` block and `profile` in `paper.toml`.
+
+- Profiles are embedded TOML (`name`, `detect`, `ignore`, `tips`), plus shared lines (generic,
+  Python/R environments, Office lock files, editor swap files). LaTeX doesn't ignore the PDF.
+- Detection uses only files the snapshot walk sees: quarto > latex > typst > jupyter >
+  markdown > generic.
+- The block is created, appended or replaced in place, and re-applying it is byte-identical. It
+  keeps the file's line endings. A damaged block or a non-UTF-8 `.gitignore` is a user error
+  that names the command to retry, and nothing is written.
+- New project: the block and `paper.toml` go into the first save. Adoption: they show as unsaved
+  changes in the draft, history is untouched, and committed files matching the new ignores stay
+  tracked.
+- `paper config set --project profile` replaces the block too. `init` prints the profile's tips.
+
+Deviations: a bare `*.tmp` isn't ignored (a `.gitignore` can't scope it to Office files; the spec
+says so); `*.swp`, `*.swo` and `*~` stand for "editor swap files"; `Initialized` gained
+`from_paper_toml` and `written_in_first_save`. Test fixtures unrelated to profiles use `generic`.
+
+Follow-ups in PV-014: a `ProfileSource` enum instead of two of `Initialized`'s bools, a permission
+error reading `.gitignore` as a user error, a tighter `next: paper init` assertion, and one long
+line in 02-cli.
+
 ## Handoff log
 
 ### RED · test-author · 2026-10-16
@@ -195,3 +218,7 @@ never touches the user's own lines, and records the choice in `paper.toml`.
 - Tests added: `config set` broken block keeps `paper.toml` byte-identical; adoption with a broken block writes nothing (core); `*.swp`, `*.swo`, `*~` in the shared-lines test.
 - Fixtures in core save/restore/show_diff/history use `init_with_profile(.., generic)`; restore is back to `a.tex`. Expected lists unchanged.
 - NITs: conflict wording fixed; `generic (nothing more specific found)` in 02-cli; duplicate help test removed (the basics one now also checks "no effect" is absent). `#[allow(clippy::struct_excessive_bools)]` on `Initialized` (independent report facts).
+
+### Review round 2 · reviewer · 2026-10-16
+- Verdict: APPROVE. Tests, clippy and fmt pass; all 11 round-1 findings verified, with probes for the retry suggestions and non-UTF-8 handling.
+- Deferred to PV-014: `ProfileSource` enum (`detected` and `from_paper_toml` encode one three-way fact); a non-NotFound read error on `.gitignore` is still a project error; a loose `contains("paper init")`; a long line in 02-cli § init.
