@@ -134,3 +134,6 @@ test. Publishing the release is a separate, maintainer-approved step after this 
 - Acceptance test: asserts local `refs/paper` is non-empty before the push, `refs/heads/main` in `ls-remote` (plus the no-`refs/paper` check), empty `git status --porcelain` after "Restore intro", and exact subject matches in `history` (`ends_with_subject` allows only the `(main)` marker). `#[allow(clippy::too_many_lines)]` added: the check grew the scenario past 100 lines.
 - Runbook and README updated as asked (ff-only pull and HEAD check, non-interactive watch, failure path, `--root` upgrade line, README URL bump, new-terminal note).
 - The last commit sets `pr-run-mode = "upload"` temporarily; revert it after CI shows all five targets build.
+
+### GREEN (pre-merge) · rust-engineer · 2026-10-17
+- Final doc fixes applied and the temporary `pr-run-mode = "upload"` commit reverted; `dist generate --check` is clean.
