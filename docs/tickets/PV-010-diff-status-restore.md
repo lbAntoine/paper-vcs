@@ -1,6 +1,6 @@
 # PV-010: diff, status and restore in paper-core
 
-- **Status:** In progress
+- **Status:** Done
 - **Branch:** `feat/PV-010-diff-status-restore`
 - **Depends on:** PV-002 (resolve, show), PV-009 (line diff). Both merged.
   Runs in parallel with PV-003 (CLI). PV-011 wires these commands into the CLI afterwards.
@@ -125,6 +125,25 @@ completes the v0.1 command set (`status`, `diff --lines`, `restore`).
 
 ## Summary
 
+`Project::diff`, `Project::status` and `Project::restore` in paper-core.
+
+- `diff` compares any two points (default `last` → `@`) file by file with `paper-diff`'s line
+  diff, filtered by paths with `save`'s rules; unknown paths are an error listing all of them.
+- `status` snapshots first (unless told not to) and reports the line, the last save, and each
+  change with line counts or byte sizes, plus skipped and large files.
+- `restore` decides everything and reads every blob before touching disk, writes only
+  tree-derived paths, and never writes through symlinks (any component) or over files paper
+  doesn't record (symlinks, oversize, nested repos, ignored files): those are reported in
+  `skipped`. HEAD and the index are untouched (I6).
+
+Deviations: a refused restore still runs the I1 snapshot (unsaved edits are recorded) but
+changes no working file; spec and acceptance criteria say so. `history.rs` gained a
+visibility change.
+
+Follow-ups: PV-012 (restore on case-insensitive filesystems; a blocked file/directory flip
+still runs its deletions), PV-013 (flaky `an_ambiguous_change_id_prefix_lists_its_candidates`).
+CLI wiring is PV-011.
+
 ## Handoff log
 
 ### RED · test-author · 2026-10-16
@@ -191,3 +210,12 @@ completes the v0.1 command set (`status`, `diff --lines`, `restore`).
   (actual porcelain shows `?? sec/deep/`, ` M sec/keep.tex` etc. relative to HEAD).
 - status test saves "first draft" after a real edit (gone.tex y), asserts last.message.
 - diff `UnknownPaths` wording; `history.rs` added to Touches.
+
+### Review round 2 · reviewer · 2026-10-16
+- Verdict: APPROVE. Tests, clippy and fmt pass on macOS; Windows checked by reading, CI confirms.
+- Every round-1 finding verified fixed, both coordinator decisions implemented and tested.
+- MINOR, deferred to PV-012: on case-insensitive filesystems, restoring `Notes.tex` over a draft
+  `notes.tex` deletes `notes.tex` and skips the write (recoverable from the pre-restore draft).
+- MINOR, deferred to PV-012: a blocked write in a file/directory flip still runs the deletions.
+- NITs, skipped: a now-unreachable symlink arm in `blocked`; one long line in 02-cli.md § restore.
+- Flaky PV-002 test diagnosed (random change IDs can share the `km` prefix, ~0.5% of runs) → PV-013.
