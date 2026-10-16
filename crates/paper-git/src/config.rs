@@ -22,7 +22,7 @@ use crate::{GitError, Identity};
 pub fn configured_identity(path: &Path) -> Result<Option<Identity>, GitError> {
     // Start at the nearest folder that exists: `paper init new-folder` asks before it is made.
     let start = path.ancestors().find(|p| p.exists()).unwrap_or(path);
-    let (name, email) = if let Some(repo) = open_repository(start)? {
+    let (name, email) = if let Some(repo) = open_repository(start, path)? {
         let config = repo.config_snapshot();
         (
             value(config.string("user.name")),
@@ -49,13 +49,14 @@ fn value<T: ToString>(raw: Option<T>) -> Option<String> {
 
 /// The repository around `start`, or `None` when there is none to use.
 ///
-/// A `.git` entry directly at `start` that can't be opened is an error: the folder claims to be
-/// a repository and is damaged. One further up that can't be opened (a stray file or an empty
+/// A `.git` entry directly at the `target` itself that can't be opened is an error: the folder claims to be
+/// a repository and is damaged. One anywhere above it (including at `start`, the nearest existing folder, when the target
+/// is still to be created) that can't be opened (a stray file or an empty
 /// folder) is not the target's business, so the caller falls back to the global configuration.
-fn open_repository(start: &Path) -> Result<Option<gix::Repository>, GitError> {
+fn open_repository(start: &Path, target: &Path) -> Result<Option<gix::Repository>, GitError> {
     match gix::discover(start) {
         Ok(repo) => Ok(Some(repo)),
-        Err(err) if start.join(".git").exists() => Err(err).context("open the repository"),
+        Err(err) if target.join(".git").exists() => Err(err).context("open the repository"),
         Err(_) => Ok(None),
     }
 }

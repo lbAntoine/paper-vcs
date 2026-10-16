@@ -158,3 +158,44 @@ fn restore_json_has_a_fixed_key_set() {
         insta::assert_snapshot!("restore_json", env.redact_json(&run.stdout));
     });
 }
+
+#[test]
+fn restore_dot_puts_back_everything_under_the_folder() {
+    let env = project();
+    env.write("sections/intro.tex", "scribbles\n");
+    env.write("main.tex", "scribbles\n");
+
+    let run = env.paper(&["restore", "."]);
+
+    run.assert_code(0);
+    assert_eq!(env.read("sections/intro.tex"), "Intro v2\n");
+    assert_eq!(env.read("main.tex"), "\\documentclass{article}\n");
+    assert_eq!(env.git_work(&["status", "--porcelain"]), "");
+}
+
+#[test]
+fn restore_gives_a_reason_for_each_skipped_file_in_human_and_json_output() {
+    let env = project();
+    env.write("vendor/lib.tex", "saved\n");
+    env.paper(&["save", "Add vendor"]).assert_code(0);
+    env.git_work(&["init", "-q", "vendor"]);
+    env.write("vendor/lib.tex", "nested edit\n");
+
+    let human = env.paper(&["restore", "vendor"]);
+    let json = env.paper(&["--json", "restore", "vendor"]);
+
+    human.assert_code(0);
+    assert!(
+        human
+            .stdout
+            .contains("vendor/lib.tex  (inside a separate git repository)"),
+        "{human:#?}"
+    );
+    settings().bind(|| {
+        insta::assert_snapshot!("restore_skipped_human", env.redact(&human.stdout));
+    });
+    json.assert_code(0);
+    let skipped = &json.json()["skipped"][0];
+    assert_keys(skipped, &["path", "reason", "bytes"]);
+    assert_eq!(skipped["reason"], "nested_repository");
+}

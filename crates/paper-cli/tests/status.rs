@@ -207,3 +207,38 @@ fn status_json_for_an_empty_draft_has_every_key_with_empty_lists() {
         assert_eq!(json[key], serde_json::json!([]), "{key}");
     }
 }
+
+#[test]
+fn status_lists_a_nested_repository_as_skipped() {
+    let env = project();
+    env.git_work(&["init", "-q", "vendor"]);
+    env.write("vendor/lib.tex", "nested\n");
+
+    let run = env.paper(&["status"]);
+
+    run.assert_code(0);
+    assert!(
+        run.stdout.contains("vendor  (a separate git repository)"),
+        "{run:#?}"
+    );
+    settings().bind(|| {
+        insta::assert_snapshot!("status_skipped", env.redact(&run.stdout));
+    });
+}
+
+/// The large-file threshold (10 MB) is a core default that the CLI can't change, so the test
+/// writes a file of that size.
+#[test]
+fn status_lists_large_files_that_are_tracked() {
+    let env = project();
+    env.write_bytes("data/big.bin", &binary(10 * 1024 * 1024, 3));
+
+    let run = env.paper(&["status"]);
+
+    run.assert_code(0);
+    assert!(run.stdout.contains("Large files"), "{run:#?}");
+    assert!(run.stdout.contains("data/big.bin  (10.0 MB)"), "{run:#?}");
+    settings().bind(|| {
+        insta::assert_snapshot!("status_large", env.redact(&run.stdout));
+    });
+}

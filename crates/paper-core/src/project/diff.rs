@@ -85,11 +85,7 @@ impl Project {
     /// Never.
     pub fn show_diff(&self, point: &Point) -> Result<Vec<FileDiffEntry>, ShowError> {
         let commit = self.repo.read_commit(&self.resolve(point)?.commit)?;
-        let before = match commit.parents.first() {
-            Some(parent) => self.repo.read_commit(parent)?.tree,
-            None => self.repo.empty_tree()?,
-        };
-        let old = self.repo.tree_files(&before)?;
+        let old = self.repo.tree_files(&self.parent_tree(&commit)?)?;
         let new = self.repo.tree_files(&commit.tree)?;
         Ok(self.entries(&old, &new, &[])?)
     }

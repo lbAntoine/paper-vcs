@@ -2,11 +2,11 @@
 
 use std::fmt::Write as _;
 
-use paper_core::project::{ChangeStat, Restored, Status};
+use paper_core::project::{ChangeStat, RestoreSkip, Restored, Status};
 use paper_core::snapshot::ChangeKind;
 
 use super::diff::{binary_sizes, counts};
-use super::human::{change_lines, files, large_lines, skipped_lines};
+use super::human::{change_lines, files, large_lines, size, skipped_lines};
 use super::style::Style;
 use super::time::relative_time;
 
@@ -73,9 +73,20 @@ pub fn restore(restored: &Restored) -> String {
         out.push_str(&change_lines(&restored.changes));
     }
     if !restored.skipped.is_empty() {
-        out.push_str("\nSkipped (paper does not track these, so they were left as they are):\n");
-        for path in &restored.skipped {
-            let _ = writeln!(out, "  {path}");
+        out.push_str("\nSkipped (left as they are):\n");
+        for item in &restored.skipped {
+            let why = match item.reason {
+                RestoreSkip::SavedSymlink => "the saved version is a symbolic link".to_owned(),
+                RestoreSkip::Symlink => "a symbolic link".to_owned(),
+                RestoreSkip::SymlinkedFolder => "inside a symbolic link to a folder".to_owned(),
+                RestoreSkip::TooLarge { bytes } => {
+                    format!("too large to track, {}", size(bytes))
+                }
+                RestoreSkip::NestedRepository => "inside a separate git repository".to_owned(),
+                RestoreSkip::NonUtf8Path => "its name can't be read as text".to_owned(),
+                RestoreSkip::Blocked => "a file paper doesn't track is in the way".to_owned(),
+            };
+            let _ = writeln!(out, "  {}  ({why})", item.path);
         }
     }
     out

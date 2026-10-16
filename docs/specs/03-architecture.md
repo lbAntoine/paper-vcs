@@ -21,6 +21,9 @@
           └─────────────┘  └────────────┘
 ```
 
+`paper-cli` also depends on `paper-diff` directly, for the diff types it renders (`FileDiff`,
+`to_unified`) that `paper-core` returns inside its results; it never reads git through it.
+
 A single Cargo workspace in one repo (`paper-vcs`). Edition 2024, pinned via `rust-toolchain.toml`.
 
 | Crate | Responsibility | Key deps |

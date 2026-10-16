@@ -140,6 +140,16 @@ fn rfc3339(seconds: i64, offset_seconds: i32) -> String {
     )
 }
 
+impl SkippedFile {
+    pub(super) fn new(path: String, reason: &'static str, bytes: Option<u64>) -> Self {
+        Self {
+            path,
+            reason,
+            bytes,
+        }
+    }
+}
+
 pub(super) fn large(large: &[(String, u64)]) -> Vec<LargeFile> {
     large
         .iter()

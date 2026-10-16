@@ -1,6 +1,6 @@
 //! `paper history` and `paper show` (02-cli.md).
 
-use paper_git::{ChangeId, Commit, CommitId, GitError, GitTime, Identity};
+use paper_git::{ChangeId, Commit, CommitId, GitError, GitTime, Identity, TreeId};
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -143,11 +143,15 @@ impl Project {
 
     /// What `commit` changed compared with its first parent (the empty tree for a first save).
     fn changes_of(&self, commit: &Commit) -> Result<Vec<Change>, GitError> {
-        let before = match commit.parents.first() {
-            Some(parent) => self.repo.read_commit(parent)?.tree,
-            None => self.repo.empty_tree()?,
-        };
-        diff_trees(&self.repo, &before, &commit.tree)
+        diff_trees(&self.repo, &self.parent_tree(commit)?, &commit.tree)
+    }
+
+    /// The tree `commit` is compared with: its first parent's, or the empty tree for a first save.
+    pub(super) fn parent_tree(&self, commit: &Commit) -> Result<TreeId, GitError> {
+        match commit.parents.first() {
+            Some(parent) => Ok(self.repo.read_commit(parent)?.tree),
+            None => self.repo.empty_tree(),
+        }
     }
 
     fn touches(&self, commit: &Commit, path: &str) -> Result<bool, GitError> {

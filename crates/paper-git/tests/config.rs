@@ -164,6 +164,25 @@ fn an_empty_git_folder_above_the_target_does_not_block_the_global_identity() {
     assert_eq!(identity.as_deref(), Some("Global Gina <gina@lab.example>"));
 }
 
+#[test]
+fn an_empty_git_folder_above_a_target_that_does_not_exist_yet_does_not_block_init() {
+    let dir = tempfile::tempdir().unwrap();
+    let global = dir.path().join("gitconfig");
+    std::fs::write(
+        &global,
+        "[user]\n\tname = Global Gina\n\temail = gina@lab.example\n",
+    )
+    .unwrap();
+    let outer = dir.path().join("outer");
+    std::fs::create_dir_all(outer.join(".git")).unwrap();
+    // `paper init new-project` asks for the identity before the folder is made.
+    let target = outer.join("new-project");
+
+    let identity = identity_in_child(&target, &global);
+
+    assert_eq!(identity.as_deref(), Some("Global Gina <gina@lab.example>"));
+}
+
 /// Runs this test binary again as a child with an isolated environment; the child body
 /// is `child_prints_identity`.
 fn identity_in_child(path: &Path, global: &Path) -> Option<String> {

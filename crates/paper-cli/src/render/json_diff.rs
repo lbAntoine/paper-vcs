@@ -1,7 +1,7 @@
 //! `--json` output for `status`, `diff` and `restore`; `show` reuses [`files`].
 //! Shapes are documented in `docs/specs/02-cli.md` (JSON output).
 
-use paper_core::project::{ChangeStat, FileDiffEntry, Restored, Status};
+use paper_core::project::{ChangeStat, FileDiffEntry, RestoreSkip, Restored, Status};
 use paper_diff::{FileDiff, LineKind};
 use serde::Serialize;
 
@@ -77,7 +77,7 @@ struct RestoreOut {
     schema: u32,
     from: String,
     changes: Vec<RestoreChange>,
-    skipped: Vec<String>,
+    skipped: Vec<SkippedFile>,
 }
 
 fn kind_of(kind: LineKind) -> &'static str {
@@ -191,6 +191,21 @@ pub fn restore(restored: &Restored) -> String {
                 kind: kind_name(change.kind),
             })
             .collect(),
-        skipped: restored.skipped.clone(),
+        skipped: restored
+            .skipped
+            .iter()
+            .map(|item| {
+                let (reason, bytes) = match item.reason {
+                    RestoreSkip::SavedSymlink => ("saved_symlink", None),
+                    RestoreSkip::Symlink => ("symlink", None),
+                    RestoreSkip::SymlinkedFolder => ("symlinked_folder", None),
+                    RestoreSkip::TooLarge { bytes } => ("too_large", Some(bytes)),
+                    RestoreSkip::NestedRepository => ("nested_repository", None),
+                    RestoreSkip::NonUtf8Path => ("non_utf8_path", None),
+                    RestoreSkip::Blocked => ("blocked", None),
+                };
+                SkippedFile::new(item.path.clone(), reason, bytes)
+            })
+            .collect(),
     })
 }

@@ -1,8 +1,10 @@
 //! The commands that look at or put back files: `status`, `diff`, `restore` and `show`.
 
-use paper_core::point::Point;
+use std::fmt::Write as _;
+
+use paper_core::point::{ParsePointError, Point};
 use paper_core::project::{
-    DiffRequest, FileDiffEntry, Project, ResolveError, RestoreRequest, StatusOptions,
+    DiffError, DiffRequest, FileDiffEntry, Project, ResolveError, RestoreRequest, StatusOptions,
 };
 use paper_core::{ErrorKind, PaperError, Suggestion};
 
@@ -54,6 +56,14 @@ pub fn diff(
     }
     let (project, locator) = open_and_snapshot(cli)?;
     let (points, mut paths) = split_args(&project, args)?;
+    // A word that sat where a point could be, and is neither a point nor a file.
+    let ambiguous_word = (points.len() < 2 && !paths.is_empty())
+        .then(|| {
+            locator
+                .project_path(&paths[0])
+                .map(|resolved| (paths[0].clone(), resolved))
+        })
+        .and_then(Result::ok);
     paths.extend(forced_paths.iter().cloned());
     let (from, to) = match (since, points.as_slice()) {
         (Some(_), [_, ..]) => return Err(since_with_points()),
@@ -67,7 +77,9 @@ pub fn diff(
         to,
         paths: project_paths(&locator, &paths)?,
     };
-    let entries = project.diff(&request)?;
+    let entries = project
+        .diff(&request)
+        .map_err(|error| mistyped_point(error, ambiguous_word.as_ref()))?;
     Ok(finish(
         cli,
         || diff_text(&entries, stat, style),
@@ -103,6 +115,9 @@ fn since_with_points() -> PaperError {
 
 /// Up to two leading arguments that resolve as points; the first one that doesn't, and
 /// everything after it, are paths.
+///
+/// An argument that is clearly a point but mistyped (`last~x`, `date:tomorrow`, `HEAD~1`) is an
+/// error, not a path.
 fn split_args(project: &Project, args: &[String]) -> Result<(Vec<Point>, Vec<String>), PaperError> {
     let mut points = Vec::new();
     for arg in args.iter().take(2) {
@@ -112,26 +127,57 @@ fn split_args(project: &Project, args: &[String]) -> Result<(Vec<Point>, Vec<Str
                 Err(ResolveError::UnknownPoint { .. }) => break,
                 Err(other) => return Err(other.into()),
             },
-            Err(err @ paper_core::point::ParsePointError::ForeignSyntax { .. }) => {
-                return Err(err.into());
-            }
+            Err(err) if looks_like_a_point(arg, &err) => return Err(err.into()),
             Err(_) => break,
         }
     }
-    Ok((points.clone(), args[points.len()..].to_vec()))
+    let paths = args[points.len()..].to_vec();
+    Ok((points, paths))
 }
 
-/// Paths from where paper runs to project paths; `.` at the top means no restriction.
+fn looks_like_a_point(arg: &str, error: &ParsePointError) -> bool {
+    matches!(error, ParsePointError::ForeignSyntax { .. })
+        || arg.starts_with("last~")
+        || arg.starts_with("date:")
+}
+
+/// Turns "no file matches `lsat`" into "`lsat` is not a save, line, date or file" when the
+/// word sat where a point could have been.
+fn mistyped_point(error: DiffError, word: Option<&(String, String)>) -> PaperError {
+    match (&error, word) {
+        (DiffError::UnknownPaths { paths }, Some((word, resolved))) if paths.contains(resolved) => {
+            let others: Vec<&String> = paths.iter().filter(|p| *p != resolved).collect();
+            let mut why = "Paper looked for it as a save, a line, a date and then as a file in \
+                           the draft and the saves being compared."
+                .to_owned();
+            if !others.is_empty() {
+                let listed: Vec<&str> = others.iter().map(|p| p.as_str()).collect();
+                let _ = write!(why, " No file matches {} either.", listed.join(", "));
+            }
+            PaperError {
+                kind: ErrorKind::User,
+                message: format!("'{word}' is not a save, line, date or file"),
+                why,
+                next: vec![
+                    Suggestion {
+                        command: "paper history".to_owned(),
+                        explanation: "list the saves and their IDs".to_owned(),
+                    },
+                    Suggestion {
+                        command: "paper status".to_owned(),
+                        explanation: "list the files in the draft".to_owned(),
+                    },
+                ],
+            }
+        }
+        _ => error.into(),
+    }
+}
+
+/// Paths from where paper runs to project paths. `.` at the top is the empty path, which
+/// selects every file but is still checked like any other.
 fn project_paths(locator: &Paths, given: &[String]) -> Result<Vec<String>, PaperError> {
-    let resolved = given
-        .iter()
-        .map(|p| locator.project_path(p))
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(if resolved.iter().any(String::is_empty) {
-        Vec::new()
-    } else {
-        resolved
-    })
+    given.iter().map(|p| locator.project_path(p)).collect()
 }
 
 /// `paper restore`: put the paths back as they were at `from` (default `last`).
@@ -139,7 +185,7 @@ pub fn restore(cli: &Cli, paths: &[String], from: Option<&str>) -> Output {
     let from = from.map(str::parse::<Point>).transpose()?;
     let (mut project, locator) = open(cli)?;
     let restored = project.restore(&RestoreRequest {
-        paths: restore_paths(&locator, paths)?,
+        paths: project_paths(&locator, paths)?,
         from,
     })?;
     Ok(finish(
@@ -147,11 +193,6 @@ pub fn restore(cli: &Cli, paths: &[String], from: Option<&str>) -> Output {
         || human_status::restore(&restored),
         || json_diff::restore(&restored),
     ))
-}
-
-/// Like [`project_paths`], but `.` stays: it names the whole folder, which the core takes as `""`.
-fn restore_paths(locator: &Paths, given: &[String]) -> Result<Vec<String>, PaperError> {
-    given.iter().map(|p| locator.project_path(p)).collect()
 }
 
 /// `paper show`: metadata, then the diffs (or `--stat`).

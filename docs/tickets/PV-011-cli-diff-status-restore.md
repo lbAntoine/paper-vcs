@@ -219,3 +219,14 @@ Snapshots accepted after reading each: status/diff/restore/show human and JSON.
 - MINOR: skipped/large output in `status` is only tested on Unix (symlink) and not at all for large files.
 - NITs: `diff . nope` skips the unknown-path check; a needless clone; a placeholder `next` command; a terminal read failure is `User` instead of a project failure; the direct `paper-diff` edge isn't in 03-architecture.
 - Coordinator decisions: fix everything in this round. Restore carries a reason per skipped path from core (`restore.rs` may change for that), rendered in the CLI and JSON. Deleted text files keep `−N lines`; update the spec. Keep the direct `paper-diff` dependency and show it in 03-architecture. Adding tests is authorised; don't weaken any.
+
+### GREEN (review round 1) · rust-engineer · 2026-10-16
+
+All findings fixed.
+- `configured_identity` errors only when the target itself has `.git`; new test with a not-yet-created target under an empty `.git` folder.
+- diff: a `last~`/`date:` word that fails to parse, and git syntax like `HEAD~1`, are point errors; a first word in point position that matches nothing reads "'lsat' is not a save, line, date or file" (next: `paper history`, `paper status`). Resolved paths pass through unchanged, so `diff -- . nope` reports `nope`. Tests added (HEAD~1, `last~x`, ambiguous short ID, `lsat`, `. nope`). This changed the existing `diff__diff_unknown_path.snap` (it now uses the new wording for `diff mian.tex`, whose assertion `contains("mian.tex")` still holds).
+- core: `parent_tree` helper shared by `history.rs` and `show_diff`; new `tests/show_diff.rs` (4 tests); `matches("")` unit tests and `PathSelection` doc; CLI test for `paper restore .`.
+- restore: `Restored.skipped` is now `Vec<SkippedPath { path, reason: RestoreSkip }>` (reasons: saved symlink, symlink, symlinked folder, too large, nested repository, non-UTF-8 name, blocked). tests/restore.rs assertions moved to the new shape with the same paths plus the expected reason. Human: `path  (why)` under "Skipped (left as they are):"; JSON: `[{path, reason, bytes}]`. New CLI snapshot and JSON test.
+- status tests for a nested repo and for a large file (a real 10 MB file: the threshold is a core default the CLI can't change), with snapshots.
+- spec: deleted text files keep `−N lines` (02-cli example and text), restore skipped reasons and JSON, direct `paper-diff` edge in 03-architecture.
+- nits: real example in the rooted-path `next`, read failure is a project failure, no needless clone.

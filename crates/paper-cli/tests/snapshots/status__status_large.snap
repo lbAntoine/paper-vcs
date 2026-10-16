@@ -1,0 +1,11 @@
+---
+source: crates/paper-cli/tests/status.rs
+expression: env.redact(&run.stdout)
+---
+On main · last save [ID] "Rewrite intro" ([TIME])
+
+Draft (unsaved):
+  new       data/big.bin  (10.0 MB)
+
+Large files (tracked, but they make saves slow):
+  data/big.bin  (10.0 MB)

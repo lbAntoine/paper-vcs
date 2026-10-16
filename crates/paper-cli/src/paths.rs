@@ -97,7 +97,7 @@ pub fn rooted_path_error(given: &str) -> PaperError {
               can't tell which folder it is in."
             .to_owned(),
         next: vec![Suggestion {
-            command: "paper <command> <path>".to_owned(),
+            command: "paper diff sections/intro.tex".to_owned(),
             explanation: "use a path relative to this folder or a full path".to_owned(),
         }],
     }

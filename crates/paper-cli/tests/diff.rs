@@ -419,3 +419,67 @@ fn diff_stat_json_carries_the_same_files() {
     run.assert_code(0);
     assert_eq!(run.json()["files"][0]["path"], "main.tex");
 }
+
+#[test]
+fn git_style_points_are_errors_not_paths() {
+    let env = project();
+    let run = env.paper(&["diff", "HEAD~1"]);
+    run.assert_three_part_error(1);
+    assert!(run.stderr.contains("last~1"), "{run:#?}");
+}
+
+#[test]
+fn a_mistyped_last_is_a_point_error() {
+    let env = project();
+    let run = env.paper(&["diff", "last~x"]);
+    run.assert_three_part_error(1);
+    assert!(run.stderr.contains("not a way to name a save"), "{run:#?}");
+    assert!(
+        run.stderr.contains("'x' is not a number of saves"),
+        "{run:#?}"
+    );
+}
+
+#[test]
+fn an_ambiguous_short_id_is_an_error_not_a_path() {
+    let env = project();
+    // Change IDs use 16 letters, so 19 saves are bound to share a first letter.
+    for i in 0..16 {
+        env.write("notes.txt", &format!("{i}\n"));
+        env.paper(&["save", &format!("Note {i}")]).assert_code(0);
+    }
+    let ids: Vec<String> = (0..19)
+        .map(|i| env.change_id(&format!("HEAD~{i}")))
+        .collect();
+    let letter = ids
+        .iter()
+        .map(|id| &id[..1])
+        .find(|l| ids.iter().filter(|id| id.starts_with(l)).count() > 1)
+        .unwrap();
+
+    let run = env.paper(&["diff", letter]);
+
+    run.assert_three_part_error(1);
+    assert!(run.stderr.contains("could mean several saves"), "{run:#?}");
+}
+
+#[test]
+fn a_mistyped_word_in_a_point_position_says_it_is_not_a_save_line_date_or_file() {
+    let env = project();
+    let run = env.paper(&["diff", "lsat"]);
+    run.assert_three_part_error(1);
+    assert!(
+        run.stderr
+            .contains("'lsat' is not a save, line, date or file"),
+        "{run:#?}"
+    );
+    assert!(run.stderr.contains("paper history"), "{run:#?}");
+}
+
+#[test]
+fn dot_does_not_hide_an_unknown_path_next_to_it() {
+    let env = project();
+    let run = env.paper(&["diff", "--", ".", "nope"]);
+    run.assert_three_part_error(1);
+    assert!(run.stderr.contains("nope"), "{run:#?}");
+}

@@ -78,7 +78,7 @@ are `null`, the byte sizes are set (`null` for an absent side) and `hunks` is `[
 adds `files` beside `save` and `changes`, and `paper status --json` prints
 `{schema, line, last, changes, skipped, large}`, where `last` has the shape of a save in
 `history` and each change has the file-diff keys without `hunks`.
-`paper restore --json` prints `{schema, from, changes: [{path, kind}], skipped: [path]}`,
+`paper restore --json` prints `{schema, from, changes: [{path, kind}], skipped: [{path, reason, bytes}]}`,
 with `from` the commit the files were restored from.
 
 ---
@@ -113,7 +113,7 @@ On main · last save kmrwxq "Rewrite related work" (2 hours ago)
 Draft (unsaved):
   modified  sections/intro.tex        +42 words −17 words
   new       figures/ablation.pdf      (318 KB)
-  deleted   notes/old-outline.md
+  deleted   notes/old-outline.md      +0 −85 lines
 
 Skipped (too large to track, see `paper help large-files`):
   data/raw_scans.h5                   (2.1 GB)
@@ -127,7 +127,8 @@ Other states it reports:
 - Office files kept at their previous version because they were being written;
 - an empty draft (`Nothing unsaved.`).
 
-Until word diffs arrive (v0.3), each change shows line counts (`+12 −3 lines`) for text and
+Until word diffs arrive (v0.3), each change shows line counts (`+12 −3 lines`, also for a deleted
+text file: `+0 −85 lines`) for text and
 sizes for binary files (`(318 KB)` for a new or deleted one, `318 KB → 331 KB` for a changed
 one), taken from the line diff. `paper status` snapshots first (I1);
 `--no-snapshot` reads the stored draft instead and lists no skipped or large files.
@@ -204,7 +205,9 @@ and the diffs. The date reads like `history` times; `--json` has the exact times
 | `paper diff --since neurips-submission` | Alias for `paper diff neurips-submission @`. This is the PI command |
 
 **Points or paths?** Up to two leading arguments are points if they resolve as points; the
-first one that doesn't, and everything after it, are paths. A name that is both a point and a
+first one that doesn't, and everything after it, are paths. A word that is clearly a mistyped
+point (`last~x`, `HEAD~1`) is an error, and a first word that is neither a point nor a file
+is reported as "not a save, line, date or file". A name that is both a point and a
 file is a point; `--` forces everything after it to be paths (`paper diff -- last` diffs the
 file called `last`). `--since <point>` can't be combined with points.
 
@@ -241,7 +244,11 @@ back). Files `paper` never records (symlinks, over-size files, nested repositori
 are never overwritten or deleted, nor is anything reached through a symlinked folder; they
 are listed as skipped. Git's index and HEAD are untouched, so
 plain `git status` shows the restored files as unstaged changes. It prints the files
-restored or deleted, then the skipped ones.
+restored or deleted, then the skipped ones with the reason for each (a symbolic link, a
+folder that is a symbolic link, too large to track, inside a separate git repository, a file
+paper doesn't track in the way, …). In `--json`, `skipped` is a list of `{path, reason, bytes}`
+like `init`'s, with the reasons `saved_symlink`, `symlink`, `symlinked_folder`, `too_large`,
+`nested_repository`, `non_utf8_path` and `blocked`.
 
 ### `paper undo` / `paper redo` / `paper activity [-n <N>]` (since v0.2)
 

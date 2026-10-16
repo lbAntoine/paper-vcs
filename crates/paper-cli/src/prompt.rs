@@ -29,12 +29,9 @@ pub fn ask_for_message(
     let _ = write!(output, "Describe this save: ");
     let _ = output.flush();
     let mut line = String::new();
-    input.read_line(&mut line).map_err(|err| PaperError {
-        kind: ErrorKind::User,
-        message: "Paper could not read your answer".to_owned(),
-        why: format!("Reading from the terminal failed: {err}."),
-        next: vec![suggestion()],
-    })?;
+    input
+        .read_line(&mut line)
+        .map_err(|err| PaperError::project_failure("Paper could not read your answer", &err))?;
     let message = line.trim();
     if message.is_empty() {
         return Err(PaperError {

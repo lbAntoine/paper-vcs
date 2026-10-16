@@ -17,6 +17,7 @@ use crate::view::{Line, ViewError};
 ///
 /// A path selects the file with exactly that path, or every file under it when it names a
 /// directory (`sections` or `sections/`). Paths are repository-relative, with `/` separators.
+/// The empty path is the project folder itself, so it selects every file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PathSelection {
     /// The whole draft.
@@ -337,4 +338,24 @@ fn close_over_conflicts<'a>(selected: Vec<Change>, all: &'a [Change]) -> Vec<Cha
     let mut selected = selected;
     selected.extend(forced.into_values().cloned());
     selected
+}
+
+#[cfg(test)]
+mod tests {
+    use super::matches;
+
+    #[test]
+    fn a_path_matches_the_file_itself_or_whole_components_below_it() {
+        assert!(matches("a/b.tex", "a/b.tex"));
+        assert!(matches("a", "a/b.tex"));
+        assert!(matches("a/", "a/b.tex"));
+        assert!(!matches("a/b", "a/b.tex"));
+        assert!(!matches("sec", "sections/intro.tex"));
+    }
+
+    #[test]
+    fn the_empty_path_is_the_project_folder_and_matches_every_file() {
+        assert!(matches("", "a.tex"));
+        assert!(matches("", "a/b/c.tex"));
+    }
 }

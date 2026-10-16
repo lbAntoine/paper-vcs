@@ -12,7 +12,7 @@ use super::resolve::ResolveError;
 use super::save::{SaveError, matches};
 use crate::fs_util::write_atomic;
 use crate::point::Point;
-use crate::snapshot::{Change, ChangeKind, Skipped};
+use crate::snapshot::{Change, ChangeKind, SkipReason, Skipped};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RestoreRequest {
@@ -29,7 +29,42 @@ pub struct Restored {
     pub changes: Vec<Change>,
     /// Matching files that were left alone: symlink entries in the `from` tree and
     /// things the snapshot skips (symlinks, oversize files, nested repositories).
-    pub skipped: Vec<String>,
+    pub skipped: Vec<SkippedPath>,
+}
+
+/// A matching file that restore left alone, and why.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkippedPath {
+    pub path: String,
+    pub reason: RestoreSkip,
+}
+
+impl SkippedPath {
+    fn new(path: &str, reason: RestoreSkip) -> Self {
+        Self {
+            path: path.to_owned(),
+            reason,
+        }
+    }
+}
+
+/// Why restore left a file alone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RestoreSkip {
+    /// The saved version is a symbolic link, which paper doesn't restore.
+    SavedSymlink,
+    /// The file on disk is a symbolic link.
+    Symlink,
+    /// A folder above the file is a symbolic link.
+    SymlinkedFolder,
+    /// The file on disk is too large to track.
+    TooLarge { bytes: u64 },
+    /// The file is inside a separate git repository.
+    NestedRepository,
+    /// The file's name can't be read as text.
+    NonUtf8Path,
+    /// Something paper doesn't track (an ignored file, say) is in the way.
+    Blocked,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -105,9 +140,14 @@ impl Project {
         let mut candidates = Vec::new();
         for path in targets {
             let wanted = from_files.get(path);
-            let kept = is_left_alone(&before.skipped, path) || self.on_disk_is_symlink(path);
-            if wanted.is_some_and(|f| f.kind == FileKind::Symlink) || kept {
-                skipped.push(path.clone());
+            let kept = left_alone(&before.skipped, path)
+                .or_else(|| self.on_disk_symlink(path))
+                .or_else(|| {
+                    (wanted.is_some_and(|f| f.kind == FileKind::Symlink))
+                        .then_some(RestoreSkip::SavedSymlink)
+                });
+            if let Some(reason) = kept {
+                skipped.push(SkippedPath::new(path, reason));
             } else if wanted.is_none() {
                 deletes.push(path);
             } else if wanted != draft_files.get(path) {
@@ -121,12 +161,12 @@ impl Project {
         for path in candidates {
             let file = &from_files[path];
             if self.blocked(path, draft_files.contains_key(path), &doomed) {
-                skipped.push(path.clone());
+                skipped.push(SkippedPath::new(path, RestoreSkip::Blocked));
                 continue;
             }
             writes.push((path, file.kind, self.repo.read_blob(&file.blob)?));
         }
-        skipped.sort();
+        skipped.sort_by(|a, b| a.path.cmp(&b.path));
 
         let mut changes: Vec<Change> = deletes
             .iter()
@@ -200,15 +240,23 @@ impl Project {
     }
 
     /// Whether the path, or any directory above it, is a symlink on disk.
-    fn on_disk_is_symlink(&self, path: &str) -> bool {
+    fn on_disk_symlink(&self, path: &str) -> Option<RestoreSkip> {
         let root = self.repo.workdir();
         let mut prefix = String::new();
-        path.split('/').any(|part| {
+        path.split('/').find_map(|part| {
             if !prefix.is_empty() {
                 prefix.push('/');
             }
             prefix.push_str(part);
-            fs::symlink_metadata(root.join(&prefix)).is_ok_and(|meta| meta.file_type().is_symlink())
+            let linked =
+                fs::symlink_metadata(root.join(&prefix)).is_ok_and(|m| m.file_type().is_symlink());
+            linked.then(|| {
+                if prefix == path {
+                    RestoreSkip::Symlink
+                } else {
+                    RestoreSkip::SymlinkedFolder
+                }
+            })
         })
     }
 
@@ -254,13 +302,20 @@ fn only_holds(root: &Path, dir: &str, doomed: &BTreeSet<&str>) -> bool {
     })
 }
 
-/// Whether the snapshot left `path` out (or something above it, like a nested repository).
-fn is_left_alone(skipped: &[Skipped], path: &str) -> bool {
-    skipped.iter().any(|s| {
+/// Why the snapshot left `path` out (or something above it, like a nested repository).
+fn left_alone(skipped: &[Skipped], path: &str) -> Option<RestoreSkip> {
+    let found = skipped.iter().find(|s| {
         path == s.path
             || path
                 .strip_prefix(s.path.as_str())
                 .is_some_and(|r| r.starts_with('/'))
+    })?;
+    Some(match found.reason {
+        SkipReason::TooLarge { bytes } => RestoreSkip::TooLarge { bytes },
+        SkipReason::Symlink if found.path == path => RestoreSkip::Symlink,
+        SkipReason::Symlink => RestoreSkip::SymlinkedFolder,
+        SkipReason::NestedRepository => RestoreSkip::NestedRepository,
+        SkipReason::NonUtf8Path => RestoreSkip::NonUtf8Path,
     })
 }
 

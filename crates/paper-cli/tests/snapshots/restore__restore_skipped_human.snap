@@ -1,0 +1,8 @@
+---
+source: crates/paper-cli/tests/restore.rs
+expression: env.redact(&human.stdout)
+---
+Nothing was restored.
+
+Skipped (left as they are):
+  vendor/lib.tex  (inside a separate git repository)
