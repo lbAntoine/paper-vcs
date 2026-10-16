@@ -1,0 +1,18 @@
+---
+source: crates/paper-cli/tests/json_errors.rs
+expression: env.redact_json(&run.stdout)
+---
+{
+  "error": {
+    "kind": "user",
+    "message": "unexpected argument '--no-such-flag' found",
+    "next": [
+      {
+        "command": "paper --help",
+        "explanation": "see the commands and options"
+      }
+    ],
+    "why": "paper could not understand the command line."
+  },
+  "schema": 1
+}

@@ -192,6 +192,11 @@ Precedence runs from highest to lowest: CLI flags, then `PAPER_*` environment va
 then project `paper.toml`, then user `config.toml`, then git config (identity only), then
 built-in defaults.
 
+*Today:* only the git-config step exists. `paper_git::configured_identity(path)` reads
+`user.name` and `user.email` as git would see them from `path` (the repository's config, then
+global and system config, honouring `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_NOSYSTEM`) and
+returns `None` if either is missing. The paper user config and the identity prompt come later.
+
 ```toml
 # paper.toml (committed)
 profile = "latex"
@@ -222,6 +227,15 @@ editor = ""            # empty = one-line prompt for save messages
 [02-cli](02-cli.md#global-behaviour), and the GUI renders the same data as a dialog with
 buttons. Panics are caught at the CLI boundary, write a report to
 `~/.cache/paper/crash-<ts>.txt`, and exit with code 101.
+
+`ErrorKind` decides the exit code: `User` → 1, `NeedsAttention` → 2, `Project` → 3. The three
+parts are written in `paper-core/src/error.rs`, one `From<…> for PaperError` per core error
+enum (`InitError`, `OpenError`, `SaveError`, `ResolveError`, `HistoryError`, `ShowError`,
+`ParsePointError`), in researcher vocabulary and without touching the enums' own `Display`
+text (that is for logs and tests, and is aligned later). Failures of git or the disk are
+`Project` errors whose `why` names the underlying cause. The CLI's own failures use
+`PaperError::no_identity()` and `PaperError::not_a_project(path, is_git_repo)`.
+`--json` output uses CLI-owned serde types, so `paper-core` has no serde derives for it.
 
 ## Testing strategy
 

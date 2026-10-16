@@ -105,11 +105,21 @@
       "id": "21434090",
       "title": "PV-003: CLI: clap, human + --json rendering, 3-part errors, exit codes, insta tests",
       "description": "",
-      "status": "todo",
+      "status": "done",
       "priority": "high",
       "sprint": "v0.1",
       "created_at": "2026-09-25T12:32:57Z",
-      "updated_at": "2026-10-15T23:27:41Z"
+      "updated_at": "2026-10-16T07:45:06Z"
+    },
+    {
+      "id": "e1a0c011",
+      "title": "PV-011: CLI for status, diff and restore; show prints file diffs; core Display texts reworded; PV-003 review-round-2 follow-ups",
+      "description": "Depends on PV-003 + PV-010. Follow-ups listed in docs/tickets/PV-003-cli.md Summary",
+      "status": "todo",
+      "priority": "high",
+      "sprint": "v0.1",
+      "created_at": "2026-10-16T07:45:06Z",
+      "updated_at": "2026-10-16T07:45:06Z"
     },
     {
       "id": "9a6b3b7c",

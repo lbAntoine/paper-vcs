@@ -1,0 +1,7 @@
+---
+source: crates/paper-cli/tests/history.rs
+expression: env.redact(&run.stderr)
+---
+error: paper history --graph is not yet available
+  why:  Drawing the lines as a graph is planned for a later version.
+  next: paper history  # list the saves without the graph

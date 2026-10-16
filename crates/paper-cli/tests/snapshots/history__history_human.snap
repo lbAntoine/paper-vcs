@@ -1,0 +1,7 @@
+---
+source: crates/paper-cli/tests/history.rs
+expression: env.redact(&run.stdout)
+---
+[ID]  [TIME]        Rewrite intro  (main)
+[ID]  [TIME]        Add related work
+[ID]  [TIME]        Start project

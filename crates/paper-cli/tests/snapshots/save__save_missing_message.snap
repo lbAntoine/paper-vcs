@@ -1,0 +1,7 @@
+---
+source: crates/paper-cli/tests/save.rs
+expression: env.redact(&run.stderr)
+---
+error: A save needs a message
+  why:  The message says what changed, so you can find this save later.
+  next: paper save "Describe what changed"  # save with a message

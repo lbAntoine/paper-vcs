@@ -1,0 +1,27 @@
+---
+source: crates/paper-cli/tests/show.rs
+expression: env.redact_json(&run.stdout)
+---
+{
+  "changes": [
+    {
+      "kind": "modified",
+      "path": "sections/intro.tex"
+    }
+  ],
+  "save": {
+    "author": {
+      "email": "mina@uni.example",
+      "name": "Mina Park"
+    },
+    "change_id": "[ID]",
+    "commit": "[HASH]",
+    "id": "[ID]",
+    "message": "Rewrite intro",
+    "time": "[TIME]",
+    "tip_of": [
+      "main"
+    ]
+  },
+  "schema": 1
+}

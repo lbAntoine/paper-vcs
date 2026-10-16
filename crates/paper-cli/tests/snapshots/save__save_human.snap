@@ -1,0 +1,6 @@
+---
+source: crates/paper-cli/tests/save.rs
+expression: env.redact(&run.stdout)
+---
+Saved [ID]: Tighten intro
+  modified  sections/intro.tex

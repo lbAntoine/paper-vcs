@@ -1,0 +1,7 @@
+---
+source: crates/paper-cli/tests/show.rs
+expression: env.redact(&run.stderr)
+---
+error: There is no save, line or date called 'nope'
+  why:  A save is named by its short ID, `last`, `@` (the draft), a line name or `date:YYYY-MM-DD`.
+  next: paper history  # list the saves on this line

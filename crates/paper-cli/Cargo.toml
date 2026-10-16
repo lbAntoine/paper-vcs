@@ -9,7 +9,13 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
+dunce.workspace = true
 paper-core.workspace = true
+paper-git.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+jiff.workspace = true
 
 [lints]
 workspace = true
@@ -17,3 +23,10 @@ workspace = true
 [[bin]]
 name = "paper"
 path = "src/main.rs"
+
+[dev-dependencies]
+assert_cmd.workspace = true
+insta.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+dunce.workspace = true

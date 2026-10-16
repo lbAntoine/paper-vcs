@@ -1,0 +1,6 @@
+---
+source: crates/paper-cli/tests/init.rs
+expression: env.redact(&run.stdout)
+---
+Created a paper project, with a first save: "Start project".
+Tracking 2 files.

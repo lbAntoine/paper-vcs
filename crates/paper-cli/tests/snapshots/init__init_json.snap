@@ -1,0 +1,12 @@
+---
+source: crates/paper-cli/tests/init.rs
+expression: env.redact_json(&run.stdout)
+---
+{
+  "adopted": false,
+  "large": [],
+  "schema": 1,
+  "skipped": [],
+  "skipped_branches": [],
+  "tracked_files": 2
+}

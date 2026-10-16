@@ -1,0 +1,6 @@
+---
+source: crates/paper-cli/tests/init.rs
+expression: env.redact(&run.stdout)
+---
+Adopted this git repository as a paper project. Nothing in it was rewritten.
+Tracking 2 files.
