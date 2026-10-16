@@ -43,7 +43,7 @@ fn unix_roots_still_work() {
 // ---- whole tokens only (PV-014 item 1) ----
 
 const CHANGE_ID: &str = "yourkmnopqrstuvw";
-const OTHER_ID: &str = "mostlykmnopqrstu";
+const OTHER_ID: &str = "mostkmnopqrstuvw";
 const HASH: &str = "defaced011111111111111111111111111111111";
 
 fn ids() -> Vec<(String, String)> {

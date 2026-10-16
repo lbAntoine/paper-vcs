@@ -123,3 +123,22 @@ Source tickets in brackets. "Test" means a test that fails before the fix.
 Existing tests changed: `get_and_set_json_have_a_fixed_shape` and `list_json_has_schema_1_and_a_fixed_key_set` now expect the `notes` key (spec change, item 14); snapshot `config__config_list_json.snap` gets `"notes": []` (hand-edited, keys sort alphabetically). Both fail until GREEN. Item 3 as above.
 
 Questions for GREEN/coordinator: (a) a lone 4-letter word equal to an id's first four letters ("your" alone) is still a whole token that is a prefix; the ticket's rule can't tell it from a real short id, so tests use longer words; GREEN may raise the minimum if it wants. (b) Whether `--quiet` suppresses JSON `notes` is unspecified; not tested. (c) Item 4's "could be a point" rule is left to GREEN; only `sections/nope.tex` (file) and `lsat` (point) are pinned.
+
+### GREEN · rust-engineer · 2026-10-16
+
+All 14 items done. fmt, clippy (`-D warnings`) clean; full suite (`--no-fail-fast`, `INSTA_UPDATE=no`) passed **20 of 20 consecutive runs, 0 failures** (built once, looped).
+
+- **1** `redact_ids` tokenises on non-alphanumerics and replaces tokens that are a prefix of a known id (>= 4) or hash (>= 7). `Env::redact` calls it. Residual risk (a lone 4-letter word equal to an id's first four letters, about 1 in 65 536 per id per matching k-z word) is in the helper's comment. All snapshots stayed byte-identical under the new redaction.
+- **2** `all_commits` helper in `resolve.rs`; floor comment clarified; `history.rs` comment gives 2 x 16^-11.
+- **3** already tightened by RED.
+- **4** A word with `/` or `.` is never treated as a possible point, so it gets the file wording. **One existing snapshot changed because of this**: `diff__diff_unknown_path.snap` (`paper diff mian.tex`) now says "No file matches: mian.tex" (file wording, `paper status` / `paper show <point>`). Not a redaction change; it is the intended item 4 behaviour for a word with a dot.
+- **5** New `InitError::DamagedGit` (three-part user error). It is raised in the core and also checked up front in the CLI `init`, because reading the git identity from the damaged `.git` failed first with a project error.
+- **6** `order_conflict` says "at most" when `warn_mb` must be lowered. **7** words note reworded. **8** `unset_suggestion` wired in via `cfg!(windows)`. **9** permission denied on `.gitignore` is a user error naming the file; `Read`/`Write` display "could not read/write".
+- **10** `Origin::note` is `pub(crate)`; `error.rs::origin_note` removed. **11** `ProfileSource` enum (exported from `paper_core::project`); JSON `detected` is true only for `Detected`; `#[allow(clippy::struct_excessive_bools)]` removed from `Initialized`; JSON and snapshots unchanged.
+- **12** `toml_edit` normalises CRLF to LF when parsing, so `ConfigFile` now keeps the raw text next to the document. After an edit, unchanged lines keep their bytes, a changed line keeps its old ending, new lines use the first line's ending.
+- **13** `k..=z` doc fix, `paper-git/src/config.rs` comment wrapped, 02-cli `init` and `config` paragraphs wrapped.
+- **14** `notes` is always present in `config get|list --json` (also under `-q`); stderr notes only for human output without `-q`. 02-cli updated for items 4, 5, 6, 8, 9, 12 and 14.
+
+Deviations to review:
+- `tests/redaction.rs`: the RED fixture `OTHER_ID = "mostlykmnopqrstu"` made the word "mostly" (in two tests that require it to stay) a whole-token prefix of a known id, which no whole-token rule can leave alone while replacing "most". Changed only the constant to `"mostkmnopqrstuvw"`; assertions untouched.
+- `crates/paper-core/tests/profile.rs`: `initialized.detected` no longer exists (item 11); the five assertions now compare `profile_source` with `ProfileSource::Detected`.

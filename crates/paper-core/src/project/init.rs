@@ -18,9 +18,19 @@ use crate::profile::{Profile, gitignore::GitignoreError};
 use crate::snapshot::{Skipped, SnapshotError, SnapshotOptions, StatCache, snapshot};
 use crate::view::{Line, View, ViewError};
 
+/// How `init` came to use its profile.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProfileSource {
+    /// Detected from the files in the folder.
+    Detected,
+    /// Chosen by the researcher (`--profile`, or the prompt).
+    Chosen,
+    /// Read from an existing `profile` in `paper.toml`.
+    PaperToml,
+}
+
 /// What `init` did, for the front-end to report.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(clippy::struct_excessive_bools)] // independent facts for the report, not a state
 pub struct Initialized {
     /// `true` when an existing git repository was adopted rather than created.
     pub adopted: bool,
@@ -34,12 +44,8 @@ pub struct Initialized {
     pub skipped_branches: Vec<String>,
     /// Name of the profile in effect: `latex`, `markdown`, ...
     pub profile: String,
-    /// `true` when the profile was detected from the files, `false` when it was chosen or read
-    /// from `paper.toml`.
-    pub detected: bool,
-    /// `true` when the profile came from an existing `profile` in `paper.toml` (and `detected`
-    /// is `false`).
-    pub from_paper_toml: bool,
+    /// How the profile was picked.
+    pub profile_source: ProfileSource,
     /// Files `init` wrote in the working folder, relative to it: `.gitignore` and/or `paper.toml`.
     pub written: Vec<String>,
     /// `true` when `written` went into the first save, `false` when it is left in the draft
@@ -55,6 +61,8 @@ pub enum InitError {
     AlreadyInitialized { path: PathBuf },
     #[error("{path} is inside the git repository at {root}")]
     InsideAnotherRepository { path: PathBuf, root: PathBuf },
+    #[error("{path} has a .git that git cannot open")]
+    DamagedGit { path: PathBuf },
     #[error("HEAD is detached, so there is no current branch to start from")]
     DetachedHead,
     #[error("the current branch '{name}' can't be used as a line name")]
@@ -127,6 +135,9 @@ impl Project {
     ) -> Result<(Self, Initialized), InitError> {
         fs::create_dir_all(path).map_err(|source| io_error(path, source))?;
         match GitRepo::enclosing_workdir(path) {
+            None if path.join(".git").exists() => Err(InitError::DamagedGit {
+                path: path.to_owned(),
+            }),
             None => {
                 let plan = ProfilePlan::prepare(path, choice)?;
                 let repo = GitRepo::init(path, &identity)?;
@@ -222,8 +233,7 @@ fn adopt(
         large: snap.large,
         skipped_branches,
         profile: report.profile,
-        detected: report.detected,
-        from_paper_toml: report.from_paper_toml,
+        profile_source: report.profile_source,
         written: report.written,
         written_in_first_save: false,
         tips: report.tips,
@@ -268,8 +278,7 @@ fn start_fresh(
         large: snap.large,
         skipped_branches: Vec::new(),
         profile: report.profile,
-        detected: report.detected,
-        from_paper_toml: report.from_paper_toml,
+        profile_source: report.profile_source,
         written: report.written,
         written_in_first_save: true,
         tips: report.tips,

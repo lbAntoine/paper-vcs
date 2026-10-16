@@ -5,7 +5,7 @@ use std::fmt::Write as _;
 
 use paper_core::profile::Profile;
 use paper_core::project::FileDiffEntry;
-use paper_core::project::{HistoryEntry, Initialized, Saved, Shown};
+use paper_core::project::{HistoryEntry, Initialized, ProfileSource, Saved, Shown};
 use paper_core::snapshot::{Change, ChangeKind, SkipReason, Skipped};
 
 use super::Verbosity;
@@ -126,11 +126,10 @@ pub fn init(initialized: &Initialized) -> String {
 /// `latex (detected from *.tex)`, `markdown (chosen)` or `latex (from paper.toml)`.
 fn profile_origin(initialized: &Initialized) -> String {
     let name = &initialized.profile;
-    if initialized.from_paper_toml {
-        return format!("{name} (from paper.toml)");
-    }
-    if !initialized.detected {
-        return format!("{name} (chosen)");
+    match initialized.profile_source {
+        ProfileSource::PaperToml => return format!("{name} (from paper.toml)"),
+        ProfileSource::Chosen => return format!("{name} (chosen)"),
+        ProfileSource::Detected => {}
     }
     match Profile::builtin(name).map(|profile| profile.detect.join(", ")) {
         Some(patterns) if !patterns.is_empty() => format!("{name} (detected from {patterns})"),

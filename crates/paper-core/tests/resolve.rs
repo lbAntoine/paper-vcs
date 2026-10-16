@@ -68,6 +68,22 @@ fn project_with_saves(saves: usize) -> (TempDir, Project) {
     (dir, project)
 }
 
+/// Every commit object in the repository at `dir`, reachable or not.
+fn all_commits(dir: &Path) -> Vec<CommitId> {
+    git(
+        dir,
+        &[
+            "cat-file",
+            "--batch-all-objects",
+            "--batch-check=%(objectname) %(objecttype)",
+        ],
+    )
+    .lines()
+    .filter_map(|l| l.strip_suffix(" commit"))
+    .map(commit_id)
+    .collect()
+}
+
 /// Like `project_with_saves(2)`, but retried until the tip's first `length` hash characters
 /// match no other commit in the repository (hashes of fresh saves are random-ish, so a
 /// short prefix can otherwise clash: about 1 in 65 000 per other commit for four characters).
@@ -75,17 +91,9 @@ fn project_with_unambiguous_tip(length: usize) -> (TempDir, Project) {
     for _ in 0..20 {
         let (dir, project) = project_with_saves(2);
         let tip = project.view().current().tip.clone();
-        let objects = git(
-            dir.path(),
-            &[
-                "cat-file",
-                "--batch-all-objects",
-                "--batch-check=%(objectname) %(objecttype)",
-            ],
-        );
-        let sharing = objects
-            .lines()
-            .filter(|l| l.ends_with(" commit") && l.starts_with(&tip.as_str()[..length]))
+        let sharing = all_commits(dir.path())
+            .iter()
+            .filter(|id| id.as_str().starts_with(&tip.as_str()[..length]))
             .count();
         if sharing == 1 {
             return (dir, project);
@@ -103,18 +111,8 @@ fn build_avoiding_random_prefix(
 ) -> (TempDir, Project, Vec<CommitId>) {
     for _ in 0..50 {
         let (dir, project, fixed) = make();
-        let objects = git(
-            dir.path(),
-            &[
-                "cat-file",
-                "--batch-all-objects",
-                "--batch-check=%(objectname) %(objecttype)",
-            ],
-        );
-        let clash = objects
-            .lines()
-            .filter_map(|l| l.strip_suffix(" commit"))
-            .map(commit_id)
+        let clash = all_commits(dir.path())
+            .into_iter()
             .filter(|id| !fixed.contains(id))
             .filter_map(|id| project.repo().read_commit(&id).unwrap().change_id)
             .any(|id| id.to_string().starts_with(prefix));
@@ -412,7 +410,8 @@ fn a_short_change_id_prefix_is_ambiguous_between_two_saves_and_longer_ones_are_n
                 .map(|c| (c.commit.clone(), c.message.as_str(), c.short_id.as_str()))
                 .collect();
             found.sort_by_key(|(_, message, _)| *message);
-            // No other ID starts with `km`, so the floor of four letters decides the length.
+            // Short IDs never go below four letters (the floor), and no other ID starts with
+            // `km`, so each candidate shows exactly its first four letters: `kmnn`, `kmpp`.
             assert_eq!(
                 found,
                 [

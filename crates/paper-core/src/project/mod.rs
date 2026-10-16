@@ -23,7 +23,7 @@ use crate::view::{View, ViewError};
 
 pub use diff::{DiffError, DiffRequest, FileDiffEntry};
 pub use history::{HistoryEntry, HistoryError, HistoryRequest, ShowError, Shown};
-pub use init::{InitError, Initialized};
+pub use init::{InitError, Initialized, ProfileSource};
 pub use resolve::{Candidate, PointKind, ResolveError, Resolved};
 pub use restore::{RestoreError, RestoreRequest, RestoreSkip, Restored, SkippedPath};
 pub use save::{DraftState, PathSelection, SaveError, SaveOutcome, SaveRequest, Saved};

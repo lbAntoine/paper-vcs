@@ -420,7 +420,9 @@ fn short_change_ids_are_at_least_four_letters_and_unique_across_the_project() {
 
 #[test]
 fn short_change_ids_grow_until_they_tell_similar_ids_apart() {
-    // Ten shared letters: a random ID (the draft) sharing them is a 1 in 16^10 chance.
+    // Ten shared letters, so the two short IDs need eleven. They stay as asserted unless the
+    // random draft ID starts with one of those two eleven-letter prefixes: 2 x 16^-11 (each
+    // letter is one of 16, k to z), about 1 in 2 x 10^12.
     let plain = Plain::new();
     let first_id = format!("kmrwpqstvw{}", "k".repeat(22));
     let second_id = format!("kmrwpqstvw{}", "m".repeat(22));

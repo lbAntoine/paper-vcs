@@ -52,7 +52,8 @@ pub enum Origin {
 }
 
 impl Origin {
-    fn note(origin: Option<&Origin>) -> String {
+    /// The " (from X)" / " (in file)" text appended to messages, empty for no origin.
+    pub(crate) fn note(origin: Option<&Origin>) -> String {
         match origin {
             None => String::new(),
             Some(Origin::Env(name)) => format!(" (from {name} in the environment)"),

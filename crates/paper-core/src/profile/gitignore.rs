@@ -39,7 +39,7 @@ pub enum GitignoreError {
         path: PathBuf,
     },
     /// The file exists but could not be read (permissions, a folder in its place, a disk error).
-    #[error("could not update {path}")]
+    #[error("could not read {path}")]
     Read {
         /// The `.gitignore` involved.
         path: PathBuf,
@@ -48,7 +48,7 @@ pub enum GitignoreError {
         source: io::Error,
     },
     /// The new text could not be written.
-    #[error("could not update {path}")]
+    #[error("could not write {path}")]
     Write {
         /// The `.gitignore` involved.
         path: PathBuf,

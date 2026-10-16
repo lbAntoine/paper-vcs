@@ -62,12 +62,11 @@ fn get(cli: &Cli, key: &str) -> Output {
             }],
         });
     };
-    if !cli.quiet {
-        note_ignored(&settings, Some(key));
-        if key == Key::DiffDefault {
-            note_words(&settings);
-        }
+    let mut notes = ignored_notes(&settings, Some(key));
+    if key == Key::DiffDefault {
+        notes.extend(words_note(&settings));
     }
+    emit_notes(cli, &notes);
     Ok(finish(
         cli,
         || format!("{value}\n"),
@@ -77,6 +76,7 @@ fn get(cli: &Cli, key: &str) -> Output {
                 "key": key.as_str(),
                 "value": json_value(Some(value)),
                 "source": entry.source.as_str(),
+                "notes": notes,
             });
             format!("{row}\n")
         },
@@ -157,10 +157,9 @@ fn no_settings_folder() -> PaperError {
 
 fn list(cli: &Cli) -> Output {
     let settings = effective(cli)?;
-    if !cli.quiet {
-        note_ignored(&settings, None);
-        note_words(&settings);
-    }
+    let mut notes = ignored_notes(&settings, None);
+    notes.extend(words_note(&settings));
+    emit_notes(cli, &notes);
     Ok(finish(
         cli,
         || table(&settings),
@@ -176,7 +175,10 @@ fn list(cli: &Cli) -> Output {
                     })
                 })
                 .collect();
-            format!("{}\n", json!({"schema": 1, "settings": rows}))
+            format!(
+                "{}\n",
+                json!({"schema": 1, "settings": rows, "notes": notes})
+            )
         },
     ))
 }
@@ -215,25 +217,39 @@ fn table(settings: &Settings) -> String {
     out
 }
 
-/// A privacy note on stderr for personal keys found in `paper.toml` (they are ignored).
-/// `only` limits it to one key.
-fn note_ignored(settings: &Settings, only: Option<Key>) {
-    for key in settings.ignored_project_keys() {
-        if only.is_none_or(|k| k == *key) {
-            eprintln!(
-                "note: {} in paper.toml is ignored. Identity and display settings never come \
+/// Prints the notes on stderr for people. Under `--json` they travel in the JSON instead (stdout
+/// stays the only output), and `--quiet` silences them.
+fn emit_notes(cli: &Cli, notes: &[String]) {
+    if cli.json || cli.quiet {
+        return;
+    }
+    for note in notes {
+        eprintln!("note: {note}");
+    }
+}
+
+/// A privacy note for personal keys found in `paper.toml` (they are ignored). `only` limits it
+/// to one key.
+fn ignored_notes(settings: &Settings, only: Option<Key>) -> Vec<String> {
+    settings
+        .ignored_project_keys()
+        .iter()
+        .filter(|key| only.is_none_or(|k| k == **key))
+        .map(|key| {
+            format!(
+                "{} in paper.toml is ignored. Identity and display settings never come \
                  from a file that is saved with the project (it may be shared). Remove it \
                  from paper.toml; `paper config set {} <value>` keeps it in your own settings.",
                 key.as_str(),
                 key.as_str()
-            );
-        }
-    }
+            )
+        })
+        .collect()
 }
 
 /// `diff.default = words` is accepted but has no effect before v0.3.
-fn note_words(settings: &Settings) {
-    if settings.entry(Key::DiffDefault).value == Some(Value::Text("words".to_owned())) {
-        eprintln!("note: diff.default = words has no effect until v0.3 (lines until v0.3).");
-    }
+fn words_note(settings: &Settings) -> Option<String> {
+    (settings.entry(Key::DiffDefault).value == Some(Value::Text("words".to_owned()))).then(|| {
+        "`diff.default = words` has no effect until v0.3; comparisons stay line by line.".to_owned()
+    })
 }

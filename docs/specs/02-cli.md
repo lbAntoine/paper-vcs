@@ -108,15 +108,20 @@ with `from` the commit the files were restored from.
   blocks) is a user error and nothing is written.
 - It reports whether the project was created or adopted, how many files are tracked, the
   profile (`Profile: latex (detected from *.tex)`, `Profile: markdown (chosen)` or
-  `Profile: latex (from paper.toml)`; with nothing to detect, `Profile: generic (nothing more specific found)`), the files it wrote (`.gitignore`, `paper.toml`), the
-  profile's tips, the files left out (too large, symlinks, nested repositories) and any
+  `Profile: latex (from paper.toml)`; with nothing to detect,
+  `Profile: generic (nothing more specific found)`), the files it wrote (`.gitignore`,
+  `paper.toml`), the profile's tips, the files left out (too large, symlinks, nested repositories) and any
   branches skipped. `--json` adds `profile`, `detected`, `written` and `tips`.
 - If no identity is found in the environment, paper config or git config, ask for name and
   email once on a terminal and store them in the user config (see Global behaviour).
   Without a terminal `init` fails with the `paper config set user.…` commands (then the
   `git config --global user.…` ones) and writes nothing.
 - If the folder is inside a cloud-sync root (OneDrive, Dropbox, iCloud Drive, Google Drive),
-  warn and ask for confirmation (`--yes` skips the prompt). See [04-content](04-content.md#cloud-sync-folders).
+  warn and ask for confirmation (`--yes` skips the prompt). See
+  [04-content](04-content.md#cloud-sync-folders).
+- A `.git` in the target folder that git can't open (empty or damaged) is a user error
+  ("This folder has a damaged .git") that says to inspect it or move it away; nothing is
+  written.
 
 ### `paper status` (since v0.1)
 
@@ -220,7 +225,9 @@ and the diffs. The date reads like `history` times; `--json` has the exact times
 **Points or paths?** Up to two leading arguments are points if they resolve as points; the
 first one that doesn't, and everything after it, are paths. A word that is clearly a mistyped
 point (`last~x`, `HEAD~1`) is an error, and a first word that is neither a point nor a file
-is reported as "not a save, line, date or file". A name that is both a point and a
+is reported as "not a save, line, date or file". A word containing `/` or `.` can only be a
+file, so a typo such as `sections/nope.tex` gets the file wording ("No file matches", with
+`paper status` and `paper show <point>`). A name that is both a point and a
 file is a point; `--` forces everything after it to be paths (`paper diff -- last` diffs the
 file called `last`). `--since <point>` can't be combined with points.
 
@@ -353,22 +360,32 @@ are local until `paper share <line>`. This means experiments are private by defa
   `paper.toml` (at the project root, created on first use) with `--project`. Comments, layout
   and other keys in the file are kept. `set --project profile <name>` also replaces the
   profile block in `.gitignore` (created if missing, your own lines untouched) and says so; a
-  damaged block stops it before anything is written. Invalid values, unknown keys, a section that is a plain value and a key in the wrong
-  file are user errors and nothing is written.
+  damaged block stops it before anything is written. Invalid values, unknown keys, a section
+  that is a plain value and a key in the wrong file are user errors and nothing is written.
+  A `.gitignore` paper can't read or write is a user error when permission is denied (it
+  names the file) and a project error otherwise.
 - `paper config list` prints every key with its value and its source (`env`, `project`,
   `user`, `git` or `default`). With `--json`:
-  `{"schema":1,"settings":[{"key","value","source"}]}`, in the table's order; `value` is a
+  `{"schema":1,"settings":[{"key","value","source"}],"notes":[…]}`, in the table's order; `value` is a
   string, an integer (megabytes) or `null` when unset (human output shows `(not set)` with
-  source `-`). `get --json` prints `{"schema":1,"key","value","source"}` and `set --json`
+  source `-`). `get --json` prints `{"schema":1,"key","value","source","notes":[…]}` and
+  `set --json`
   `{"schema":1,"key","value","file"}`.
 - Personal keys (`user.*`, `ui.*`) found in `paper.toml` are ignored, never read; `get` and
   `list` print a note on stderr saying so and to remove them, because `paper.toml` is saved
-  with the project and may be shared.
+  with the project and may be shared. `diff.default = words` gets a note too: it "has no
+  effect until v0.3; comparisons stay line by line". With `--json` the notes are not
+  printed; they are the strings in the `notes` array of the output (always present, `[]` when
+  there are none, and not affected by `-q`), so scripts need not read stderr.
 - A bad value found in the environment or a file is a user error that names its origin (the
   variable, or the file) and suggests what fixes it (`unset` the variable, `paper config set
   --project …` or edit `paper.toml`, or the plain `paper config set …` for the user config).
-  A `max_mb` below `warn_mb` in one file reads "large_files.max_mb (1) can't be below
-  large_files.warn_mb (10) in <file>" and offers both fixes.
+  On Windows the suggestion for a variable is PowerShell's `Remove-Item Env:NAME` (naming
+  `set NAME=` for `cmd`). A `max_mb` below `warn_mb` in one file reads "large_files.max_mb
+  (1) can't be below large_files.warn_mb (10) in <file>" and offers both fixes: raise `max_mb`
+  to at least the warning level, or lower `warn_mb` to at most `max_mb`.
+- Editing keeps the file's bytes: line endings of existing lines stay as they are, and new
+  lines use the ending of the file's first line.
 - User keys work outside a project. `--project` and project keys need one.
 
 User config: `$XDG_CONFIG_HOME/paper/config.toml`, else `~/.config/paper/config.toml`

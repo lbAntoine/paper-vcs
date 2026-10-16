@@ -16,8 +16,10 @@ pub struct ConfigFile {
     doc: DocumentMut,
     /// Where it was loaded from, to name it in errors.
     path: Option<PathBuf>,
-    /// The file uses Windows line endings; lines we add do too.
+    /// The file's first line ends in CRLF; lines we add do too. Existing lines are never touched.
     crlf: bool,
+    /// The text as read, line endings included (`doc` holds it with `\n` endings only).
+    raw: String,
 }
 
 impl ConfigFile {
@@ -65,7 +67,8 @@ impl ConfigFile {
         Ok(Self {
             doc,
             path: Some(path.to_owned()),
-            crlf: text.contains("\r\n"),
+            crlf: first_line_is_crlf(&text),
+            raw: text,
         })
     }
 
@@ -157,10 +160,43 @@ impl ConfigFile {
             }
             None => set_keeping_decor(doc.as_table_mut(), key.as_str(), toml_value),
         }
-        Ok(Self {
-            doc,
+        Ok(self.with_doc(&doc))
+    }
+
+    /// The file with `doc` as its document. Existing lines keep their own ending byte for
+    /// byte; a changed line keeps the ending of the line it replaces; extra lines get the
+    /// ending of the file's first line.
+    fn with_doc(&self, doc: &DocumentMut) -> Self {
+        let old_lf = self.doc.to_string();
+        let new_lf = doc.to_string();
+        let raw_lines: Vec<&str> = self.raw.split_inclusive('\n').collect();
+        let old_lines: Vec<&str> = old_lf.split_inclusive('\n').collect();
+        let new_lines: Vec<&str> = new_lf.split_inclusive('\n').collect();
+        let head = old_lines
+            .iter()
+            .zip(&new_lines)
+            .take_while(|(old, new)| old == new)
+            .count();
+        let tail = old_lines[head..]
+            .iter()
+            .rev()
+            .zip(new_lines[head..].iter().rev())
+            .take_while(|(old, new)| old == new)
+            .count();
+        let mut raw = raw_lines[..head].concat();
+        let replaced = &raw_lines[head..old_lines.len() - tail];
+        for (at, line) in new_lines[head..new_lines.len() - tail].iter().enumerate() {
+            let crlf = replaced
+                .get(at)
+                .map_or(self.crlf, |old| old.ends_with("\r\n"));
+            raw.push_str(&with_ending(line, crlf));
+        }
+        raw.push_str(&raw_lines[old_lines.len() - tail..].concat());
+        Self {
+            doc: doc.clone(),
+            raw,
             ..self.clone()
-        })
+        }
     }
 
     /// Appends `[table]` with the key after the existing text, which stays byte for byte
@@ -185,6 +221,7 @@ impl ConfigFile {
             .map_err(|err| key.invalid(&value.to_string(), err.message().to_owned()))?;
         Ok(Self {
             doc,
+            raw: text,
             ..self.clone()
         })
     }
@@ -224,12 +261,7 @@ impl ConfigFile {
 
     /// The file's text.
     pub fn render(&self) -> String {
-        let text = self.doc.to_string();
-        if self.crlf {
-            text.replace("\r\n", "\n").replace('\n', "\r\n")
-        } else {
-            text
-        }
+        self.raw.clone()
     }
 
     /// Writes the file, creating missing parent folders.
@@ -261,6 +293,23 @@ fn set_keeping_decor(table: &mut dyn toml_edit::TableLike, name: &str, mut new: 
         *new_value.decor_mut() = old.decor().clone();
     }
     table.insert(name, new);
+}
+
+fn first_line_is_crlf(text: &str) -> bool {
+    text.find('\n')
+        .is_some_and(|end| end > 0 && text.as_bytes()[end - 1] == b'\r')
+}
+
+/// `line` (which ends in `\n`, or has no ending) with a CRLF or LF ending.
+fn with_ending(line: &str, crlf: bool) -> String {
+    match line.strip_suffix('\n') {
+        Some(body) => format!(
+            "{}{}",
+            body.trim_end_matches('\r'),
+            if crlf { "\r\n" } else { "\n" }
+        ),
+        None => line.to_owned(),
+    }
 }
 
 fn below(new: u64, other: u64) -> bool {

@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 /// Stable identity of a save that survives rewrites (amend, rebase)
 ///
-/// 16 random bytes, displayed as 32 "reverse hex" letter in `l..=z`
+/// 16 random bytes, displayed as 32 "reverse hex" letter in `k..=z`
 /// (0 -> z, 1 -> y, ..., f -> k) so it can never be mistaken for a commit hash.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ChangeId([u8; 16]);
