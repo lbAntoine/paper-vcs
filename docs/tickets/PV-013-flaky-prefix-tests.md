@@ -1,6 +1,6 @@
 # PV-013: make change-ID prefix tests deterministic
 
-- **Status:** In progress
+- **Status:** Done
 - **Branch:** `feat/PV-013-flaky-prefix-tests`
 - **Depends on:** none. Runs in parallel with PV-011 (CLI), which must not touch the files below.
 - **Touches:** `crates/paper-core/tests/resolve.rs`, `crates/paper-core/tests/history.rs` (only if
@@ -73,6 +73,25 @@ reviews as usual.
 
 ## Summary
 
+Change-ID and hash prefix tests no longer depend on random IDs avoiding a fixed prefix.
+
+- Long-prefix variants: the fixed IDs share 8 to 10 letters, so a random clash is at most about
+  1 in 10⁹ per run. Short-prefix variants (`km`, `kmn`, `knn`) rebuild the project, at most 50
+  times, until no random change ID shares the prefix, then assert exact candidates and short
+  ids, so the four-letter floor is still exercised.
+- The 4-character hash test rebuilds, at most 20 times, until its prefix is unique.
+- Two `history.rs` short-id tests use a 10-letter shared head.
+- Every fixed prefix in `tests/resolve.rs` and `tests/history.rs` was audited (odds in the
+  handoff log). The other paper-core test files are clean.
+- CI runs `cargo test --no-fail-fast`; NOTES.md records the lessons.
+- Repeat runs: 500/500 (resolve and history, round 1), 500/500 (resolve, round 2), and 300 more
+  by the reviewer.
+
+Deviation: test-only ticket, so the test-author made the fix and there was no GREEN phase.
+
+Follow-ups in PV-014: the CLI `Env::redact` word-prefix flaw, the `change_id.rs` doc range
+(`l..=z` vs `k..=z`), and a shared `all_commits` test helper.
+
 ## Handoff log
 
 ### FIX · test-author · 2026-10-16
@@ -142,3 +161,8 @@ full suite pass.
 - NOTES.md wording fixed (short 2 to 4 letter prefixes; 0.5% for the 2-letter one; "8 or more").
 - Resolve binary: 500/500 passes after the change (0 failures). fmt, clippy and the full
   suite pass.
+
+### Review round 2 · reviewer · 2026-10-16
+- Verdict: APPROVE. Tests (`--no-fail-fast`), clippy and fmt pass; the resolve binary ran 300 more times, 0 failures.
+- Short-prefix tests, bounded loops and NOTES wording verified. `tests/show_diff.rs` (from PV-011) has no prefix flaw.
+- Deferred to PV-014: a shared `all_commits` helper for the two rebuild helpers, and a clearer comment on the four-letter floor.
