@@ -129,3 +129,17 @@ identity in saves, the colour default, and the large-file thresholds.
 ## Summary
 
 ## Handoff log
+
+### RED · test-author · 2026-10-16
+- Tests: `crates/paper-core/tests/config.rs` (37, all fail on `todo!()`), `crates/paper-cli/tests/config.rs` (29; 28 fail because `paper config` does not exist, 1 passes on today's git-config identity), `crates/paper-cli/src/prompt.rs` unit tests (5, `todo!()`), `crates/paper-cli/tests/status.rs` (3 new, 1 rewritten; all 4 fail).
+- Run with `INSTA_UPDATE=no`. New snapshots are for GREEN to accept after review: `config_list`, `config_list_json`, and `status_large` (rewritten, see below).
+- Stubs: `paper_core::config` (`Key`, `Home`, `Scope`, `Value`, `Source`, `ConfigFile`, `Sources<E>`, `Entry`, `Settings`, `ConfigError`, `user_config_path`, `user_config_path_for`), `From<ConfigError> for PaperError`, `Project::with_options(self, SnapshotOptions) -> Self`, `paper-cli` `prompt::ask_for_identity(is_tty, input, output, user_config) -> Result<Option<Identity>, PaperError>`. Dependency: `toml_edit 0.25` (workspace, used by paper-core).
+- Test support: `tests/common/mod.rs` isolation gains `XDG_CONFIG_HOME` and `APPDATA` in the temp dir, plus `Env::user_config()` and `Env::paper_toml()`.
+- Pre-existing tests changed: only `status_lists_large_files_that_are_tracked` (scope item 6). It now writes a 2 MB file and lowers `PAPER_LARGE_FILES_WARN_MB` to 1; the `status_large` snapshot must change from `10.0 MB` to `2.0 MB`. Nothing weakened; every other pre-existing test passes. Existing `basics.rs` tests still assert the two `git config --global` suggestions (kept true); the `no_identity` snapshot will change at GREEN because `paper config set …` comes first.
+- Decisions I made where the ticket was silent (GREEN may push back):
+  - `Project::open`/`init` signatures stay; `Project::with_options` is the injection point (`init` already takes options).
+  - Core API is `Settings::resolve(Sources { env, project, user, git_identity })`; `Key::parse_value`, `Key::check_scope(Scope)` and `ConfigFile::with` do the validation. `ConfigFile::with` checks `max_mb >= warn_mb` only against values in the same file; `max_mb 1` alone must be accepted (the ticket's own example, with the default warn of 10), so `Settings::snapshot_options` clamps warn to at most max.
+  - CLI output: `get` prints the bare value; `list --json` is `{"schema":1,"settings":[{"key","value","source"}]}` in `Key::ALL` order, value is a string, an integer (MB) or null, source is `env|project|user|git|default`.
+  - `ask_for_identity` returns `None` without a terminal and writes nothing; it stores via `ConfigFile` and prints the file path.
+  - Errors: malformed file is `ErrorKind::User` with the file and `line N` in the text; unreadable file is `Project`.
+- Questions: none blocking.

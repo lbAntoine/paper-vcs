@@ -226,19 +226,69 @@ fn status_lists_a_nested_repository_as_skipped() {
     });
 }
 
-/// The large-file threshold (10 MB) is a core default that the CLI can't change, so the test
-/// writes a file of that size.
+const TWO_MB: usize = 2 * 1024 * 1024;
+
+/// The warning threshold is lowered through config (env), so a 2 MB file is enough.
 #[test]
 fn status_lists_large_files_that_are_tracked() {
     let env = project();
-    env.write_bytes("data/big.bin", &binary(10 * 1024 * 1024, 3));
+    env.write_bytes("data/big.bin", &binary(TWO_MB, 3));
+
+    let run = env.paper_in(
+        &env.work,
+        &[("PAPER_LARGE_FILES_WARN_MB", "1")],
+        &["status"],
+    );
+
+    run.assert_code(0);
+    assert!(run.stdout.contains("Large files"), "{run:#?}");
+    assert!(run.stdout.contains("data/big.bin  (2.0 MB)"), "{run:#?}");
+    settings().bind(|| {
+        insta::assert_snapshot!("status_large", env.redact(&run.stdout));
+    });
+}
+
+#[test]
+fn status_skips_new_files_over_the_project_max_mb() {
+    let env = project();
+    let set = env.paper(&["config", "set", "--project", "large_files.max_mb", "1"]);
+    set.assert_code(0);
+    env.write_bytes("data/big.bin", &binary(TWO_MB, 3));
 
     let run = env.paper(&["status"]);
 
     run.assert_code(0);
-    assert!(run.stdout.contains("Large files"), "{run:#?}");
-    assert!(run.stdout.contains("data/big.bin  (10.0 MB)"), "{run:#?}");
-    settings().bind(|| {
-        insta::assert_snapshot!("status_large", env.redact(&run.stdout));
-    });
+    assert!(run.stdout.contains("data/big.bin"), "{run:#?}");
+    assert!(run.stdout.contains("too large to track"), "{run:#?}");
+    assert!(!run.stdout.contains("new       data/big.bin"), "{run:#?}");
+}
+
+#[test]
+fn the_environment_overrides_the_project_max_mb() {
+    let env = project();
+    env.paper(&["config", "set", "--project", "large_files.max_mb", "1"])
+        .assert_code(0);
+    env.write_bytes("data/big.bin", &binary(TWO_MB, 3));
+
+    let run = env.paper_in(
+        &env.work,
+        &[("PAPER_LARGE_FILES_MAX_MB", "50")],
+        &["status"],
+    );
+
+    run.assert_code(0);
+    assert!(run.stdout.contains("new       data/big.bin"), "{run:#?}");
+}
+
+#[test]
+fn the_user_config_sets_the_limit_when_the_project_does_not() {
+    let env = project();
+    env.paper(&["config", "set", "large_files.max_mb", "1"])
+        .assert_code(0);
+    env.write_bytes("data/big.bin", &binary(TWO_MB, 3));
+
+    let run = env.paper(&["status"]);
+
+    run.assert_code(0);
+    assert!(run.stdout.contains("too large to track"), "{run:#?}");
 }

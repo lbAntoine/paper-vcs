@@ -106,6 +106,12 @@ impl Project {
         })
     }
 
+    /// A copy of this project that applies `options` (large-file thresholds) in later snapshots.
+    #[must_use]
+    pub fn with_options(self, _options: SnapshotOptions) -> Self {
+        todo!("PV-005: project with options")
+    }
+
     pub fn repo(&self) -> &GitRepo {
         &self.repo
     }

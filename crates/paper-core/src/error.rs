@@ -5,6 +5,7 @@
 
 use std::path::Path;
 
+use crate::config::ConfigError;
 use crate::point::ParsePointError;
 use crate::project::{
     DiffError, HistoryError, InitError, OpenError, ResolveError, RestoreError, SaveError,
@@ -196,6 +197,12 @@ impl From<InitError> for PaperError {
             | InitError::View(_)
             | InitError::Io { .. } => Self::project("Paper could not set up this folder", &error),
         }
+    }
+}
+
+impl From<ConfigError> for PaperError {
+    fn from(_error: ConfigError) -> Self {
+        todo!("PV-005: ConfigError into PaperError")
     }
 }
 
