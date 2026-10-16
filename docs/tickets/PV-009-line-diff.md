@@ -1,6 +1,6 @@
 # PV-009: line diff in paper-diff
 
-- **Status:** Ready
+- **Status:** Done
 - **Branch:** `feat/PV-009-line-diff`
 - **Depends on:** none. Runs in parallel with PV-002 (paper-git/paper-core, disjoint files).
 - **Touches:** `Cargo.toml` (workspace dependency), `Cargo.lock`, `crates/paper-diff/Cargo.toml`,
@@ -72,6 +72,19 @@ these; word diff (v0.3) builds on the same structure later.
 
 ## Summary
 
+`paper-diff` gained `classify` (text vs binary, per 04-content), `diff_files` (git-style hunks
+with patience ordering via `similar` 2.7, 3 lines of context, counts, missing-newline markers)
+and `to_unified` (git's unified format). Lines end at `\n` only, so a lone `\r` stays inside its
+line. Nine cross-checks compare the output with `git diff --no-index -U3`, with git's config
+isolated. The only runtime dependency is `similar`.
+
+Deviations: none in the end. The `Hunk.section` heading added during GREEN was removed in review
+as noise for prose and LaTeX. Format-aware headings can return with the v0.3 tokenisers. Note for
+PV-010: an added or deleted *empty* file gives `Text` with no hunks, and `to_unified` doesn't
+escape control characters.
+
+Also on this branch: the workflow now builds each worktree in its own `target/` (see NOTES.md).
+
 ## Handoff log
 
 ### RED · test-author · 2026-10-16
@@ -114,3 +127,7 @@ these; word diff (v0.3) builds on the same structure later.
 - Cross-checks use `tempfile` (dev-dependency) and isolate git config (`GIT_CONFIG_NOSYSTEM`, `GIT_CONFIG_GLOBAL=/dev/null`, `HOME`).
 - Added test: invalid byte after 8 KiB of valid UTF-8 is `Binary`. Documented that `to_unified` does not escape control characters.
 - Checks run with the isolated target dir: fmt, clippy -D warnings, full suite pass.
+
+### Review round 2 · reviewer · 2026-10-16
+- Verdict: APPROVE. Tests, clippy and fmt pass in the worktree's own target. Both majors and every minor are fixed.
+- NIT, skipped: `normalise_headings` uses `+ 3 + 3` where named lengths would read better.
