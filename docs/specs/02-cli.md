@@ -11,7 +11,7 @@ column maps each command to the [roadmap](05-roadmap.md).
 | `--json` | Machine-readable output. Every command supports it, and the schema is versioned (`"schema": 1`) |
 | `--no-snapshot` | Skip the automatic snapshot (I1). For scripts and editors only |
 | `-q, --quiet` / `-v, --verbose` | Less output / more output. `-q` prints only errors (and `--json` output). Verbose adds git terms in parentheses, e.g. `Saved kmrw: Tighten intro (commit 3fa9c1e)` |
-| `--color <auto\|always\|never>` | Respects `NO_COLOR` |
+| `--color <auto\|always\|never>` | Respects `NO_COLOR` under `auto`. Without the flag, `PAPER_UI_COLOR` or `ui.color` in the user config decides (default `auto`) |
 
 **Project discovery:** walk up from the current directory until a `.git` is found. If the
 repo has no `.git/paper/` yet, commands other than `init` and `clone` fail with:
@@ -27,9 +27,11 @@ outside the project is a user error. On Windows, a root-relative path (`\a`) or 
 drive-relative one (`C:a`) is a user error too ("use a path relative to this folder or a full
 path"), because it names no folder paper can place.
 
-The identity (`user.name`, `user.email`) comes from git config for now. If it is missing,
-the command fails with the two `git config --global user.…` commands to run; asking
-interactively and the paper user config come later.
+The identity (`user.name`, `user.email`) comes from `PAPER_USER_NAME` / `PAPER_USER_EMAIL`,
+then the paper user config, then git config. If it is missing and stdin is a terminal, the
+command asks once (`Your name:`, `Your email:`), stores both in the user config, says where,
+and continues. Without a terminal it fails with `paper config set user.name …` and
+`user.email …` first, then the two `git config --global user.…` commands.
 
 **Exit codes**
 
@@ -99,9 +101,10 @@ with `from` the commit the files were restored from.
   later, and `--help` says so.
 - It reports whether the project was created or adopted, how many files are tracked, the
   files left out (too large, symlinks, nested repositories) and any branches skipped.
-- If no identity is found in git config or paper config, ask for name and email once and
-  store them in the user config. *Today:* only git config is read; without an identity
-  `init` fails with the `git config --global user.…` commands and writes nothing.
+- If no identity is found in the environment, paper config or git config, ask for name and
+  email once on a terminal and store them in the user config (see Global behaviour).
+  Without a terminal `init` fails with the `paper config set user.…` commands (then the
+  `git config --global user.…` ones) and writes nothing.
 - If the folder is inside a cloud-sync root (OneDrive, Dropbox, iCloud Drive, Google Drive),
   warn and ask for confirmation (`--yes` skips the prompt). See [04-content](04-content.md#cloud-sync-folders).
 
@@ -333,8 +336,39 @@ are local until `paper share <line>`. This means experiments are private by defa
 
 ### `paper config get|set|list [--project]` (since v0.1)
 
-User config lives in `~/.config/paper/config.toml` (or the XDG/OS equivalent). Project
-config lives in `paper.toml`. See [03-architecture](03-architecture.md#configuration).
+- `paper config get <key>` prints the effective value (nothing else) and exits 0. A key with
+  no value (an unset identity or `profile`) is a user error (exit 1) that says how to set it.
+- `paper config set <key> <value> [--project]` validates, writes, and prints
+  `Set <key> = <value> in <file>`. It writes the user config by default and the project's
+  `paper.toml` (at the project root, created on first use) with `--project`. Comments, layout
+  and other keys in the file are kept. Invalid values, unknown keys and a key in the wrong
+  file are user errors and nothing is written.
+- `paper config list` prints every key with its value and its source (`env`, `project`,
+  `user`, `git` or `default`). With `--json`:
+  `{"schema":1,"settings":[{"key","value","source"}]}`, in the table's order; `value` is a
+  string, an integer (megabytes) or `null` when unset.
+- User keys work outside a project. `--project` and project keys need one.
+
+User config: `$XDG_CONFIG_HOME/paper/config.toml`, else `~/.config/paper/config.toml`
+(Linux and macOS); `%APPDATA%\paper\config.toml` on Windows. Created on the first `set`.
+A malformed file is a user error naming the file and line. See
+[03-architecture](03-architecture.md#configuration).
+
+| Key | Values | Home | Effect in v0.1 |
+|---|---|---|---|
+| `user.name` | non-empty text | user only | author of saves |
+| `user.email` | text containing `@` | user only | author of saves |
+| `ui.color` | `auto` / `always` / `never` | user only | default for `--color` |
+| `large_files.warn_mb` | integer ≥ 1 | project or user | snapshot warning threshold |
+| `large_files.max_mb` | integer ≥ 1, not below `warn_mb` in the same file | project or user | snapshot skip threshold |
+| `diff.default` | `lines` (`words` arrives in v0.3) | project or user | validated only |
+| `profile` | the six profile names | project only | stored; used by profiles later |
+
+Identity and looks are never written to `paper.toml`: it is saved with the project, which
+may be shared or public. `profile` describes the project, so it needs `--project`. When
+`max_mb` is set below the default `warn_mb` without a `warn_mb`, the warning threshold is
+capped at `max_mb`. `paper.toml` is an ordinary project file: it shows in the draft and is
+saved like any other. `ui.editor` is not a key yet.
 
 ### Escape hatches
 

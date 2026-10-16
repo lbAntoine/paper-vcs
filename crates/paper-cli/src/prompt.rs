@@ -3,6 +3,7 @@
 use std::io::{BufRead, Write};
 use std::path::Path;
 
+use paper_core::config::{ConfigFile, Key};
 use paper_core::{ErrorKind, PaperError, Suggestion};
 use paper_git::Identity;
 
@@ -62,14 +63,45 @@ pub fn ask_for_message(
 /// # Panics
 ///
 /// Never.
-#[allow(dead_code)] // stub: the implementation wires it into the commands
 pub fn ask_for_identity(
-    _is_tty: bool,
-    _input: &mut dyn BufRead,
-    _output: &mut dyn Write,
-    _user_config: &Path,
+    is_tty: bool,
+    input: &mut dyn BufRead,
+    output: &mut dyn Write,
+    user_config: &Path,
 ) -> Result<Option<Identity>, PaperError> {
-    todo!("PV-005: identity prompt")
+    if !is_tty {
+        return Ok(None);
+    }
+    let name = Key::UserName.parse_value(&ask(input, output, "Your name: ")?)?;
+    let email = Key::UserEmail.parse_value(&ask(input, output, "Your email: ")?)?;
+    let file = ConfigFile::load(user_config)?
+        .with(Key::UserName, name.clone())?
+        .with(Key::UserEmail, email.clone())?;
+    file.write(user_config)?;
+    let _ = writeln!(
+        output,
+        "Saved your name and email in {} (change them any time with `paper config set`).",
+        user_config.display()
+    );
+    Ok(Some(Identity {
+        name: name.to_string(),
+        email: email.to_string(),
+    }))
+}
+
+fn ask(
+    input: &mut dyn BufRead,
+    output: &mut dyn Write,
+    question: &str,
+) -> Result<String, PaperError> {
+    // A prompt that can't be shown still lets the answer be read.
+    let _ = write!(output, "{question}");
+    let _ = output.flush();
+    let mut line = String::new();
+    input
+        .read_line(&mut line)
+        .map_err(|err| PaperError::project_failure("Paper could not read your answer", &err))?;
+    Ok(line)
 }
 
 fn suggestion() -> Suggestion {

@@ -4,17 +4,19 @@
 use std::io::{self, IsTerminal};
 use std::path::{Path, PathBuf};
 
+use paper_core::config::Settings;
 use paper_core::project::{HistoryRequest, PathSelection, Project, SaveOutcome, SaveRequest};
-use paper_core::snapshot::SnapshotOptions;
 use paper_core::{ErrorKind, PaperError, Suggestion};
-use paper_git::{GitRepo, Identity, configured_identity};
+use paper_git::{GitRepo, Identity};
 
 use crate::cli::{Cli, Command};
+use crate::config_cmd;
 use crate::inspect;
 use crate::paths::Paths;
 use crate::prompt;
 use crate::render::style::Style;
 use crate::render::{Verbosity, human, json};
+use crate::settings;
 
 type Output = Result<String, PaperError>;
 
@@ -46,6 +48,7 @@ pub fn execute(cli: &Cli, style: Style) -> Output {
             since,
             ..
         } => inspect::diff(cli, args, paths, *words, *stat, since.as_deref(), style),
+        Command::Config { action } => config_cmd::run(cli, action),
         Command::Restore { paths, from } => inspect::restore(cli, paths, from.as_deref()),
     }
 }
@@ -68,8 +71,9 @@ pub(crate) fn finish(
 fn init(cli: &Cli, path: Option<&Path>) -> Output {
     let base = start_dir(cli)?;
     let target = path.map_or_else(|| base.clone(), |p| base.join(p));
-    let identity = identity(&target)?;
-    let (_project, initialized) = Project::init(&target, identity, &SnapshotOptions::default())?;
+    let settings = settings::resolve(Some(&target), &target)?;
+    let identity = identity(cli, &settings)?;
+    let (_project, initialized) = Project::init(&target, identity, &settings.snapshot_options())?;
     Ok(finish(
         cli,
         || human::init(&initialized),
@@ -207,7 +211,7 @@ pub(crate) fn now() -> i64 {
 }
 
 /// The folder to work from: `-C <path>` or the current directory, as an absolute path.
-fn start_dir(cli: &Cli) -> Result<PathBuf, PaperError> {
+pub(crate) fn start_dir(cli: &Cli) -> Result<PathBuf, PaperError> {
     let dir = match &cli.directory {
         Some(dir) => std::path::absolute(dir),
         None => std::env::current_dir(),
@@ -232,11 +236,21 @@ fn failure(message: &str, err: &dyn std::error::Error) -> PaperError {
     PaperError::project_failure(message, err)
 }
 
-/// `user.name` and `user.email` from git config, or the "who are you" error.
-fn identity(path: &Path) -> Result<Identity, PaperError> {
-    configured_identity(path)
-        .map_err(|err| PaperError::from(paper_core::project::OpenError::Git(err)))?
-        .ok_or_else(PaperError::no_identity)
+/// The author for saves: from the settings, else asked for once on a terminal and stored in the
+/// user config, else the "who are you" error.
+fn identity(cli: &Cli, settings: &Settings) -> Result<Identity, PaperError> {
+    if let Some(identity) = settings.identity() {
+        return Ok(identity);
+    }
+    let stdin = io::stdin();
+    let is_tty = !cli.json && stdin.is_terminal();
+    if let Some(path) = settings::user_config_file()
+        && let Some(identity) =
+            prompt::ask_for_identity(is_tty, &mut stdin.lock(), &mut io::stderr(), &path)?
+    {
+        return Ok(identity);
+    }
+    Err(PaperError::no_identity())
 }
 
 /// Finds the project that contains the working folder (walking up) and opens it.
@@ -245,9 +259,11 @@ pub(crate) fn open(cli: &Cli) -> Result<(Project, Paths), PaperError> {
     let Some(workdir) = GitRepo::enclosing_workdir(&start) else {
         return Err(PaperError::not_a_project(&start, false));
     };
-    let identity = identity(&workdir)?;
+    let settings = settings::resolve(Some(&workdir), &workdir)?;
+    let identity = identity(cli, &settings)?;
     let paths = Paths::new(&start, &workdir);
-    Ok((Project::open(&workdir, identity)?, paths))
+    let project = Project::open(&workdir, identity)?.with_options(settings.snapshot_options());
+    Ok((project, paths))
 }
 
 /// Opens the project and, unless `--no-snapshot`, records the working files first (I1).

@@ -143,3 +143,11 @@ identity in saves, the colour default, and the large-file thresholds.
   - `ask_for_identity` returns `None` without a terminal and writes nothing; it stores via `ConfigFile` and prints the file path.
   - Errors: malformed file is `ErrorKind::User` with the file and `line N` in the text; unreadable file is `Project`.
 - Questions: none blocking.
+
+### GREEN · rust-engineer · 2026-10-16
+- Implemented `paper_core::config` split into `keys.rs`, `file.rs`, `settings.rs` and `mod.rs` (errors, OS paths); `From<ConfigError> for PaperError` (three parts each); `Project::with_options`; `PaperError::no_identity` now suggests `paper config set user.name/user.email` first, then the git config commands.
+- CLI: `paper config get|set|list` (`config_cmd.rs`), settings loading in `settings.rs`, `--color` is now optional and falls back to `PAPER_UI_COLOR` / `ui.color` (settings errors there fall back to `auto`; the command reports them), identity from settings with the terminal prompt (`prompt::ask_for_identity`), large-file options passed to `Project` in `open` and `init`.
+- RED author's choices accepted as is. Snapshots accepted after reading: `config_list`, `config_list_json`, `status_large` (2.0 MB), `no_identity` (paper config first).
+- Decisions: `paper.toml` values for user-only keys are ignored when resolving (identity must never come from a shared file); `config get`/`set --json` print a small `{"schema":1,...}` object; unset values show `(not set)` in the list table; adding a new `[table]` appends text to the file so existing bytes (including trailing blank lines) are untouched, since editing the parsed document moved them.
+- Specs: `02-cli.md` (--color, identity, `paper init` prompt, `paper config` with key table and homes), `03-architecture.md` (Configuration: env names, paths per OS, module notes; example files match v0.1).
+- Follow-ups: `config unset`, `ui.editor` (later); `config set` does not check the combined value across project and user files (only within one file).
