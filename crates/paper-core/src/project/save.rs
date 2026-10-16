@@ -292,7 +292,7 @@ fn select(
 }
 
 /// A selected path names the file itself or a directory containing it.
-fn matches(selected: &str, file: &str) -> bool {
+pub(super) fn matches(selected: &str, file: &str) -> bool {
     let selected = selected.trim_end_matches('/');
     file == selected
         || file

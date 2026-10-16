@@ -1,6 +1,6 @@
 //! [`GitRepo`]: every git read and write paper does goes through here
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use gix::bstr::{BString, ByteSlice};
@@ -258,6 +258,35 @@ impl GitRepo {
             message,
             change_id,
         })
+    }
+
+    /// Every commit reachable from `from` (following all parents), each once, newest first by
+    /// committer time. Ties are broken by commit id so the order is deterministic.
+    ///
+    /// # Errors
+    ///
+    /// [`GitError`] if a commit in the history can't be read.
+    pub fn ancestors(&self, from: &[CommitId]) -> Result<Vec<Commit>, GitError> {
+        let mut seen: BTreeSet<CommitId> = from.iter().cloned().collect();
+        let mut pending: Vec<CommitId> = seen.iter().cloned().collect();
+        let mut commits = Vec::new();
+        while let Some(id) = pending.pop() {
+            let commit = self.read_commit(&id)?;
+            for parent in &commit.parents {
+                if seen.insert(parent.clone()) {
+                    pending.push(parent.clone());
+                }
+            }
+            commits.push(commit);
+        }
+        commits.sort_by(|a, b| {
+            b.committer
+                .time
+                .seconds
+                .cmp(&a.committer.time.seconds)
+                .then_with(|| a.id.cmp(&b.id))
+        });
+        Ok(commits)
     }
 
     /// The commit a reference points to, following symbolic references. `None` if it doesn't exist.

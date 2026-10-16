@@ -357,3 +357,84 @@ fn enclosing_workdir_is_none_outside_any_repository() {
     let dir = tempfile::tempdir().unwrap();
     assert_eq!(GitRepo::enclosing_workdir(dir.path()), None);
 }
+
+/// A commit at `seconds` (committer time) on top of `parents`, holding `tree`.
+fn commit_at(repo: &GitRepo, tree: &TreeId, parents: &[&CommitId], seconds: i64) -> CommitId {
+    let mut signature = signature();
+    signature.time.seconds = seconds;
+    repo.write_commit(&NewCommit {
+        tree: tree.clone(),
+        parents: parents.iter().map(|id| (*id).clone()).collect(),
+        author: signature.clone(),
+        committer: signature,
+        message: format!("commit at {seconds}"),
+        change_id: None,
+    })
+    .unwrap()
+}
+
+/// root(100) <- a(200) <- merge(500); root <- b(300) <- merge; tip c(400) on top of b.
+fn history_with_a_merge(repo: &GitRepo) -> (Vec<CommitId>, CommitId, CommitId) {
+    let tree = tree_with(repo, &[("a.txt", b"a")]);
+    let root = commit_at(repo, &tree, &[], 100);
+    let a = commit_at(repo, &tree, &[&root], 200);
+    let b = commit_at(repo, &tree, &[&root], 300);
+    let c = commit_at(repo, &tree, &[&b], 400);
+    let merge = commit_at(repo, &tree, &[&a, &b], 500);
+    (vec![root, a, b, c.clone(), merge.clone()], merge, c)
+}
+
+#[test]
+fn ancestors_lists_every_reachable_commit_once_newest_first_including_both_merge_parents() {
+    let (dir, repo) = fresh_repo();
+    let (all, merge, _c) = history_with_a_merge(&repo);
+    repo.set_ref("refs/heads/main", &merge, "test").unwrap();
+
+    let found = repo.ancestors(std::slice::from_ref(&merge)).unwrap();
+    let ids: Vec<_> = found.iter().map(|commit| commit.id.clone()).collect();
+
+    // merge(500), b(300), a(200), root(100): c is not reachable from the merge.
+    let expected: Vec<_> = [4, 2, 1, 0].iter().map(|&i| all[i].clone()).collect();
+    assert_eq!(ids, expected);
+
+    let counted = git(dir.path(), &["rev-list", "--count", merge.as_str()]);
+    assert_eq!(counted.trim(), found.len().to_string());
+}
+
+#[test]
+fn ancestors_from_several_tips_visits_shared_history_once() {
+    let (dir, repo) = fresh_repo();
+    let (all, merge, c) = history_with_a_merge(&repo);
+    repo.set_ref("refs/heads/main", &merge, "test").unwrap();
+    repo.set_ref("refs/heads/side", &c, "test").unwrap();
+
+    let found = repo.ancestors(&[merge.clone(), c.clone()]).unwrap();
+    let ids: Vec<_> = found.iter().map(|commit| commit.id.clone()).collect();
+
+    let expected: Vec<_> = [4, 3, 2, 1, 0].iter().map(|&i| all[i].clone()).collect();
+    assert_eq!(ids, expected);
+    let counted = git(dir.path(), &["rev-list", "--count", "--all"]);
+    assert_eq!(counted.trim(), "5");
+}
+
+#[test]
+fn ancestors_breaks_time_ties_by_commit_id() {
+    let (_dir, repo) = fresh_repo();
+    let tree = tree_with(&repo, &[("a.txt", b"a")]);
+    let root = commit_at(&repo, &tree, &[], 100);
+    let left = commit_at(&repo, &tree_with(&repo, &[("l", b"l")]), &[&root], 200);
+    let right = commit_at(&repo, &tree_with(&repo, &[("r", b"r")]), &[&root], 200);
+
+    let found = repo.ancestors(&[left.clone(), right.clone()]).unwrap();
+    let ids: Vec<_> = found.iter().map(|commit| commit.id.clone()).collect();
+
+    let mut tied = [left, right];
+    tied.sort();
+    assert_eq!(ids, [tied[0].clone(), tied[1].clone(), root]);
+}
+
+#[test]
+fn ancestors_of_nothing_is_empty() {
+    let (_dir, repo) = fresh_repo();
+    assert!(repo.ancestors(&[]).unwrap().is_empty());
+}
