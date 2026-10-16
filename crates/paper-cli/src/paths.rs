@@ -69,6 +69,21 @@ impl Paths {
     }
 }
 
+/// True for the Windows forms that name neither a place under this folder nor a full path:
+/// root-relative (`\a`, no drive) and drive-relative (`C:a`, no separator after the colon).
+/// `C:\a`, `C:/a`, `\\server\share` and plain relative paths are false.
+#[allow(dead_code)] // wired into `project_path` in GREEN
+pub fn is_root_or_drive_relative(_given: &str) -> bool {
+    todo!("PV-011: root-relative and drive-relative paths")
+}
+
+/// The user error for a root-relative or drive-relative path: tells the researcher to use a
+/// path relative to this folder or a full path.
+#[allow(dead_code)] // wired into `project_path` in GREEN
+pub fn rooted_path_error(_given: &str) -> PaperError {
+    todo!("PV-011: root-relative and drive-relative paths")
+}
+
 /// The components of `path` below `root`, comparing as written first and then with symlinks
 /// resolved (a temp folder can be spelled two ways).
 fn below(root: &Path, path: &Path) -> Option<Vec<String>> {
@@ -156,5 +171,57 @@ mod tests {
             paths(&[]).project_path(".\\sections\\a.tex").unwrap(),
             "sections/a.tex"
         );
+    }
+
+    #[test]
+    fn root_relative_and_drive_relative_forms_are_recognised() {
+        for given in ["\\a", "\\a\\b.tex", "C:a", "c:sections\\a.tex", "C:a/b"] {
+            assert!(is_root_or_drive_relative(given), "{given}");
+        }
+    }
+
+    #[test]
+    fn ordinary_and_full_paths_are_not_root_or_drive_relative() {
+        for given in [
+            "a.tex",
+            "./a.tex",
+            "../a.tex",
+            "sections/a.tex",
+            "C:\\a",
+            "C:/a",
+            "C:",
+            "\\\\server\\share\\a",
+            "",
+            ".",
+        ] {
+            assert!(!is_root_or_drive_relative(given), "{given}");
+        }
+    }
+
+    #[test]
+    fn a_root_or_drive_relative_path_is_a_three_part_user_error() {
+        let error = rooted_path_error("\\a");
+        assert_eq!(error.kind, ErrorKind::User);
+        assert!(error.message.contains("\\a"), "{error:?}");
+        assert!(!error.why.is_empty() && !error.next.is_empty(), "{error:?}");
+        let text = format!("{} {} {:?}", error.message, error.why, error.next);
+        assert!(
+            text.contains("use a path relative to this folder or a full path"),
+            "{error:?}"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn project_path_refuses_root_relative_and_drive_relative_paths() {
+        for given in ["\\a", "C:a"] {
+            let error = paths(&[]).project_path(given).unwrap_err();
+            assert_eq!(error.kind, ErrorKind::User, "{given}");
+            let text = format!("{} {} {:?}", error.message, error.why, error.next);
+            assert!(
+                text.contains("use a path relative to this folder or a full path"),
+                "{given}: {error:?}"
+            );
+        }
     }
 }

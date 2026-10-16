@@ -97,3 +97,52 @@ fn a_missing_argument_under_json_is_a_json_user_error() {
     let run = env.paper(&["--json", "show"]);
     assert_error_shape(&run, 1, "user");
 }
+
+#[test]
+fn a_project_error_puts_the_issue_url_in_command_and_the_prose_in_explanation() {
+    let env = project();
+    std::fs::write(env.work.join(".git/paper/version"), "99\n").unwrap();
+
+    let run = env.paper(&["--json", "history"]);
+
+    assert_error_shape(&run, 3, "project");
+    let next = &run.json()["error"]["next"][0];
+    assert_eq!(
+        next["command"],
+        "https://github.com/lbAntoine/paper-vcs/issues"
+    );
+    assert_eq!(
+        next["explanation"],
+        "report it, including what you ran and the message above"
+    );
+}
+
+#[test]
+fn the_json_scan_for_an_argument_error_stops_at_double_dash() {
+    let env = Env::new();
+
+    // `--json` after `--` is a value, not the flag, so the error is the human form.
+    let run = env.paper(&["--no-such-flag", "--", "--json"]);
+
+    run.assert_code(1);
+    assert_eq!(run.stdout, "", "{run:#?}");
+    assert!(!run.stderr.is_empty(), "{run:#?}");
+    assert!(
+        serde_json::from_str::<serde_json::Value>(&run.stderr).is_err(),
+        "{run:#?}"
+    );
+}
+
+#[test]
+fn diff_status_and_restore_errors_are_json_too() {
+    let env = project();
+    for args in [
+        &["--json", "diff", "--words"][..],
+        &["--json", "diff", "nope.tex"],
+        &["--json", "restore", "nope.tex"],
+        &["--json", "restore", "--from", "nope", "main.tex"],
+    ] {
+        let run = env.paper(args);
+        assert_error_shape(&run, 1, "user");
+    }
+}

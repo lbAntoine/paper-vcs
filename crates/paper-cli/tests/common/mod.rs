@@ -150,6 +150,17 @@ impl Env {
         fs::write(path, content).unwrap();
     }
 
+    /// Writes raw bytes (for binary fixtures).
+    pub fn write_bytes(&self, relative: &str, content: &[u8]) {
+        let path = self.work.join(relative);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, content).unwrap();
+    }
+
+    pub fn read(&self, relative: &str) -> String {
+        fs::read_to_string(self.work.join(relative)).unwrap()
+    }
+
     /// The subject lines of every commit reachable from HEAD, newest first.
     pub fn subjects(&self) -> Vec<String> {
         self.git_work(&["log", "--format=%s"])
@@ -352,4 +363,23 @@ impl Run {
 
 pub fn os(value: &str) -> OsString {
     OsString::from(value)
+}
+
+/// `len` bytes that classify as binary (they hold NULs).
+pub fn binary(len: usize, fill: u8) -> Vec<u8> {
+    let mut bytes = vec![fill; len];
+    bytes[0] = 0;
+    bytes
+}
+
+/// The object `value` has exactly these keys (order does not matter).
+pub fn assert_keys(value: &serde_json::Value, keys: &[&str]) {
+    let object = value
+        .as_object()
+        .unwrap_or_else(|| panic!("not an object: {value}"));
+    let mut found: Vec<&str> = object.keys().map(String::as_str).collect();
+    found.sort_unstable();
+    let mut expected = keys.to_vec();
+    expected.sort_unstable();
+    assert_eq!(found, expected, "{value}");
 }

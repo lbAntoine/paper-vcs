@@ -35,8 +35,39 @@ pub fn execute(cli: &Cli, style: Style) -> Output {
             limit,
             graph,
         } => history(cli, path.as_deref(), *all, *limit, *graph, verbosity, style),
-        Command::Show { point } => show(cli, point, verbosity, style),
+        Command::Show { point, .. } => show(cli, point, verbosity, style),
+        Command::Status => status(cli, verbosity, style),
+        Command::Diff {
+            args,
+            words,
+            stat,
+            since,
+            ..
+        } => diff(cli, args, *words, *stat, since.as_deref(), style),
+        Command::Restore { paths, from } => restore(cli, paths, from.as_deref(), style),
     }
+}
+
+/// `paper status`: the header, the unsaved changes and what was left out.
+fn status(_cli: &Cli, _verbosity: Verbosity, _style: Style) -> Output {
+    todo!("PV-011: paper status")
+}
+
+/// `paper diff`: sort `args` into points and paths, then print the unified diffs (or `--stat`).
+fn diff(
+    _cli: &Cli,
+    _args: &[String],
+    _words: bool,
+    _stat: bool,
+    _since: Option<&str>,
+    _style: Style,
+) -> Output {
+    todo!("PV-011: paper diff")
+}
+
+/// `paper restore`: put the paths back as they were at `from` (default `last`).
+fn restore(_cli: &Cli, _paths: &[String], _from: Option<&str>, _style: Style) -> Output {
+    todo!("PV-011: paper restore")
 }
 
 /// What a successful command prints: nothing under `-q` (unless `--json`).

@@ -9,6 +9,37 @@ expression: env.redact_json(&run.stdout)
       "path": "sections/intro.tex"
     }
   ],
+  "files": [
+    {
+      "added": 1,
+      "binary": false,
+      "hunks": [
+        {
+          "lines": [
+            {
+              "kind": "removed",
+              "missing_newline": false,
+              "text": "Intro v1"
+            },
+            {
+              "kind": "added",
+              "missing_newline": false,
+              "text": "Intro v2"
+            }
+          ],
+          "new_len": 1,
+          "new_start": 1,
+          "old_len": 1,
+          "old_start": 1
+        }
+      ],
+      "kind": "modified",
+      "new_bytes": null,
+      "old_bytes": null,
+      "path": "sections/intro.tex",
+      "removed": 1
+    }
+  ],
   "save": {
     "author": {
       "email": "mina@uni.example",

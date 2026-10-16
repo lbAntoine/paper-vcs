@@ -167,6 +167,26 @@ fn save_json_for_a_no_op_says_nothing_was_saved() {
     let json = run.json();
     assert_eq!(json["schema"], 1);
     assert_eq!(json["saved"], false);
+    common::assert_keys(
+        &json,
+        &[
+            "schema",
+            "saved",
+            "id",
+            "change_id",
+            "commit",
+            "line",
+            "message",
+            "saved_files",
+            "remaining",
+        ],
+    );
+    for key in ["id", "change_id", "commit", "line", "message"] {
+        assert_eq!(json[key], serde_json::Value::Null, "{key}");
+    }
+    for key in ["saved_files", "remaining"] {
+        assert_eq!(json[key], serde_json::json!([]), "{key}");
+    }
 }
 
 #[test]

@@ -5,6 +5,7 @@ mod commands;
 mod error;
 mod panic;
 mod paths;
+mod prompt;
 mod render;
 mod run;
 

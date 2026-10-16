@@ -6,7 +6,10 @@
 use std::path::Path;
 
 use crate::point::ParsePointError;
-use crate::project::{HistoryError, InitError, OpenError, ResolveError, SaveError, ShowError};
+use crate::project::{
+    DiffError, HistoryError, InitError, OpenError, ResolveError, RestoreError, SaveError,
+    ShowError, StatusError,
+};
 
 /// Who has to act, which decides the CLI exit code.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -352,6 +355,24 @@ impl From<ShowError> for PaperError {
     }
 }
 
+impl From<DiffError> for PaperError {
+    fn from(_error: DiffError) -> Self {
+        todo!("PV-011: DiffError conversion")
+    }
+}
+
+impl From<StatusError> for PaperError {
+    fn from(_error: StatusError) -> Self {
+        todo!("PV-011: StatusError conversion")
+    }
+}
+
+impl From<RestoreError> for PaperError {
+    fn from(_error: RestoreError) -> Self {
+        todo!("PV-011: RestoreError conversion")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::io;
@@ -675,5 +696,195 @@ mod tests {
             error.next.iter().any(|s| s.command == "paper init"),
             "{error:?}"
         );
+    }
+
+    fn unknown_paths() -> Vec<String> {
+        vec!["mian.tex".to_owned(), "sections/nope.tex".to_owned()]
+    }
+
+    #[test]
+    fn project_failure_puts_the_issue_url_in_command_and_the_prose_in_explanation() {
+        let error = PaperError::project_failure("Paper could not save", &io_error());
+        assert_eq!(error.kind, ErrorKind::Project);
+        assert_eq!(error.next.len(), 1, "{error:?}");
+        assert_eq!(
+            error.next[0].command,
+            "https://github.com/lbAntoine/paper-vcs/issues"
+        );
+        assert_eq!(
+            error.next[0].explanation,
+            "report it, including what you ran and the message above"
+        );
+    }
+
+    #[test]
+    fn a_diff_with_unknown_paths_is_a_user_error_naming_every_path() {
+        let error = PaperError::from(DiffError::UnknownPaths {
+            paths: unknown_paths(),
+        });
+        assert_user(&error);
+        let text = format!("{} {}", error.message, error.why);
+        for path in unknown_paths() {
+            assert!(text.contains(&path), "{path}: {error:?}");
+        }
+    }
+
+    #[test]
+    fn diff_errors_from_resolving_a_point_keep_their_user_wording() {
+        let from_resolve = PaperError::from(ResolveError::UnknownPoint {
+            name: "nope".to_owned(),
+        });
+        let error = PaperError::from(DiffError::Resolve(ResolveError::UnknownPoint {
+            name: "nope".to_owned(),
+        }));
+        assert_eq!(error, from_resolve);
+    }
+
+    #[test]
+    fn a_git_failure_while_diffing_is_a_project_error() {
+        assert_project(&PaperError::from(DiffError::Git(git_error())));
+    }
+
+    #[test]
+    fn status_errors_convert_with_the_right_kind() {
+        assert_project(&PaperError::from(StatusError::Git(git_error())));
+        assert_user(&PaperError::from(StatusError::Resolve(
+            ResolveError::UnknownPoint {
+                name: "nope".to_owned(),
+            },
+        )));
+        assert_user(&PaperError::from(StatusError::Save(
+            SaveError::MissingMessage,
+        )));
+        assert_project(&PaperError::from(StatusError::Save(SaveError::Git(
+            git_error(),
+        ))));
+    }
+
+    #[test]
+    fn restore_without_paths_is_a_user_error_that_shows_an_example() {
+        let error = PaperError::from(RestoreError::NoPaths);
+        assert_user(&error);
+        assert!(
+            error
+                .next
+                .iter()
+                .any(|s| s.command.starts_with("paper restore")),
+            "{error:?}"
+        );
+    }
+
+    #[test]
+    fn restore_with_unknown_paths_names_every_path_and_says_nothing_changed() {
+        let error = PaperError::from(RestoreError::UnknownPaths {
+            paths: unknown_paths(),
+        });
+        assert_user(&error);
+        let text = format!("{} {}", error.message, error.why);
+        for path in unknown_paths() {
+            assert!(text.contains(&path), "{path}: {error:?}");
+        }
+        assert!(
+            text.contains("no files were changed") || text.contains("nothing was changed"),
+            "{error:?}"
+        );
+    }
+
+    #[test]
+    fn restore_failures_of_the_machine_are_project_errors() {
+        assert_project(&PaperError::from(RestoreError::Git(git_error())));
+        assert_project(&PaperError::from(RestoreError::Io {
+            action: "restore",
+            path: "main.tex".to_owned(),
+            source: io_error(),
+        }));
+        assert_project(&PaperError::from(RestoreError::Save(SaveError::Git(
+            git_error(),
+        ))));
+        assert_user(&PaperError::from(RestoreError::Resolve(
+            ResolveError::UnknownPoint {
+                name: "nope".to_owned(),
+            },
+        )));
+    }
+
+    fn core_messages() -> Vec<String> {
+        let unknown = ResolveError::UnknownPoint {
+            name: "nope".to_owned(),
+        };
+        let too_far = ResolveError::NotEnoughHistory {
+            line: line("main"),
+            back: 3,
+            available: 1,
+        };
+        let no_save = ResolveError::NoSaveBefore { date: date_spec() };
+        let ambiguous = ResolveError::Ambiguous {
+            prefix: "ab".to_owned(),
+            candidates: Vec::new(),
+        };
+        vec![
+            unknown.to_string(),
+            too_far.to_string(),
+            no_save.to_string(),
+            ambiguous.to_string(),
+            DiffError::UnknownPaths {
+                paths: unknown_paths(),
+            }
+            .to_string(),
+            RestoreError::NoPaths.to_string(),
+            RestoreError::UnknownPaths {
+                paths: unknown_paths(),
+            }
+            .to_string(),
+            RestoreError::Io {
+                action: "restore",
+                path: "main.tex".to_owned(),
+                source: io_error(),
+            }
+            .to_string(),
+            SaveError::MissingMessage.to_string(),
+            SaveError::NoChangesAt {
+                paths: unknown_paths(),
+            }
+            .to_string(),
+            SaveError::OutOfSyncWithGit { line: line("main") }.to_string(),
+        ]
+    }
+
+    #[test]
+    fn no_core_message_suggests_a_command_that_does_not_exist_yet() {
+        for message in core_messages() {
+            assert!(!message.contains("paper lines"), "{message}");
+        }
+    }
+
+    #[test]
+    fn core_messages_do_not_repeat_the_next_hints_the_cli_shows() {
+        let diff_and_restore = [
+            DiffError::UnknownPaths {
+                paths: unknown_paths(),
+            }
+            .to_string(),
+            RestoreError::UnknownPaths {
+                paths: unknown_paths(),
+            }
+            .to_string(),
+            RestoreError::Io {
+                action: "restore",
+                path: "main.tex".to_owned(),
+                source: io_error(),
+            }
+            .to_string(),
+            ResolveError::UnknownPoint {
+                name: "nope".to_owned(),
+            }
+            .to_string(),
+        ];
+        for message in diff_and_restore {
+            assert!(
+                !message.contains("`paper "),
+                "a message states what happened; commands go in `next`: {message}"
+            );
+        }
     }
 }

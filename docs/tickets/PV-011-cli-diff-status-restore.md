@@ -124,3 +124,60 @@ well everywhere, and the minor issues left by PV-003's review are closed.
 ## Summary
 
 ## Handoff log
+
+### RED · test-author · 2026-10-16
+
+**New tests (all RED).**
+- `crates/paper-cli/tests/status.rs` (10), `diff.rs` (27), `restore.rs` (10): CLI behaviour. They fail
+  because the new subcommands are `todo!()` stubs (panic) or on assertions.
+- `show.rs` +2 (`show_stat_…`, `show_the_draft_shows_its_diff_against_last`), `json_errors.rs` +3
+  (issue URL in `command`; `--json` scan stops at `--`; diff/restore errors are JSON), unit tests in
+  `src/prompt.rs` (4) and `src/paths.rs` (3 all-platform + 1 `cfg(windows)`), `paper-core/src/error.rs`
+  (+10: conversions, `project_failure` shape, no `paper lines`, no `` `paper … ` `` command in
+  Diff/Restore/Resolve `Display`), `paper-git/tests/config.rs` (+2: broken `.git` file and empty
+  `.git` folder above the target; the existing damaged-repository-at-the-path test is untouched).
+- Fail modes: `todo!()` panics (CLI subcommands, conversions, prompt, path helpers); assertions
+  (error texts, `--json` scan, `configured_identity`, snapshot mismatches).
+- Snapshot calls without a `.snap` file (GREEN reviews and accepts them): `status_human`,
+  `status_nothing_unsaved`, `status_json`, `diff_draft`, `diff_unknown_path`, `diff_binary`,
+  `diff_stat`, `diff_json`, `restore_human`, `restore_unknown_path`, `restore_json`, `show_stat`.
+
+**Stubs.** `cli.rs`: `Status`, `Diff { args, lines, words, stat, since }`, `Restore { paths, from }`,
+`Show { point, stat }`. `commands.rs`: `status`, `diff`, `restore` (`todo!()`); `show` ignores `--stat`.
+`src/prompt.rs::ask_for_message(is_tty, &mut dyn BufRead, &mut dyn Write)` (not tty: nothing printed
+or read, `Ok("")`; empty answer: user error); `paths::is_root_or_drive_relative`,
+`paths::rooted_path_error`; `From<DiffError|StatusError|RestoreError> for PaperError`. The two
+helpers and `ask_for_message` carry `#[allow(dead_code)]` until GREEN wires them in (remove it then).
+`diff`'s `args` can't see `--` through clap: GREEN must read the raw args (or use clap's
+`last`/`trailing_var_arg`) to tell "forced paths" from points.
+
+**Pre-existing tests/snapshots changed (none weakened; all assert the new behaviour).**
+- `show__show_human.snap`: the diff of `sections/intro.tex` now follows the unchanged
+  "Changed 1 file:" list after one blank line. `show__show_json.snap`: new `files` array
+  (diff-file shape, below); `changes` kept.
+- `json_errors__json_error_project.snap`, `json_errors__project_error_human.snap`: `next[0].command`
+  is `https://github.com/lbAntoine/paper-vcs/issues`, explanation `report it, including what you
+  ran and the message above`.
+- `show.rs`: `show_last_…` and `show_the_first_save_…` gain diff assertions; the JSON test gains key
+  assertions. `save.rs`: the no-op save JSON test asserts all keys (`null`/`[]`). `paths.rs`:
+  `history_dot_from_a_subfolder…` also asserts "Rewrite intro" and "Start project" are listed.
+  `tests/common/mod.rs`: helpers `write_bytes`, `read`, `binary`, `assert_keys`.
+
+**Formats the tests pin (decide against the spec if you disagree, and tell the coordinator).**
+- Diff labels `a/<path>`, `b/<path>`, `/dev/null`; files concatenated in path order, no extra
+  header. Binary: one line with `changed`/`new`/`deleted` and `2 KB → 4 KB` (U+2192).
+- `--stat`: a line per file with `+N −M` (U+2212) or binary sizes, then a total containing `N files`.
+- Status: header `On main · last save <id> "<msg>" (<time>)`, `Draft (unsaved):`, kinds
+  `modified`/`new`/`deleted`, `+2 −1 lines`, `(2 KB)`; `Skipped` section; `Nothing unsaved.`.
+- Restore human: file lines with kind (`modified`/`deleted`…), a `Skipped` section.
+- Colour: `\x1b[31m` removed lines, `\x1b[32m` added lines, only with `--color always` here.
+- JSON: status `{schema,line,last,changes,skipped,large}`; change/diff file
+  `{path,kind,binary,added,removed,old_bytes,new_bytes[,hunks]}` (text: bytes `null`; binary:
+  added/removed `null`, `hunks: []`); line `{kind: context|added|removed,text,missing_newline}`;
+  diff `{schema,files}`; restore `{schema,from (commit hash),changes[{path,kind}],skipped[path]}`;
+  show gains `files`.
+
+**Questions.** (1) `missing_newline` is per line (ticket wording was ambiguous). (2) The new
+`configured_identity` tests (stray `.git` above an existing target folder) must coexist with the old
+"damaged repository at the path itself is an error" test; if gix cannot tell them apart, say so.
+(3) `Env::git` fails on non-zero exit, so `git apply --check -R` failures show up as panics.
