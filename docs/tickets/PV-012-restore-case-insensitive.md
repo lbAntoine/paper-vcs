@@ -1,6 +1,6 @@
 # PV-012: restore on case-insensitive filesystems, and all-or-nothing flips
 
-- **Status:** In progress
+- **Status:** Done
 - **Branch:** `feat/PV-012-restore-case-insensitive`
 - **Depends on:** PV-010, PV-014 (merged). Runs in parallel with PV-008 (save's path selection).
 - **Touches:** `crates/paper-core/src/project/restore.rs`, `crates/paper-core/src/project/restore_plan.rs` (new),
@@ -77,6 +77,30 @@ case) as on Linux, and never leaves a file/folder swap half done.
 
 ## Summary
 
+`paper restore` handles case-only renames and never leaves a file/folder swap half done; snapshot
+no longer records both spellings of a renamed file on case-insensitive filesystems.
+
+- Snapshot: a tracked path the walk didn't produce is kept only if its exact spelling is listed;
+  each folder is listed at most once per snapshot (`paper status` with 3 000 tracked-but-ignored
+  files: about 50 ms in release, target 100 ms), and an unreadable folder falls back to the old
+  behaviour.
+- Restore (`restore_plan.rs`): a doomed entry that differs only in case is not an obstacle, so
+  `restore .` ends with the save's spelling; a case-renamed folder that still holds something
+  paper doesn't record is blocked, with both sides kept. A blocked write drops the deletions that
+  exist only for it (`KeptForSwap { target }`); unrelated deletions still run.
+- Naming only the saved spelling while the draft holds the other gives `CaseAlias { other }`
+  ("differs only in letter case from notes.tex; run `paper restore Notes.tex notes.tex`") on
+  case-insensitive filesystems; on Linux both spellings can exist and the write happens (documented).
+
+Deviations: `snapshot/mod.rs` joined the scope after the coordinator reproduced the bug on main
+(the files on disk were already right; the draft recorded both spellings). The RED tests were
+corrected twice and finally shown to fail on main and pass on the branch. `RestoreSkip` gained two
+variants and lost `Copy`. Case comparison uses full lowercasing (limitation documented).
+
+Follow-ups in PV-016: the folder form of the case alias still reports "a file paper doesn't track";
+CLI tests for the `case_alias` and `kept_for_swap` human and JSON output; a per-restore listing
+cache; a stronger Linux branch in the case-renamed folder test.
+
 ## Handoff log
 
 ### RED · test-author · 2026-10-16
@@ -147,3 +171,7 @@ case) as on Linux, and never leaves a file/folder swap half done.
 - New tests: snapshot-only case rename (file and folder), tracked-ignored file and tracked symlink (unix) whose case changed.
 - Spec 02-cli § restore rewritten: "on every filesystem" dropped, platform behaviour, `case_alias`, `kept_for_swap`, folder-with-obstacle documented.
 - Checks: fmt, clippy -D warnings, full suite green on macOS (case-insensitive).
+
+### Review round 2 · reviewer · 2026-10-17
+- Verdict: APPROVE. Every round-1 finding re-checked with release-build probes (status 0.05 s with 3 000 tracked-but-ignored files; the folder-with-obstacle and single-spelling cases; the flip wording; the unreadable-folder fallback). Linux expectations of the new tests checked by reasoning (CI is their first run).
+- Deferred to PV-016: folder-level `CaseAlias`; CLI tests pinning the two new reasons in human and JSON output; a per-restore listing cache; three extra checks in the Linux branch of the folder test.
