@@ -75,9 +75,44 @@ pub enum Command {
         #[arg(long)]
         graph: bool,
     },
-    /// Show one save: metadata and changed files.
+    /// Show one save: metadata, changed files and their diffs.
     Show {
         /// A short save ID, `last`, `last~N`, `@` (the draft), a line name or `date:YYYY-MM-DD`.
         point: String,
+        /// Print the per-file line counts instead of the diffs.
+        #[arg(long)]
+        stat: bool,
+    },
+    /// List the unsaved changes in the draft.
+    Status,
+    /// Compare two points, or the last save and the draft.
+    Diff {
+        /// Up to two points, then files or folders (relative to where you run paper). The first
+        /// word that is not a point starts the paths.
+        args: Vec<String>,
+        /// Files or folders after `--`: always paths, even when named like a point.
+        #[arg(last = true)]
+        paths: Vec<String>,
+        /// Compare line by line (the default).
+        #[arg(long, conflicts_with = "words")]
+        lines: bool,
+        /// Compare word by word. Not yet available (v0.3).
+        #[arg(long)]
+        words: bool,
+        /// Print the per-file line counts instead of the diffs.
+        #[arg(long)]
+        stat: bool,
+        /// Compare this point with the draft; the same as `paper diff <point> @`.
+        #[arg(long, value_name = "POINT")]
+        since: Option<String>,
+    },
+    /// Put files back the way they were at a point.
+    Restore {
+        /// The files or folders to restore (relative to where you run paper).
+        #[arg(required = true)]
+        paths: Vec<String>,
+        /// The point to restore from (default: `last`).
+        #[arg(long, value_name = "POINT")]
+        from: Option<String>,
     },
 }

@@ -17,6 +17,7 @@ use crate::view::{Line, ViewError};
 ///
 /// A path selects the file with exactly that path, or every file under it when it names a
 /// directory (`sections` or `sections/`). Paths are repository-relative, with `/` separators.
+/// The empty path is the project folder itself, so it selects every file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PathSelection {
     /// The whole draft.
@@ -291,10 +292,12 @@ fn select(
         .partition(|change| paths.iter().any(|path| matches(path, &change.path)) == keep_matches))
 }
 
-/// A selected path names the file itself or a directory containing it.
+/// A selected path names the file itself or a directory containing it. The empty path is the
+/// project folder, which contains every file.
 pub(super) fn matches(selected: &str, file: &str) -> bool {
     let selected = selected.trim_end_matches('/');
-    file == selected
+    selected.is_empty()
+        || file == selected
         || file
             .strip_prefix(selected)
             .is_some_and(|rest| rest.starts_with('/'))
@@ -335,4 +338,24 @@ fn close_over_conflicts<'a>(selected: Vec<Change>, all: &'a [Change]) -> Vec<Cha
     let mut selected = selected;
     selected.extend(forced.into_values().cloned());
     selected
+}
+
+#[cfg(test)]
+mod tests {
+    use super::matches;
+
+    #[test]
+    fn a_path_matches_the_file_itself_or_whole_components_below_it() {
+        assert!(matches("a/b.tex", "a/b.tex"));
+        assert!(matches("a", "a/b.tex"));
+        assert!(matches("a/", "a/b.tex"));
+        assert!(!matches("a/b", "a/b.tex"));
+        assert!(!matches("sec", "sections/intro.tex"));
+    }
+
+    #[test]
+    fn the_empty_path_is_the_project_folder_and_matches_every_file() {
+        assert!(matches("", "a.tex"));
+        assert!(matches("", "a/b/c.tex"));
+    }
 }

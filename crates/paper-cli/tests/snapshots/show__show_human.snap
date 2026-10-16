@@ -9,3 +9,9 @@ Line:    latest save of main
 
 Changed 1 file:
   modified  sections/intro.tex
+
+--- a/sections/intro.tex
++++ b/sections/intro.tex
+@@ -1 +1 @@
+-Intro v1
++Intro v2

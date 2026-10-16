@@ -1,0 +1,7 @@
+---
+source: crates/paper-cli/tests/diff.rs
+expression: env.redact(&run.stdout)
+---
+related.tex         +1 −0
+sections/intro.tex  +1 −1
+2 files changed, +2 −1

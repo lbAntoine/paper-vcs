@@ -1,0 +1,11 @@
+---
+source: crates/paper-cli/tests/show.rs
+expression: env.redact(&run.stdout)
+---
+[ID]  Rewrite intro
+Author:  Mina Park <mina@uni.example>
+Date:    [TIME]
+Line:    latest save of main
+
+sections/intro.tex  +1 −1
+1 file changed, +1 −1

@@ -82,6 +82,8 @@ fn history_dot_from_a_subfolder_lists_saves_touching_that_folder() {
     let env = project();
     let run = env.paper_in(&env.work.join("sections"), &[], &["history", "."]);
     run.assert_code(0);
+    assert!(run.stdout.contains("Rewrite intro"), "{run:#?}");
+    assert!(run.stdout.contains("Start project"), "{run:#?}");
     assert!(!run.stdout.contains("Add related work"), "{run:#?}");
 }
 

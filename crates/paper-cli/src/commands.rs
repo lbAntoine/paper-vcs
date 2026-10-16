@@ -1,17 +1,18 @@
-//! The four commands: open the project, call `paper-core`, and render the result as text.
+//! The commands: open the project, call `paper-core`, and render the result as text.
 //! Each returns what to print on stdout, or a [`PaperError`] for the error renderer.
 
-use std::io::{self, BufRead, IsTerminal, Write};
+use std::io::{self, IsTerminal};
 use std::path::{Path, PathBuf};
 
-use paper_core::point::Point;
 use paper_core::project::{HistoryRequest, PathSelection, Project, SaveOutcome, SaveRequest};
 use paper_core::snapshot::SnapshotOptions;
 use paper_core::{ErrorKind, PaperError, Suggestion};
 use paper_git::{GitRepo, Identity, configured_identity};
 
 use crate::cli::{Cli, Command};
+use crate::inspect;
 use crate::paths::Paths;
+use crate::prompt;
 use crate::render::style::Style;
 use crate::render::{Verbosity, human, json};
 
@@ -35,12 +36,22 @@ pub fn execute(cli: &Cli, style: Style) -> Output {
             limit,
             graph,
         } => history(cli, path.as_deref(), *all, *limit, *graph, verbosity, style),
-        Command::Show { point } => show(cli, point, verbosity, style),
+        Command::Show { point, stat } => inspect::show(cli, point, *stat, verbosity, style),
+        Command::Status => inspect::status(cli, style),
+        Command::Diff {
+            args,
+            paths,
+            words,
+            stat,
+            since,
+            ..
+        } => inspect::diff(cli, args, paths, *words, *stat, since.as_deref(), style),
+        Command::Restore { paths, from } => inspect::restore(cli, paths, from.as_deref()),
     }
 }
 
 /// What a successful command prints: nothing under `-q` (unless `--json`).
-fn finish(
+pub(crate) fn finish(
     cli: &Cli,
     human_text: impl FnOnce() -> String,
     json_text: impl FnOnce() -> String,
@@ -75,9 +86,12 @@ fn save(
     style: Style,
 ) -> Output {
     let (mut project, locator) = open(cli)?;
-    let message = match message {
-        Some(message) => message.to_owned(),
-        None => prompt_for_message(cli),
+    let message = if let Some(message) = message {
+        message.to_owned()
+    } else {
+        let stdin = io::stdin();
+        let is_tty = !cli.json && stdin.is_terminal();
+        prompt::ask_for_message(is_tty, &mut stdin.lock(), &mut io::stderr())?
     };
     let selection = selection(&locator, paths, all_but)?;
     let outcome = project.save(&SaveRequest {
@@ -148,21 +162,6 @@ fn latest_short_id(project: &Project) -> Result<String, PaperError> {
         .unwrap_or_default())
 }
 
-/// Asks for a message on a terminal; returns an empty string otherwise, which `save` rejects
-/// with the "a save needs a message" error.
-fn prompt_for_message(cli: &Cli) -> String {
-    if cli.json || !io::stdin().is_terminal() {
-        return String::new();
-    }
-    eprint!("Describe this save: ");
-    let _ = io::stderr().flush();
-    let mut line = String::new();
-    if io::stdin().lock().read_line(&mut line).is_err() {
-        return String::new();
-    }
-    line.trim().to_owned()
-}
-
 fn history(
     cli: &Cli,
     path: Option<&str>,
@@ -203,18 +202,7 @@ fn history(
     ))
 }
 
-fn show(cli: &Cli, point: &str, verbosity: Verbosity, style: Style) -> Output {
-    let point: Point = point.parse()?;
-    let (project, _) = open_and_snapshot(cli)?;
-    let shown = project.show(&point)?;
-    Ok(finish(
-        cli,
-        || human::show(&shown, now(), verbosity, style),
-        || json::show(&shown),
-    ))
-}
-
-fn now() -> i64 {
+pub(crate) fn now() -> i64 {
     jiff::Timestamp::now().as_second()
 }
 
@@ -252,7 +240,7 @@ fn identity(path: &Path) -> Result<Identity, PaperError> {
 }
 
 /// Finds the project that contains the working folder (walking up) and opens it.
-fn open(cli: &Cli) -> Result<(Project, Paths), PaperError> {
+pub(crate) fn open(cli: &Cli) -> Result<(Project, Paths), PaperError> {
     let start = start_dir(cli)?;
     let Some(workdir) = GitRepo::enclosing_workdir(&start) else {
         return Err(PaperError::not_a_project(&start, false));
@@ -263,7 +251,7 @@ fn open(cli: &Cli) -> Result<(Project, Paths), PaperError> {
 }
 
 /// Opens the project and, unless `--no-snapshot`, records the working files first (I1).
-fn open_and_snapshot(cli: &Cli) -> Result<(Project, Paths), PaperError> {
+pub(crate) fn open_and_snapshot(cli: &Cli) -> Result<(Project, Paths), PaperError> {
     let (mut project, paths) = open(cli)?;
     if !cli.no_snapshot {
         project.snapshot()?;

@@ -16,6 +16,13 @@ fn identity() -> Identity {
     }
 }
 
+fn skipped(path: &str, reason: RestoreSkip) -> SkippedPath {
+    SkippedPath {
+        path: path.to_owned(),
+        reason,
+    }
+}
+
 /// Runs `git` in `dir` with a fixed identity, failing the test if git fails.
 fn git(dir: &Path, args: &[&str]) -> String {
     let output = Command::new("git")
@@ -299,7 +306,10 @@ fn restore_never_touches_symlinks_and_reports_symlinks_in_the_from_tree() {
 
     // Skipped files are never overwritten; the symlink entry is reported.
     assert_eq!(read(dir.path(), "link"), "plain file now\n");
-    assert_eq!(restored.skipped, vec!["link".to_owned()]);
+    assert_eq!(
+        restored.skipped,
+        vec![skipped("link", RestoreSkip::SavedSymlink)]
+    );
     assert_eq!(restored.changes, vec![]);
 }
 
@@ -353,7 +363,10 @@ fn restore_never_overwrites_an_ignored_file_sitting_at_a_saved_path() {
     let restored = restore(&mut project, &["out.log"], Some("last")).unwrap();
 
     assert_eq!(read(dir.path(), "out.log"), "my local log\n");
-    assert_eq!(restored.skipped, vec!["out.log".to_owned()]);
+    assert_eq!(
+        restored.skipped,
+        vec![skipped("out.log", RestoreSkip::Blocked)]
+    );
     assert_eq!(restored.changes, vec![]);
 }
 
@@ -368,7 +381,10 @@ fn restore_does_not_write_through_a_symlinked_parent_directory() {
     let restored = restore(&mut project, &["sec/one.tex"], None).unwrap();
 
     assert_eq!(fs::read_dir(outside.path()).unwrap().count(), 0);
-    assert_eq!(restored.skipped, vec!["sec/one.tex".to_owned()]);
+    assert_eq!(
+        restored.skipped,
+        vec![skipped("sec/one.tex", RestoreSkip::SymlinkedFolder)]
+    );
 }
 
 #[cfg(unix)]
@@ -387,7 +403,10 @@ fn restore_never_overwrites_a_symlink_in_the_working_files() {
             .file_type()
             .is_symlink()
     );
-    assert_eq!(restored.skipped, vec!["a.tex".to_owned()]);
+    assert_eq!(
+        restored.skipped,
+        vec![skipped("a.tex", RestoreSkip::Symlink)]
+    );
 }
 
 #[cfg(unix)]
@@ -407,7 +426,10 @@ fn restore_never_overwrites_an_oversize_untracked_file() {
     let restored = restore(&mut project, &["big.dat"], None).unwrap();
 
     assert_eq!(read(dir.path(), "big.dat"), big);
-    assert_eq!(restored.skipped, vec!["big.dat".to_owned()]);
+    assert_eq!(
+        restored.skipped,
+        vec![skipped("big.dat", RestoreSkip::TooLarge { bytes: 500 })]
+    );
     assert_eq!(restored.changes, vec![]);
 }
 
@@ -421,5 +443,8 @@ fn restore_never_touches_files_under_a_nested_repository() {
     let restored = restore(&mut project, &["vendor"], None).unwrap();
 
     assert_eq!(read(dir.path(), "vendor/lib.tex"), "nested edit\n");
-    assert_eq!(restored.skipped, vec!["vendor/lib.tex".to_owned()]);
+    assert_eq!(
+        restored.skipped,
+        vec![skipped("vendor/lib.tex", RestoreSkip::NestedRepository)]
+    );
 }

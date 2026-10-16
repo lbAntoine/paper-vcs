@@ -21,6 +21,9 @@
           └─────────────┘  └────────────┘
 ```
 
+`paper-cli` also depends on `paper-diff` directly, for the diff types it renders (`FileDiff`,
+`to_unified`) that `paper-core` returns inside its results; it never reads git through it.
+
 A single Cargo workspace in one repo (`paper-vcs`). Edition 2024, pinned via `rust-toolchain.toml`.
 
 | Crate | Responsibility | Key deps |
@@ -231,9 +234,11 @@ buttons. Panics are caught at the CLI boundary, write a report to
 `ErrorKind` decides the exit code: `User` → 1, `NeedsAttention` → 2, `Project` → 3. The three
 parts are written in `paper-core/src/error.rs`, one `From<…> for PaperError` per core error
 enum (`InitError`, `OpenError`, `SaveError`, `ResolveError`, `HistoryError`, `ShowError`,
-`ParsePointError`), in researcher vocabulary and without touching the enums' own `Display`
-text (that is for logs and tests, and is aligned later). Failures of git or the disk are
-`Project` errors whose `why` names the underlying cause. The CLI's own failures use
+`DiffError`, `StatusError`, `RestoreError`, `ParsePointError`), in researcher vocabulary. The
+enums' own `Display` text is for logs and tests: one sentence about what happened, naming no
+command (commands belong in `next`) and never one that doesn't exist yet. Failures of git or the disk are
+`Project` errors whose `why` names the underlying cause and whose `next` is the issue-tracker
+URL (in `command`, with the prose in `explanation`). The CLI's own failures use
 `PaperError::no_identity()` and `PaperError::not_a_project(path, is_git_repo)`.
 `--json` output uses CLI-owned serde types, so `paper-core` has no serde derives for it.
 

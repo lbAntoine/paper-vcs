@@ -1,7 +1,10 @@
 //! Human and JSON rendering.
 
+pub mod diff;
 pub mod human;
 pub mod json;
+pub mod json_diff;
+pub mod status;
 pub mod style;
 pub mod time;
 

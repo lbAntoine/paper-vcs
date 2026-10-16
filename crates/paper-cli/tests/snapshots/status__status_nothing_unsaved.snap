@@ -1,0 +1,7 @@
+---
+source: crates/paper-cli/tests/status.rs
+expression: env.redact(&run.stdout)
+---
+On main · last save [ID] "Rewrite intro" ([TIME])
+
+Nothing unsaved.

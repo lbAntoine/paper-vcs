@@ -24,7 +24,7 @@ pub use diff::{DiffError, DiffRequest, FileDiffEntry};
 pub use history::{HistoryEntry, HistoryError, HistoryRequest, ShowError, Shown};
 pub use init::{InitError, Initialized};
 pub use resolve::{Candidate, PointKind, ResolveError, Resolved};
-pub use restore::{RestoreError, RestoreRequest, Restored};
+pub use restore::{RestoreError, RestoreRequest, RestoreSkip, Restored, SkippedPath};
 pub use save::{DraftState, PathSelection, SaveError, SaveOutcome, SaveRequest, Saved};
 pub use status::{ChangeStat, Status, StatusEntry, StatusError, StatusOptions};
 

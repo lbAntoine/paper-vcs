@@ -51,6 +51,16 @@ impl Style {
         self.paint("1;31", text)
     }
 
+    /// A removed line in a diff.
+    pub fn removed(self, text: &str) -> String {
+        self.paint("31", text)
+    }
+
+    /// An added line in a diff.
+    pub fn added(self, text: &str) -> String {
+        self.paint("32", text)
+    }
+
     /// Secondary information such as times and git terms.
     pub fn dim(self, text: &str) -> String {
         self.paint("2", text)
