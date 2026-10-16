@@ -151,3 +151,22 @@ identity in saves, the colour default, and the large-file thresholds.
 - Decisions: `paper.toml` values for user-only keys are ignored when resolving (identity must never come from a shared file); `config get`/`set --json` print a small `{"schema":1,...}` object; unset values show `(not set)` in the list table; adding a new `[table]` appends text to the file so existing bytes (including trailing blank lines) are untouched, since editing the parsed document moved them.
 - Specs: `02-cli.md` (--color, identity, `paper init` prompt, `paper config` with key table and homes), `03-architecture.md` (Configuration: env names, paths per OS, module notes; example files match v0.1).
 - Follow-ups: `config unset`, `ui.editor` (later); `config set` does not check the combined value across project and user files (only within one file).
+
+### Review · reviewer · 2026-10-16
+- Verdict: CHANGES. Tests, clippy and fmt pass (isolated target). Precedence, test isolation, nothing-written-on-error, malformed-file lines and the prompt flow verified with the built binary.
+- MAJOR: an invalid value from the environment or a file doesn't name its origin, and the suggested `paper config set …` can't fix it (`paper.toml` `max_mb = 0`, `PAPER_UI_COLOR=purple`); `set --project` failures suggest the user-scope command.
+- MAJOR: nothing tests that identity is never *read* from `paper.toml` (the guard in `resolve_key`).
+- MINOR: an existing inline table (`large_files = { warn_mb = 5 }`) can't be written, and the error is garbled. The append-a-new-table path is otherwise robust (probed).
+- MINOR: order and type validation messages don't read as sentences.
+- MINOR: user-only keys in `paper.toml` are ignored silently.
+- MINOR: config writes aren't atomic.
+- MINOR: `get`/`set --json` shapes are neither specified nor tested.
+- MINOR (design): a value this version rejects in a shared `paper.toml` (e.g. a future collaborator's `diff.default = "words"`) breaks every command in the project.
+- NITs: `(not set)` listed with source `default`; the "no value" why mentions git for `profile`; a relative `XDG_CONFIG_HOME` is accepted; the no-settings-folder message isn't per platform; CRLF files get LF lines appended.
+- Coordinator decisions: fix everything in this round.
+  - Errors from a file or the environment name it (path or variable) and suggest what actually fixes it (unset the variable, `--project`, or edit the file).
+  - Ignored user-only keys in `paper.toml` are reported by `config list` and `config get` (core exposes them; the CLI words it as a privacy note).
+  - Writes go through `fs_util::write_atomic`.
+  - `diff.default = "words"` is accepted everywhere (spec lists it) and has no effect until v0.3, where `config list`/`get` say so. This changes the AC and the RED test that rejected it; that one test change is authorised.
+  - Other invalid values in files stay errors, naming the file.
+  - Adding tests is authorised; don't weaken any others.
