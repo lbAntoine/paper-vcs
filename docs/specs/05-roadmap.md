@@ -9,12 +9,12 @@ own. Starting at v0.3, users can already share work by running `git push`.
 
 `init`, `status`, `save` (with paths), `history`, `show`, `diff --lines`, `restore`, `config`.
 
-- [ ] Cargo workspace with 4 crates, CI on 3 OSes, `cargo-dist` release pipeline
-- [ ] `Store` trait with the gix implementation: read and write objects, trees, refs, commits with the `change-id` header
-- [ ] Draft model: `refs/paper/draft/main`, snapshot with stat cache, automatic tracking of new files
-- [ ] Git mirror (I6): HEAD, branch and index kept in sync. `git log` and `git status` look sensible
-- [ ] Adoption of an existing git repo
-- **Accept:** a researcher can init a LaTeX paper, edit, save 10 times, view history, restore
+- [x] Cargo workspace with 4 crates, CI on 3 OSes, `cargo-dist` release pipeline (GitHub Release, shell and PowerShell installers)
+- [x] `GitRepo` (gix): read and write objects, trees, refs, commits with the `change-id` header
+- [x] Draft model: `refs/paper/draft/main`, snapshot with stat cache, automatic tracking of new files
+- [x] Git mirror (I6): HEAD, branch and index kept in sync. `git log` and `git status` look sensible
+- [x] Adoption of an existing git repo
+- **Accept** (automated in `crates/paper-cli/tests/acceptance.rs`): a researcher can init a LaTeX paper, edit, save 10 times, view history, restore
   a file from 3 saves ago, and push with plain `git push`.
 
 ## v0.2: Nothing is ever lost

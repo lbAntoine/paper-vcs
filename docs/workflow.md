@@ -92,6 +92,46 @@ The coordinator:
 6. Cleans up: `gh pr merge --delete-branch` also removes the local branch and its worktree.
    Then `git worktree prune` and `git pull --ff-only` in the main checkout.
 
+## Releasing
+
+Releases are built by [cargo-dist](https://axodotdev.github.io/cargo-dist/) (`dist`), pinned
+in `dist-workspace.toml` (`cargo-dist-version`). `.github/workflows/v-release.yml` is generated
+by `dist generate`: never edit it by hand. (It is `v-release.yml` because
+`tag-namespace = "v"` is set; a stale `release.yml` must not exist, or both would run.) A
+release publishes a GitHub Release with archives for five targets (macOS Intel and Apple
+silicon, Linux x86_64 and aarch64, Windows x86_64), the shell and PowerShell installers and
+SHA-256 checksums. There is no source tarball, Homebrew tap, MSI or crates.io publish yet.
+
+The workflow runs on pull requests (it never publishes there) and on tag pushes. It starts a
+release only for tags matching `v**[0-9]+.[0-9]+.[0-9]+*`: a `v` followed by anything, then a
+semver such as `v0.1.0` or `v0.2.0-rc.1`. Only the maintainer approves a release.
+
+1. Bump `version` in the root `Cargo.toml`, run `cargo build` to update `Cargo.lock`, bump the
+   version-pinned installer URLs in the README's Install section, and add a `## X.Y.Z`
+   section to `CHANGELOG.md` (cargo-dist uses it as the release body).
+2. Run `dist plan` (and `dist generate --check` if `dist-workspace.toml` changed). Merge the
+   pull request once CI is green.
+3. Get the maintainer's approval to publish.
+4. Tag the merged, CI-green commit: `git switch main && git pull --ff-only`, check that
+   `git rev-parse HEAD` equals `git rev-parse origin/main`, then
+   `git tag vX.Y.Z && git push origin vX.Y.Z`.
+5. Watch the Release workflow without prompts:
+   `gh run list --workflow=v-release.yml --event push --branch vX.Y.Z --limit 1 --json databaseId --jq '.[0].databaseId'`, then
+   `gh run watch <id> --exit-status`. It builds the five targets, then creates the release.
+6. Pre-releases only: cargo-dist marks a release as a pre-release only when the version has
+   a suffix such as `-rc.1`. v0.1.0 is a pre-release without one, so right after publishing
+   run `gh release edit v0.1.0 --prerelease`.
+7. Smoke-test an installer on a clean machine or folder: run the README one-liner, open a new
+   terminal, then `paper --version`, `paper init`, `paper save "x"`, `paper history`.
+
+**If a build fails,** nothing is published: the release is created only after every build
+succeeds. Delete the tag on the remote and locally (`git push origin --delete vX.Y.Z`,
+`git tag -d vX.Y.Z`), fix the problem in a pull request, merge it, and tag again.
+
+To upgrade cargo-dist, install the new version into the worktree
+(`cargo install cargo-dist --locked --version X --root <worktree>/target/tools`), run
+`dist init --yes` and review the regenerated workflow. Use a version at least two weeks old.
+
 ## Communication
 
 **Handoff log.** Each ticket ends with an append-only log. Every phase adds one entry:

@@ -2,8 +2,35 @@
 
 **Version control for researchers.** Plain git underneath, a much friendlier model on top.
 
-> **Status: pre-alpha.** The engine is under active development (v0.1 in progress), and
-> nothing is usable yet. The [design specs](docs/specs/README.md) describe where it's going.
+> **Status: v0.1.0 is a pre-release walking skeleton for early testers.** It works on one
+> line of work, locally: `init`, `save`, `history`, `show`, `status`, `diff`, `restore` and
+> `config`. There is no undo, no lines or tries, no milestones, no sync and no word-level diff
+> yet. Expect rough edges. The [design specs](docs/specs/README.md) describe where it's going,
+> and the [changelog](CHANGELOG.md) says what each version does.
+
+## Install
+
+Installers for macOS, Linux and Windows are attached to the
+[v0.1.0 release](https://github.com/lbAntoine/paper-vcs/releases/tag/v0.1.0), a GitHub
+pre-release. Each one downloads the right build for your machine, checks it and puts `paper`
+in `~/.cargo/bin` (`%USERPROFILE%\.cargo\bin` on Windows).
+
+macOS and Linux:
+
+```console
+$ curl --proto '=https' --tlsv1.2 -LsSf https://github.com/lbAntoine/paper-vcs/releases/download/v0.1.0/paper-cli-installer.sh | sh
+```
+
+Windows (PowerShell):
+
+```console
+> powershell -ExecutionPolicy Bypass -c "irm https://github.com/lbAntoine/paper-vcs/releases/download/v0.1.0/paper-cli-installer.ps1 | iex"
+```
+
+Then open a new terminal (the installer adds `~/.cargo/bin`, or `%USERPROFILE%\.cargo\bin` on Windows, to your PATH) and run
+`paper --version`, which prints `paper 0.1.0`. You can also download an
+archive and its `.sha256` checksum from the release page. To build from source instead, see
+[Building from source](#building-from-source).
 
 ## Why
 
@@ -24,7 +51,10 @@ from [Jujutsu](https://github.com/jj-vcs/jj):
 - **Milestones.** Things like "Submitted to NeurIPS" or "camera-ready" are first-class,
   and `paper diff --since neurips-submission` answers "what changed since then?".
 
-## A taste (planned interface)
+## A taste (planned interface, later versions)
+
+This is where paper is heading. v0.1.0 has `init`, `save` and `history`, but not `try`, `keep`
+or `milestone`.
 
 ```console
 $ paper init --profile latex
