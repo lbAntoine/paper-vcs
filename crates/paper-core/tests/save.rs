@@ -250,6 +250,25 @@ fn saving_with_no_changes_returns_nothing_to_save_and_writes_nothing() {
 }
 
 #[test]
+fn selecting_the_whole_folder_of_a_clean_project_finds_no_changes_and_writes_nothing() {
+    let (dir, mut project) = project_with(&[("main.tex", "one")]);
+    let before = stored(dir.path(), &project);
+    let head = git(dir.path(), &["rev-parse", "HEAD"]);
+
+    let err = project
+        .save(&request("Nothing", PathSelection::Only(paths(&[""]))))
+        .unwrap_err();
+
+    assert!(
+        matches!(&err, SaveError::NoChangesAt { paths } if *paths == vec![String::new()]),
+        "{err:?}"
+    );
+    assert_eq!(stored(dir.path(), &project), before);
+    assert_eq!(git(dir.path(), &["rev-parse", "HEAD"]), head);
+    fsck(dir.path());
+}
+
+#[test]
 fn saving_everything_creates_one_commit_on_the_line() {
     let (dir, mut project) = project_with(&[("main.tex", "one")]);
     let old = project.view().current().clone();
@@ -1002,5 +1021,186 @@ fn saving_an_executable_bit_change_keeps_mode_100755() {
         Some("100755")
     );
     assert_eq!(git(dir.path(), &["status", "--porcelain"]), " M b.tex\n");
+    fsck(dir.path());
+}
+
+// ------------------------------------------- PV-008 path selection (characterisation)
+//
+// These pin the results of path selection so the sorted-lookup refactor can't change them.
+// They passed before the refactor.
+
+/// Files whose names are neighbours in sort order: `/` sorts after ` `, `-` and `.`.
+const NEIGHBOURS: [&str; 7] = ["a b", "a-b", "a.b", "a/b", "a/c.tex", "a0", "ab"];
+
+/// Saves `selection` in a fresh project where every neighbour file has an unsaved edit.
+/// Returns the saved and remaining paths, or the error.
+fn select_among_neighbours(
+    selection: PathSelection,
+) -> Result<(Vec<String>, Vec<String>), SaveError> {
+    let files: Vec<(&str, &str)> = NEIGHBOURS.iter().map(|path| (*path, "old")).collect();
+    let (dir, mut project) = project_with(&files);
+    for path in NEIGHBOURS {
+        write(dir.path(), path, "new");
+    }
+    let outcome = project.save(&request("Select", selection))?;
+    let result = match outcome {
+        SaveOutcome::NothingToSave => {
+            assert_eq!(git(dir.path(), &["rev-list", "--count", "HEAD"]), "1\n");
+            (Vec::new(), draft_paths(&project))
+        }
+        SaveOutcome::Saved(saved) => (
+            saved.saved.into_iter().map(|c| c.path).collect(),
+            saved.remaining.into_iter().map(|c| c.path).collect(),
+        ),
+    };
+    fsck(dir.path());
+    Ok(result)
+}
+
+/// Paths that differ between the line's tip and its draft.
+fn draft_paths(project: &Project) -> Vec<String> {
+    let tip = tree_of(project, &project.view().current().tip);
+    let draft = tree_of(project, &project.view().current().draft);
+    paper_core::tree_diff::diff_trees(project.repo(), &tip, &draft)
+        .unwrap()
+        .into_iter()
+        .map(|c| c.path)
+        .collect()
+}
+
+fn strings(list: &[&str]) -> Vec<String> {
+    paths(list)
+}
+
+fn only(list: &[&str]) -> PathSelection {
+    PathSelection::Only(paths(list))
+}
+
+fn all_but(list: &[&str]) -> PathSelection {
+    PathSelection::AllBut(paths(list))
+}
+
+#[test]
+fn a_directory_path_takes_its_files_and_not_its_sort_neighbours() {
+    for spelling in ["a", "a/", "a//"] {
+        let (saved, remaining) = select_among_neighbours(only(&[spelling])).unwrap();
+        assert_eq!(saved, strings(&["a/b", "a/c.tex"]), "spelled {spelling:?}");
+        assert_eq!(remaining, strings(&["a b", "a-b", "a.b", "a0", "ab"]));
+    }
+}
+
+#[test]
+fn a_file_path_with_a_space_or_punctuation_takes_only_that_file() {
+    for file in ["a b", "a-b", "a.b", "a0", "ab", "a/b"] {
+        let (saved, remaining) = select_among_neighbours(only(&[file])).unwrap();
+        assert_eq!(saved, strings(&[file]));
+        assert_eq!(remaining.len(), NEIGHBOURS.len() - 1, "after {file:?}");
+        assert!(!remaining.iter().any(|path| path == file));
+    }
+}
+
+#[test]
+fn the_empty_path_and_a_lone_slash_select_everything() {
+    for spelling in ["", "/"] {
+        let (saved, remaining) = select_among_neighbours(only(&[spelling])).unwrap();
+        assert_eq!(saved, strings(&NEIGHBOURS), "spelled {spelling:?}");
+        assert!(remaining.is_empty());
+    }
+}
+
+#[test]
+fn excluding_the_empty_path_leaves_nothing_to_save() {
+    for spelling in ["", "/"] {
+        let (saved, remaining) = select_among_neighbours(all_but(&[spelling])).unwrap();
+        assert!(saved.is_empty(), "spelled {spelling:?}");
+        assert_eq!(remaining, strings(&NEIGHBOURS));
+    }
+}
+
+#[test]
+fn the_empty_path_among_other_paths_still_selects_everything() {
+    let (saved, remaining) = select_among_neighbours(only(&["a0", "", "a"])).unwrap();
+    assert_eq!(saved, strings(&NEIGHBOURS));
+    assert!(remaining.is_empty());
+}
+
+#[test]
+fn duplicate_paths_select_the_same_as_one() {
+    let (saved, remaining) = select_among_neighbours(only(&["a", "a/", "a", "ab", "ab"])).unwrap();
+    assert_eq!(saved, strings(&["a/b", "a/c.tex", "ab"]));
+    assert_eq!(remaining, strings(&["a b", "a-b", "a.b", "a0"]));
+}
+
+#[test]
+fn overlapping_paths_select_their_union_once() {
+    let (saved, remaining) = select_among_neighbours(only(&["a/c.tex", "a"])).unwrap();
+    assert_eq!(saved, strings(&["a/b", "a/c.tex"]));
+    assert_eq!(remaining, strings(&["a b", "a-b", "a.b", "a0", "ab"]));
+}
+
+#[test]
+fn all_but_a_directory_keeps_its_sort_neighbours_in_the_save() {
+    let (saved, remaining) = select_among_neighbours(all_but(&["a"])).unwrap();
+    assert_eq!(saved, strings(&["a b", "a-b", "a.b", "a0", "ab"]));
+    assert_eq!(remaining, strings(&["a/b", "a/c.tex"]));
+}
+
+#[test]
+fn all_but_overlapping_and_duplicate_paths_excludes_their_union() {
+    let (saved, remaining) = select_among_neighbours(all_but(&["a/", "a/b", "a", "a b"])).unwrap();
+    assert_eq!(saved, strings(&["a-b", "a.b", "a0", "ab"]));
+    assert_eq!(remaining, strings(&["a b", "a/b", "a/c.tex"]));
+}
+
+#[test]
+fn unmatched_paths_are_listed_in_the_order_given_duplicates_included() {
+    let err = select_among_neighbours(only(&["zz", "a", "yy", "a/x", "zz", "a b/"])).unwrap_err();
+    let SaveError::NoChangesAt { paths } = err else {
+        panic!("expected NoChangesAt, got {err:?}");
+    };
+    assert_eq!(paths, strings(&["zz", "yy", "a/x", "zz"]));
+}
+
+#[test]
+fn unmatched_exclusions_are_listed_in_the_order_given() {
+    let err = select_among_neighbours(all_but(&["ab", "a/", "z", "a.", "", "m"])).unwrap_err();
+    let SaveError::NoChangesAt { paths } = err else {
+        panic!("expected NoChangesAt, got {err:?}");
+    };
+    assert_eq!(paths, strings(&["z", "a.", "m"]));
+}
+
+#[test]
+fn a_prefix_that_is_not_a_whole_component_matches_nothing() {
+    for prefix in ["a/c", "a/c.te", "a ", "a-", "a.b/c", "ab/x"] {
+        let err = select_among_neighbours(only(&[prefix])).unwrap_err();
+        assert!(
+            matches!(&err, SaveError::NoChangesAt { paths } if *paths == vec![prefix.to_owned()]),
+            "{prefix:?}: {err:?}"
+        );
+    }
+}
+
+#[test]
+fn selection_works_on_added_and_deleted_files_alike() {
+    let (dir, mut project) = project_with(&[("d/gone.tex", "g"), ("d/kept.tex", "k"), ("e", "e")]);
+    fs::remove_file(dir.path().join("d/gone.tex")).unwrap();
+    write(dir.path(), "d/new.tex", "n");
+    write(dir.path(), "e", "e2");
+
+    let result = saved(
+        project
+            .save(&request("Folder d", only(&["d/", "d/new.tex"])))
+            .unwrap(),
+    );
+
+    assert_eq!(
+        result.saved,
+        vec![
+            change("d/gone.tex", ChangeKind::Deleted),
+            change("d/new.tex", ChangeKind::Added),
+        ]
+    );
+    assert_eq!(result.remaining, vec![change("e", ChangeKind::Modified)]);
     fsck(dir.path());
 }
