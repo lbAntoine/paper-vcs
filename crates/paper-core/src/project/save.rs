@@ -279,17 +279,54 @@ fn select(
         PathSelection::Only(paths) => (paths, true),
         PathSelection::AllBut(paths) => (paths, false),
     };
+    // Complexity: O((P + C) log(P + C)) comparisons for P selected paths and C changes, times
+    // the path depth (which is small). Each selected path is looked up in the sorted change paths by binary
+    // search, and each change is tested against the set of selected paths through its own
+    // ancestors, so no path is ever compared with every change. Results match `matches`.
+    let mut sorted: Vec<&str> = changes.iter().map(|change| change.path.as_str()).collect();
+    sorted.sort_unstable();
     let unmatched: Vec<String> = paths
         .iter()
-        .filter(|path| !changes.iter().any(|change| matches(path, &change.path)))
+        .filter(|path| !any_change_under(&sorted, path))
         .cloned()
         .collect();
     if !unmatched.is_empty() {
         return Err(SaveError::NoChangesAt { paths: unmatched });
     }
+    let chosen: BTreeSet<&str> = paths
+        .iter()
+        .map(|path| path.trim_end_matches('/'))
+        .collect();
     Ok(changes
         .into_iter()
-        .partition(|change| paths.iter().any(|path| matches(path, &change.path)) == keep_matches))
+        .partition(|change| is_selected(&chosen, &change.path) == keep_matches))
+}
+
+/// Whether some file in `sorted` (ascending) is selected by `path`, as `matches` defines it.
+///
+/// The files under `p` are exactly the keys in `[p + "/", p + "0")`: `'0'` is the byte after
+/// `'/'`, so the range stops before neighbours such as `p-x`, `p.x` and `p0`, which sort
+/// between `p` and `p/`.
+fn any_change_under(sorted: &[&str], path: &str) -> bool {
+    let path = path.trim_end_matches('/');
+    if path.is_empty() {
+        return !sorted.is_empty();
+    }
+    let lower = format!("{path}/");
+    let upper = format!("{path}0");
+    let exact = sorted.binary_search(&path).is_ok();
+    let start = sorted.partition_point(|file| *file < lower.as_str());
+    exact || sorted.get(start).is_some_and(|file| *file < upper.as_str())
+}
+
+/// Whether `file` is selected by any of the (slash-trimmed) paths in `chosen`: the empty path,
+/// the file itself, or one of its ancestor directories.
+fn is_selected(chosen: &BTreeSet<&str>, file: &str) -> bool {
+    chosen.contains("")
+        || chosen.contains(file)
+        || file
+            .match_indices('/')
+            .any(|(at, _)| chosen.contains(&file[..at]))
 }
 
 /// A selected path names the file itself or a directory containing it. The empty path is the
@@ -342,7 +379,8 @@ fn close_over_conflicts<'a>(selected: Vec<Change>, all: &'a [Change]) -> Vec<Cha
 
 #[cfg(test)]
 mod tests {
-    use super::matches;
+    use super::{PathSelection, SaveError, matches, select};
+    use crate::snapshot::{Change, ChangeKind};
 
     #[test]
     fn a_path_matches_the_file_itself_or_whole_components_below_it() {
@@ -357,5 +395,260 @@ mod tests {
     fn the_empty_path_is_the_project_folder_and_matches_every_file() {
         assert!(matches("", "a.tex"));
         assert!(matches("", "a/b/c.tex"));
+    }
+
+    // ---- differential tests: `select` against a deliberately naive reference
+
+    /// A tiny seeded generator (xorshift64*), so failures reproduce without a dependency.
+    struct Rng(u64);
+
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 >> 12;
+            self.0 ^= self.0 << 25;
+            self.0 ^= self.0 >> 27;
+            self.0.wrapping_mul(0x2545_F491_4F6C_DD1D)
+        }
+
+        fn below(&mut self, bound: usize) -> usize {
+            usize::try_from(self.next() % bound as u64).unwrap()
+        }
+
+        fn pick<'a, T>(&mut self, items: &'a [T]) -> &'a T {
+            &items[self.below(items.len())]
+        }
+    }
+
+    /// Names that are neighbours in sort order, so nesting exercises `/` against ` -.`.
+    const COMPONENTS: [&str; 9] = ["a", "a b", "a-b", "a.b", "b", "ab", "a0", "a/b", "é"];
+
+    fn kind(rng: &mut Rng) -> ChangeKind {
+        *rng.pick(&[ChangeKind::Added, ChangeKind::Modified, ChangeKind::Deleted])
+    }
+
+    fn random_path(rng: &mut Rng) -> String {
+        let depth = 1 + rng.below(3);
+        let parts: Vec<&str> = (0..depth).map(|_| *rng.pick(&COMPONENTS)).collect();
+        parts.join("/")
+    }
+
+    /// Changes sorted by path with no repeats, as `snapshot` produces them.
+    fn random_changes(rng: &mut Rng, count: usize) -> Vec<Change> {
+        let mut paths: Vec<String> = (0..count).map(|_| random_path(rng)).collect();
+        paths.sort();
+        paths.dedup();
+        paths
+            .into_iter()
+            .map(|path| Change {
+                path,
+                kind: kind(rng),
+            })
+            .collect()
+    }
+
+    /// Paths that name changes, their ancestors, near misses, the empty path and strangers.
+    fn random_selection(rng: &mut Rng, changes: &[Change], count: usize) -> Vec<String> {
+        (0..count)
+            .map(|_| {
+                let mut path = match rng.below(6) {
+                    0 if !changes.is_empty() => rng.pick(changes).path.clone(),
+                    1 if !changes.is_empty() => {
+                        let full = &rng.pick(changes).path;
+                        let cuts: Vec<usize> = full.match_indices('/').map(|(i, _)| i).collect();
+                        if cuts.is_empty() {
+                            full.clone()
+                        } else {
+                            full[..*rng.pick(&cuts)].to_owned()
+                        }
+                    }
+                    2 => String::new(),
+                    3 => {
+                        let mut near = random_path(rng);
+                        near.pop();
+                        near
+                    }
+                    _ => random_path(rng),
+                };
+                match rng.below(8) {
+                    0 | 1 => path.push('/'),
+                    2 => path.push_str("//"),
+                    _ => {}
+                }
+                path
+            })
+            .collect()
+    }
+
+    /// A selected path with its slash-trimmed form and that form plus `/`, built once.
+    struct Prepared {
+        trimmed: String,
+        dir: String,
+    }
+
+    fn prepare(path: &str) -> Prepared {
+        let trimmed = path.trim_end_matches('/').to_owned();
+        let dir = format!("{trimmed}/");
+        Prepared { trimmed, dir }
+    }
+
+    /// The rule, read literally: the empty path, the file itself, or a file under the directory.
+    fn covers(path: &Prepared, file: &str) -> bool {
+        path.trimmed.is_empty() || file == path.trimmed || file.starts_with(&path.dir)
+    }
+
+    /// The obvious reading of the rules: every path against every change.
+    fn reference(
+        selection: &PathSelection,
+        changes: &[Change],
+    ) -> Result<(Vec<Change>, Vec<Change>), Vec<String>> {
+        let (paths, keep_matches) = match selection {
+            PathSelection::All => return Ok((changes.to_vec(), Vec::new())),
+            PathSelection::Only(paths) => (paths, true),
+            PathSelection::AllBut(paths) => (paths, false),
+        };
+        let prepared: Vec<Prepared> = paths.iter().map(|path| prepare(path)).collect();
+        let unmatched: Vec<String> = paths
+            .iter()
+            .zip(&prepared)
+            .filter(|(_, path)| changes.iter().all(|change| !covers(path, &change.path)))
+            .map(|(original, _)| original.clone())
+            .collect();
+        if !unmatched.is_empty() {
+            return Err(unmatched);
+        }
+        let mut chosen = Vec::new();
+        let mut rest = Vec::new();
+        for change in changes {
+            let hit = prepared.iter().any(|path| covers(path, &change.path));
+            if hit == keep_matches {
+                chosen.push(change.clone());
+            } else {
+                rest.push(change.clone());
+            }
+        }
+        Ok((chosen, rest))
+    }
+
+    fn actual(
+        selection: &PathSelection,
+        changes: &[Change],
+    ) -> Result<(Vec<Change>, Vec<Change>), Vec<String>> {
+        select(selection, changes.to_vec()).map_err(|err| match err {
+            SaveError::NoChangesAt { paths } => paths,
+            other => panic!("unexpected error {other:?}"),
+        })
+    }
+
+    #[test]
+    fn select_agrees_with_the_reference_on_generated_inputs() {
+        let mut rng = Rng(0x9E37_79B9_7F4A_7C15);
+        let (mut selected_ok, mut refused) = (0, 0);
+        for round in 0..4000 {
+            let count = rng.below(14);
+            let changes = random_changes(&mut rng, count);
+            let wanted = rng.below(6);
+            // Mostly selections that match, so both outcomes are well covered.
+            let mut paths = random_selection(&mut rng, &changes, wanted);
+            if rng.below(3) != 0 {
+                paths.retain(|p| {
+                    let p = prepare(p);
+                    changes.iter().any(|c| covers(&p, &c.path))
+                });
+            }
+            for selection in [
+                PathSelection::All,
+                PathSelection::Only(paths.clone()),
+                PathSelection::AllBut(paths),
+            ] {
+                let expected = reference(&selection, &changes);
+                match &expected {
+                    Ok(_) => selected_ok += 1,
+                    Err(_) => refused += 1,
+                }
+                assert_eq!(
+                    actual(&selection, &changes),
+                    expected,
+                    "round {round}: {selection:?} over {changes:?}"
+                );
+            }
+        }
+        assert!(
+            selected_ok > 3000 && refused > 500,
+            "{selected_ok}/{refused}"
+        );
+    }
+
+    #[test]
+    fn select_handles_the_sort_neighbours_of_a_directory() {
+        let changes: Vec<Change> = ["a b", "a-b", "a.b", "a/b", "a/b/c", "a0", "ab"]
+            .iter()
+            .map(|path| Change {
+                path: (*path).to_owned(),
+                kind: ChangeKind::Modified,
+            })
+            .collect();
+        for path in ["a", "a/", "a b", "a/b", "a/b/", "ab", "", "a-", "a/b/c"] {
+            for selection in [
+                PathSelection::Only(vec![path.to_owned()]),
+                PathSelection::AllBut(vec![path.to_owned()]),
+            ] {
+                assert_eq!(
+                    actual(&selection, &changes),
+                    reference(&selection, &changes),
+                    "{selection:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn select_agrees_with_the_reference_on_a_large_input() {
+        let mut rng = Rng(0xDEAD_BEEF_CAFE_F00D);
+        let mut changes: Vec<Change> = (0..20_000)
+            .map(|i| Change {
+                path: format!("d{:03}/s{}/f{i:05}.tex", i % 200, i % 7),
+                kind: kind(&mut rng),
+            })
+            .collect();
+        changes.sort_by(|x, y| x.path.cmp(&y.path));
+
+        // 2 000 paths that all match: files, whole folders, with and without a trailing slash.
+        let paths: Vec<String> = (0..2_000)
+            .map(|_| {
+                let full = &rng.pick(&changes).path;
+                let mut path = match rng.below(3) {
+                    0 => full.clone(),
+                    1 => full
+                        .rsplit_once('/')
+                        .map_or(String::new(), |p| p.0.to_owned()),
+                    _ => full.split('/').next().unwrap().to_owned(),
+                };
+                if rng.below(4) == 0 {
+                    path.push('/');
+                }
+                path
+            })
+            .collect();
+
+        for selection in [
+            PathSelection::Only(paths.clone()),
+            PathSelection::AllBut(paths.clone()),
+        ] {
+            let expected = reference(&selection, &changes);
+            assert!(expected.is_ok());
+            assert_eq!(actual(&selection, &changes), expected);
+        }
+
+        let mut with_stranger = paths;
+        with_stranger.insert(1000, "nowhere/x".to_owned());
+        let selection = PathSelection::Only(with_stranger);
+        assert_eq!(
+            actual(&selection, &changes),
+            Err(vec!["nowhere/x".to_owned()])
+        );
+        assert_eq!(
+            reference(&selection, &changes),
+            Err(vec!["nowhere/x".to_owned()])
+        );
     }
 }
