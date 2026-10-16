@@ -20,9 +20,12 @@ test "$(git -C "../paper-vcs.wt/$T" branch --show-current)" = "feat/$T-$SLUG"
 ```
 
 The branch check happens **before** any agent starts. Worktrees live outside the repository
-(`../paper-vcs.wt/`). All worktrees share the main checkout's build directory, passed to
-agents as `CARGO_TARGET_DIR`, so dependencies compile once. Parallel builds then wait on
-cargo's lock, which is acceptable.
+(`../paper-vcs.wt/`).
+
+**Each worktree builds in its own `target/`**, passed to agents as
+`CARGO_TARGET_DIR=<worktree>/target`. Never share one build directory between worktrees on
+different branches: their crates have the same names, so cargo reuses the other branch's
+artifacts and tests run against the wrong code. The cost is one full build per ticket.
 
 **Parallelism:** at most two tickets at once, only with disjoint `Touches` lists, each in its
 own worktree.

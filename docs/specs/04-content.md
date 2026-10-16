@@ -17,6 +17,23 @@ prioritise the formats researchers actually use.
 
 ## Diff
 
+### Line diff (`--lines`)
+
+`paper diff --lines` compares files line by line with the patience algorithm, which gives
+more readable hunks than Myers. The output is git's unified format with 3 lines of context
+(the library takes the context as an option):
+
+- Header `--- a/<path>` and `+++ b/<path>`; an added file uses `/dev/null` as the old label,
+  a deleted file as the new one.
+- Hunks start with `@@ -<line>,<count> +<line>,<count> @@`. Line numbers are 1-based, a count
+  of 1 is omitted, and an empty side is `0,0`. Edits closer than twice the context merge into
+  one hunk.
+  Lines end at `\n` only; a lone `\r` stays inside its line.
+- A last line without a final newline is followed by `\ No newline at end of file`.
+- A file is text when it is valid UTF-8 with no NUL byte in its first 8 KiB; otherwise it is
+  binary. If either side is binary, no hunks are produced: the result is a one-line summary
+  with the old and new sizes in bytes.
+
 ### Word diff (default for text from v0.3)
 
 1. **Tokenise** each version. The tokeniser is chosen by file extension:
@@ -27,7 +44,7 @@ prioritise the formats researchers actually use.
    - **LaTeX** (`.tex`, `.bib`, `.sty`, `.cls`): `\command` and `\command*`
      are single tokens, and `%` comments are one token.
    - **Markdown and Typst**: generic in v0.3. Format-aware tokenisers come later if users ask.
-2. **Diff** the token streams with the histogram algorithm (`imara-diff`), and group
+2. **Diff** the token streams with the patience algorithm (`similar`), and group
    the hunks by paragraph (a blank line separates paragraphs).
 3. **Render.** On a colour TTY, deletions are red with strike-through and insertions green,
    inline. Without colour, use `[-old-]{+new+}`. The header shows `+N words −M words`.

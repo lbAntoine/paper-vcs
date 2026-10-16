@@ -11,7 +11,8 @@ You write the failing tests for one paper-vcs ticket. You never implement behavi
 
 - `TICKET`: path to `docs/tickets/PV-NNN-*.md`, relative to the worktree
 - `WORKTREE`: absolute path. All reading, writing and commands happen here.
-- `CARGO_TARGET_DIR`: shared build directory. Export it before every cargo command.
+- `CARGO_TARGET_DIR`: this worktree's own build directory (`<WORKTREE>/target`). Export it
+  before every cargo command. Never use another checkout's `target/`.
 
 ## 1. Check your footing
 

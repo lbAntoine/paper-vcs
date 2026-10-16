@@ -27,7 +27,7 @@ A single Cargo workspace in one repo (`paper-vcs`). Edition 2024, pinned via `ru
 |---|---|---|
 | `paper-core` | Public API used by every front-end. `Project::open/init`, one method per command, each returning a serialisable `Outcome`. Owns the invariants from [01-concepts](01-concepts.md#invariants) | `serde`, `thiserror`, `fd-lock`, `toml`, `tracing` |
 | `paper-git` | The `Store` trait and its gix implementation: objects, trees, refs, merge, checkout, status. Network ops (`fetch`, `push`, `clone`) shell out to the `git` binary | `gix`, `std::process` |
-| `paper-diff` | Tokenise text (generic, LaTeX, Markdown, CJK-aware), word and line diffs, table diffs, binary detection. The `office` module extracts text and cells from Office files, and checks they're complete zips for snapshot | `imara-diff` or `similar`, `unicode-segmentation`, `csv`, `zip`, `quick-xml`, `calamine` |
+| `paper-diff` | Tokenise text (generic, LaTeX, Markdown, CJK-aware), word and line diffs, table diffs, binary detection. The `office` module extracts text and cells from Office files, and checks they're complete zips for snapshot | `similar` (patience algorithm), `unicode-segmentation`, `csv`, `zip`, `quick-xml`, `calamine` |
 | `paper-cli` | Argument parsing, prompts, human and `--json` rendering, exit codes | `clap`, `anstream`, `insta` (tests) |
 
 **Rule:** `paper-core` never prints or prompts. When a command needs input (for example a save

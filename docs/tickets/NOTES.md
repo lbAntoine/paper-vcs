@@ -3,6 +3,15 @@
 Dated process lessons and project decisions that aren't architecture (those are ADRs).
 Newest first.
 
+## 2026-10-16: one build directory per worktree
+
+The first parallel run (PV-002 and PV-009) shared the main checkout's `target/` across both
+worktrees. The crates have the same names in both, so cargo reused the other branch's
+artifacts: a test run in one worktree executed the other branch's test binaries (`ancestors`
+tests showing up in PV-009, PV-009's `paper-diff` tests failing in PV-002). Two agents and the
+reviewer hit it independently. Results were re-verified in isolated builds before trusting
+them. Rule since then: each worktree builds in its own `target/`.
+
 ## 2026-10-16: agent pipeline adopted
 
 v0.1 steps 1–6 were written by hand from guided handoffs. From here on, agents write the
