@@ -483,3 +483,37 @@ fn dot_does_not_hide_an_unknown_path_next_to_it() {
     run.assert_three_part_error(1);
     assert!(run.stderr.contains("nope"), "{run:#?}");
 }
+
+#[test]
+fn a_mistyped_file_path_gets_the_file_wording_not_the_point_wording() {
+    let env = project();
+
+    let run = env.paper(&["diff", "sections/nope.tex"]);
+
+    run.assert_three_part_error(1);
+    assert!(
+        run.stderr.contains("No file matches: sections/nope.tex"),
+        "{run:#?}"
+    );
+    assert!(
+        !run.stderr.contains("is not a save, line, date or file"),
+        "{run:#?}"
+    );
+    assert!(run.stderr.contains("paper status"), "{run:#?}");
+    assert!(run.stderr.contains("paper show <point>"), "{run:#?}");
+}
+
+#[test]
+fn a_mistyped_word_that_could_be_a_point_keeps_the_point_wording() {
+    let env = project();
+
+    let run = env.paper(&["diff", "lsat", "sections/intro.tex"]);
+
+    run.assert_three_part_error(1);
+    assert!(
+        run.stderr
+            .contains("'lsat' is not a save, line, date or file"),
+        "{run:#?}"
+    );
+    assert!(run.stderr.contains("paper history"), "{run:#?}");
+}

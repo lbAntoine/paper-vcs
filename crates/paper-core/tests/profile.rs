@@ -5,7 +5,7 @@ use std::path::Path;
 use std::process::Command;
 
 use paper_core::profile::{Profile, gitignore};
-use paper_core::project::{InitError, Initialized, Project};
+use paper_core::project::{InitError, Initialized, ProfileSource, Project};
 use paper_core::snapshot::SnapshotOptions;
 use paper_git::Identity;
 
@@ -92,7 +92,7 @@ fn init_in_a_new_latex_folder_saves_the_block_and_paper_toml_and_none_of_the_jun
     let (_project, initialized) = init(dir.path(), None).unwrap();
 
     assert_eq!(initialized.profile, "latex");
-    assert!(initialized.detected);
+    assert_eq!(initialized.profile_source, ProfileSource::Detected);
     assert!(!initialized.adopted);
     assert_eq!(initialized.written, [".gitignore", "paper.toml"]);
     assert!(!initialized.tips.is_empty());
@@ -138,7 +138,7 @@ fn a_chosen_profile_beats_detection_and_is_reported_as_chosen() {
     let (_project, initialized) = init(dir.path(), Some("markdown")).unwrap();
 
     assert_eq!(initialized.profile, "markdown");
-    assert!(!initialized.detected);
+    assert_eq!(initialized.profile_source, ProfileSource::Chosen);
     let gitignore = read(dir.path(), ".gitignore");
     assert!(gitignore.contains(&block_start("markdown")));
     assert!(!gitignore.contains(&block_start("latex")));
@@ -157,7 +157,7 @@ fn detection_only_looks_at_files_the_walk_sees() {
     let (_project, initialized) = init(dir.path(), None).unwrap();
 
     assert_eq!(initialized.profile, "markdown");
-    assert!(initialized.detected);
+    assert_eq!(initialized.profile_source, ProfileSource::Detected);
 }
 
 #[test]
@@ -167,7 +167,7 @@ fn an_empty_folder_gets_the_generic_profile() {
     let (_project, initialized) = init(dir.path(), None).unwrap();
 
     assert_eq!(initialized.profile, "generic");
-    assert!(initialized.detected);
+    assert_eq!(initialized.profile_source, ProfileSource::Detected);
     assert_eq!(tree(dir.path(), "main"), [".gitignore", "paper.toml"]);
     fsck(dir.path());
 }
@@ -233,7 +233,7 @@ fn adoption_puts_the_block_and_paper_toml_in_the_draft_and_leaves_history_alone(
 
     assert!(initialized.adopted);
     assert_eq!(initialized.profile, "latex");
-    assert!(initialized.detected);
+    assert_eq!(initialized.profile_source, ProfileSource::Detected);
     assert_eq!(initialized.written, [".gitignore", "paper.toml"]);
     assert_eq!(
         git(dir.path(), &["log", "--format=%H %s", "--branches"]),
@@ -262,6 +262,7 @@ fn adoption_keeps_an_existing_profile_in_paper_toml_and_does_not_rewrite_the_fil
     let (_project, initialized) = init(dir.path(), None).unwrap();
 
     assert_eq!(initialized.profile, "typst");
+    assert_eq!(initialized.profile_source, ProfileSource::PaperToml);
     assert_eq!(initialized.written, [".gitignore"]);
     assert_eq!(read(dir.path(), "paper.toml"), toml);
     assert!(read(dir.path(), ".gitignore").contains(&block_start("typst")));

@@ -49,10 +49,11 @@ fn value<T: ToString>(raw: Option<T>) -> Option<String> {
 
 /// The repository around `start`, or `None` when there is none to use.
 ///
-/// A `.git` entry directly at the `target` itself that can't be opened is an error: the folder claims to be
-/// a repository and is damaged. One anywhere above it (including at `start`, the nearest existing folder, when the target
-/// is still to be created) that can't be opened (a stray file or an empty
-/// folder) is not the target's business, so the caller falls back to the global configuration.
+/// A `.git` entry directly at the `target` itself that can't be opened is an error: the folder
+/// claims to be a repository and is damaged. One anywhere above it (including at `start`, the
+/// nearest existing folder, when the target is still to be created) that can't be opened (a
+/// stray file or an empty folder) is not the target's business, so the caller falls back to
+/// the global configuration.
 fn open_repository(start: &Path, target: &Path) -> Result<Option<gix::Repository>, GitError> {
     match gix::discover(start) {
         Ok(repo) => Ok(Some(repo)),

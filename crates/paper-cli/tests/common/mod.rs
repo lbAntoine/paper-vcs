@@ -251,14 +251,8 @@ impl Env {
 
     /// Replaces ids, hashes and the temp root in `text` so snapshots are stable.
     pub fn redact(&self, text: &str) -> String {
-        let mut out = redact_root(text, &self.root.to_string_lossy());
-        for (change_id, hash) in self.known_ids() {
-            for len in (4..=change_id.len()).rev() {
-                out = out.replace(&change_id[..len], "[ID]");
-            }
-            out = out.replace(&hash, "[HASH]").replace(&hash[..7], "[HASH]");
-        }
-        out
+        let out = redact_root(text, &self.root.to_string_lossy());
+        redact_ids(&out, &self.known_ids())
     }
 
     /// `(change id, commit hash)` of every commit git can see from the work folder.
@@ -304,6 +298,55 @@ impl Env {
         redact_strings(&mut value, &|text| self.redact(text));
         serde_json::to_string_pretty(&value).unwrap()
     }
+}
+
+/// Replaces whole tokens of `text` that are a prefix of a known change id (at least four
+/// characters, the shortest ID paper shows) or of a known commit hash (at least seven) with
+/// `[ID]` / `[HASH]`. A token is a run of alphanumeric characters, so a word that merely
+/// contains an id prefix ("yourself" next to the id "yourk...") is left alone.
+///
+/// `ids` holds `(change id, commit hash)` pairs. The temp root is not touched here: see
+/// [`redact_root`].
+///
+/// Residual risk: a lone word equal to the first four letters of a real id (a k-z word such as
+/// "your") is indistinguishable from a real four-letter short id, so it is replaced. The
+/// minimum is not raised because real short ids are four letters long. Change ids use 16
+/// letters (k-z), so the odds are about one in 65 536 (16^-4) per id per matching four-letter
+/// k-z word in the text. A longer k-z word that is a prefix of an id is just as ambiguous, at
+/// 16^-n for n letters (n = 5 is about one in a million), so it matters even less.
+pub fn redact_ids(text: &str, ids: &[(String, String)]) -> String {
+    let is_token_char = |c: char| c.is_ascii_alphanumeric();
+    let mut out = String::with_capacity(text.len());
+    let mut token = String::new();
+    let flush = |token: &mut String, out: &mut String| {
+        if token.is_empty() {
+            return;
+        }
+        let is_id = token.len() >= 4
+            && ids
+                .iter()
+                .any(|(change_id, _)| change_id.starts_with(token.as_str()));
+        let is_hash =
+            token.len() >= 7 && ids.iter().any(|(_, hash)| hash.starts_with(token.as_str()));
+        if is_id {
+            out.push_str("[ID]");
+        } else if is_hash {
+            out.push_str("[HASH]");
+        } else {
+            out.push_str(token);
+        }
+        token.clear();
+    };
+    for c in text.chars() {
+        if is_token_char(c) {
+            token.push(c);
+        } else {
+            flush(&mut token, &mut out);
+            out.push(c);
+        }
+    }
+    flush(&mut token, &mut out);
+    out
 }
 
 /// Backslashes become `/` (so Windows and Unix agree) and the temp root becomes `[TMP]`.

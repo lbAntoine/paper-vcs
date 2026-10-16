@@ -2,7 +2,7 @@
 source: crates/paper-cli/tests/diff.rs
 expression: env.redact(&run.stderr)
 ---
-error: 'mian.tex' is not a save, line, date or file
-  why:  Paper looked for it as a save, a line, a date and then as a file in the draft and the saves being compared.
-  next: paper history  # list the saves and their IDs
-        paper status   # list the files in the draft
+error: No file matches: mian.tex
+  why:  These paths are not in the draft or in either save being compared. A typo in a path is the usual cause.
+  next: paper status        # list the files in the draft
+        paper show <point>  # list the files of a save

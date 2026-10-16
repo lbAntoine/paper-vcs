@@ -249,3 +249,69 @@ fn an_interrupted_init_can_be_run_again() {
     assert!(initialized.adopted);
     assert_eq!(project.view().current_line(), &LineName::main());
 }
+
+// ---- a damaged .git at the target (PV-014 item 5) ----
+
+fn assert_damaged(target: &Path) {
+    let error = init(target).unwrap_err();
+    assert!(
+        matches!(error, InitError::DamagedGit { .. }),
+        "expected DamagedGit, got {error:?}"
+    );
+}
+
+#[test]
+fn an_empty_dot_git_at_the_target_is_damaged() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::create_dir(dir.path().join(".git")).unwrap();
+    assert_damaged(dir.path());
+    assert!(!dir.path().join("paper.toml").exists());
+}
+
+#[test]
+fn a_damaged_dot_git_inside_a_parent_repository_is_still_damaged_not_nested() {
+    let parent = tempfile::tempdir().unwrap();
+    git(parent.path(), &["init", "--quiet"]);
+    let child = parent.path().join("child");
+    fs::create_dir_all(child.join(".git")).unwrap();
+    assert_damaged(&child);
+
+    let file_child = parent.path().join("pointer");
+    fs::create_dir(&file_child).unwrap();
+    fs::write(file_child.join(".git"), "gitdir: ../no-such-gitdir\n").unwrap();
+    assert_damaged(&file_child);
+}
+
+#[test]
+fn a_dot_git_file_pointing_at_a_missing_gitdir_is_damaged_without_a_parent() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join(".git"), "gitdir: ./missing\n").unwrap();
+    assert_damaged(dir.path());
+}
+
+#[test]
+fn a_worktree_style_dot_git_file_still_adopts() {
+    let main = tempfile::tempdir().unwrap();
+    git(main.path(), &["init", "--quiet", "--initial-branch=main"]);
+    fs::write(main.path().join("a.txt"), "a\n").unwrap();
+    git(main.path(), &["add", "."]);
+    git(main.path(), &["commit", "--quiet", "-m", "First"]);
+    let holder = tempfile::tempdir().unwrap();
+    let worktree = holder.path().join("wt");
+    git(
+        main.path(),
+        &[
+            "worktree",
+            "add",
+            "--quiet",
+            "-b",
+            "other",
+            worktree.to_str().unwrap(),
+        ],
+    );
+    assert!(worktree.join(".git").is_file());
+
+    let (_project, initialized) = init(&worktree).unwrap();
+
+    assert!(initialized.adopted);
+}

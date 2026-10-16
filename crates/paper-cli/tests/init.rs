@@ -256,7 +256,7 @@ fn a_damaged_block_during_init_suggests_running_init_again() {
     let run = env.paper(&["init"]);
 
     run.assert_three_part_error(1);
-    assert!(run.stderr.contains("paper init"), "{run:#?}");
+    assert!(run.stderr.contains("next: paper init"), "{run:#?}");
     assert!(!env.work.join("paper.toml").exists());
 }
 
@@ -292,4 +292,45 @@ fn adopting_a_repository_without_saves_puts_the_files_in_the_first_save() {
     settings().bind(|| {
         insta::assert_snapshot!("init_adopted_no_commits", env.redact(&run.stdout));
     });
+}
+
+#[test]
+fn a_damaged_dot_git_at_the_target_is_a_user_error_that_says_where_to_look() {
+    let env = Env::new();
+    env.write("a.txt", "a\n");
+    std::fs::create_dir(env.work.join(".git")).unwrap();
+
+    let run = env.paper(&["init"]);
+
+    run.assert_three_part_error(1);
+    assert!(run.stderr.contains("damaged .git"), "{run:#?}");
+    assert!(
+        !run.stderr.contains("report it"),
+        "this is not a bug in paper: {run:#?}"
+    );
+    assert!(run.stderr.contains("next:"), "{run:#?}");
+    assert!(
+        run.stderr.contains("move") || run.stderr.contains("inspect"),
+        "the next step says to inspect or move it: {run:#?}"
+    );
+    assert!(!env.work.join("paper.toml").exists());
+}
+
+#[test]
+fn a_damaged_dot_git_inside_a_parent_repository_is_still_a_damaged_git_error() {
+    let env = Env::new();
+    env.git_work(&["init", "--quiet", "-b", "main"]);
+    let child = env.work.join("child");
+    std::fs::create_dir_all(child.join(".git")).unwrap();
+    let pointer = env.work.join("pointer");
+    std::fs::create_dir(&pointer).unwrap();
+    std::fs::write(pointer.join(".git"), "gitdir: ../no-such-gitdir\n").unwrap();
+
+    for folder in ["child", "pointer"] {
+        let run = env.paper(&["init", folder]);
+
+        run.assert_three_part_error(1);
+        assert!(run.stderr.contains("damaged .git"), "{run:#?}");
+        assert!(!run.stderr.contains("inside another"), "{run:#?}");
+    }
 }

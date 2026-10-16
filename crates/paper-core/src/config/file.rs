@@ -16,8 +16,10 @@ pub struct ConfigFile {
     doc: DocumentMut,
     /// Where it was loaded from, to name it in errors.
     path: Option<PathBuf>,
-    /// The file uses Windows line endings; lines we add do too.
+    /// The file's first line ends in CRLF; lines we add do too. Existing lines are never touched.
     crlf: bool,
+    /// The text as read, line endings included (`doc` holds it with `\n` endings only).
+    raw: String,
 }
 
 impl ConfigFile {
@@ -62,10 +64,13 @@ impl ConfigFile {
                 message: err.message().to_owned(),
             }
         })?;
+        let crlf = first_line_is_crlf(&text);
+        let raw = consistent_raw(text, &doc, crlf);
         Ok(Self {
             doc,
             path: Some(path.to_owned()),
-            crlf: text.contains("\r\n"),
+            crlf,
+            raw,
         })
     }
 
@@ -157,10 +162,43 @@ impl ConfigFile {
             }
             None => set_keeping_decor(doc.as_table_mut(), key.as_str(), toml_value),
         }
-        Ok(Self {
-            doc,
+        Ok(self.with_doc(&doc))
+    }
+
+    /// The file with `doc` as its document. Existing lines keep their own ending byte for
+    /// byte; a changed line keeps the ending of the line it replaces; extra lines get the
+    /// ending of the file's first line.
+    fn with_doc(&self, doc: &DocumentMut) -> Self {
+        let old_lf = self.doc.to_string();
+        let new_lf = doc.to_string();
+        let raw_lines: Vec<&str> = self.raw.split_inclusive('\n').collect();
+        let old_lines: Vec<&str> = old_lf.split_inclusive('\n').collect();
+        let new_lines: Vec<&str> = new_lf.split_inclusive('\n').collect();
+        let head = old_lines
+            .iter()
+            .zip(&new_lines)
+            .take_while(|(old, new)| old == new)
+            .count();
+        let tail = old_lines[head..]
+            .iter()
+            .rev()
+            .zip(new_lines[head..].iter().rev())
+            .take_while(|(old, new)| old == new)
+            .count();
+        let mut raw = raw_lines[..head].concat();
+        let replaced = &raw_lines[head..old_lines.len() - tail];
+        for (at, line) in new_lines[head..new_lines.len() - tail].iter().enumerate() {
+            let crlf = replaced
+                .get(at)
+                .map_or(self.crlf, |old| old.ends_with("\r\n"));
+            raw.push_str(&with_ending(line, crlf));
+        }
+        raw.push_str(&raw_lines[old_lines.len() - tail..].concat());
+        Self {
+            doc: doc.clone(),
+            raw: consistent_raw(raw, doc, self.crlf),
             ..self.clone()
-        })
+        }
     }
 
     /// Appends `[table]` with the key after the existing text, which stays byte for byte
@@ -183,8 +221,10 @@ impl ConfigFile {
         let doc = text
             .parse::<DocumentMut>()
             .map_err(|err| key.invalid(&value.to_string(), err.message().to_owned()))?;
+        let raw = consistent_raw(text, &doc, self.crlf);
         Ok(Self {
             doc,
+            raw,
             ..self.clone()
         })
     }
@@ -224,12 +264,7 @@ impl ConfigFile {
 
     /// The file's text.
     pub fn render(&self) -> String {
-        let text = self.doc.to_string();
-        if self.crlf {
-            text.replace("\r\n", "\n").replace('\n', "\r\n")
-        } else {
-            text
-        }
+        self.raw.clone()
     }
 
     /// Writes the file, creating missing parent folders.
@@ -260,7 +295,55 @@ fn set_keeping_decor(table: &mut dyn toml_edit::TableLike, name: &str, mut new: 
     {
         *new_value.decor_mut() = old.decor().clone();
     }
-    table.insert(name, new);
+    // Replace the item in place: re-inserting the key would drop the comment above it.
+    match table.get_mut(name) {
+        Some(item) => *item = new,
+        None => {
+            table.insert(name, new);
+        }
+    }
+}
+
+fn first_line_is_crlf(text: &str) -> bool {
+    text.find('\n')
+        .is_some_and(|end| end > 0 && text.as_bytes()[end - 1] == b'\r')
+}
+
+/// `raw` if it is the document's text apart from CRLF endings; otherwise the document's text
+/// with the file's ending. `toml_edit` ends the last line with a newline even when the file
+/// did not, so a file without a final newline gets one here (the same ending as the file's
+/// first line) rather than letting the next appended key land on the same line.
+fn consistent_raw(raw: String, doc: &DocumentMut, crlf: bool) -> String {
+    // `toml_edit` keeps the bytes of multi-line strings, so compare with CRLF normalised.
+    let lf = doc.to_string().replace("\r\n", "\n");
+    if raw.replace("\r\n", "\n") == lf {
+        return raw;
+    }
+    let mut fixed = raw;
+    if !fixed.is_empty() && !fixed.ends_with('\n') {
+        fixed.push_str(if crlf { "\r\n" } else { "\n" });
+    }
+    if fixed.replace("\r\n", "\n") != lf {
+        // Safe fallback: rebuild from the document, losing only mixed line endings.
+        fixed = lf
+            .split_inclusive('\n')
+            .map(|l| with_ending(l, crlf))
+            .collect();
+    }
+    debug_assert_eq!(fixed.replace("\r\n", "\n"), lf);
+    fixed
+}
+
+/// `line` (which ends in `\n`, or has no ending) with a CRLF or LF ending.
+fn with_ending(line: &str, crlf: bool) -> String {
+    match line.strip_suffix('\n') {
+        Some(body) => format!(
+            "{}{}",
+            body.trim_end_matches('\r'),
+            if crlf { "\r\n" } else { "\n" }
+        ),
+        None => line.to_owned(),
+    }
 }
 
 fn below(new: u64, other: u64) -> bool {

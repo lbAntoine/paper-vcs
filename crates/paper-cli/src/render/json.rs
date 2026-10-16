@@ -1,7 +1,9 @@
 //! `--json` output: CLI-owned DTOs, so `paper-core` carries no serde derives. Every object has
 //! `"schema": 1`; the shapes are part of the CLI's contract.
 
-use paper_core::project::{FileDiffEntry, HistoryEntry, Initialized, SaveOutcome, Saved, Shown};
+use paper_core::project::{
+    FileDiffEntry, HistoryEntry, Initialized, ProfileSource, SaveOutcome, Saved, Shown,
+};
 use paper_core::snapshot::{Change, ChangeKind, SkipReason, Skipped};
 use serde::Serialize;
 
@@ -178,7 +180,7 @@ pub fn init(initialized: &Initialized) -> String {
         large: large(&initialized.large),
         skipped_branches: initialized.skipped_branches.clone(),
         profile: initialized.profile.clone(),
-        detected: initialized.detected,
+        detected: initialized.profile_source == ProfileSource::Detected,
         written: initialized.written.clone(),
         tips: initialized.tips.clone(),
     })

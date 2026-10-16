@@ -3,6 +3,7 @@
 //! Every core error enum converts into a [`PaperError`]. The three parts are written here, per
 //! variant, in researcher vocabulary. See `03-architecture.md` § Errors.
 
+use std::io;
 use std::path::Path;
 
 use crate::config::{ConfigError, Conflict, Key, Origin, Scope};
@@ -191,6 +192,20 @@ impl From<InitError> for PaperError {
                     "rename the branch, then run paper init again",
                 )],
             ),
+            InitError::DamagedGit { path } => Self::user(
+                "This folder has a damaged .git",
+                format!(
+                    "{} has a .git that git can't open (it may be empty or half deleted), so \
+                     paper can't tell whether this folder is already a repository. Nothing was \
+                     changed.",
+                    path.display()
+                ),
+                vec![Suggestion::new(
+                    "git status",
+                    "inspect what git says about it, or move .git out of the way and run \
+                     paper init again",
+                )],
+            ),
             InitError::EmptyCurrentBranch { name } => Self::user(
                 "The current branch has no saves yet",
                 format!(
@@ -261,7 +276,23 @@ impl PaperError {
                     "run it again after saving .gitignore as UTF-8 text in your editor",
                 )],
             ),
-            GitignoreError::Io { .. } => {
+            GitignoreError::Read { path, source } | GitignoreError::Write { path, source }
+                if source.kind() == io::ErrorKind::PermissionDenied =>
+            {
+                Self::user(
+                    "Paper is not allowed to change .gitignore",
+                    format!(
+                        "{error}: permission denied. Nothing was changed. Paper needs to be \
+                         able to read and write {}.",
+                        path.display()
+                    ),
+                    vec![Suggestion::new(
+                        retry,
+                        "run it again after making .gitignore readable and writable for you",
+                    )],
+                )
+            }
+            GitignoreError::Read { .. } | GitignoreError::Write { .. } => {
                 Self::project_failure("Paper could not update .gitignore", error)
             }
         }
@@ -367,10 +398,7 @@ fn invalid_value(
     let example = Key::parse(key).map_or("<value>", Key::example);
     let mut next = Vec::new();
     match origin {
-        Some(Origin::Env(var)) => next.push(Suggestion::new(
-            format!("unset {var}"),
-            "remove the variable, or set it to a value paper accepts",
-        )),
+        Some(Origin::Env(var)) => next.push(unset_suggestion(var, cfg!(windows))),
         Some(Origin::File(path)) => {
             next.push(Suggestion::new(
                 format!(
@@ -395,11 +423,31 @@ fn invalid_value(
     PaperError::user(
         format!(
             "`{value}` is not a valid value for `{key}`{}",
-            origin_note(origin)
+            Origin::note(origin)
         ),
         format!("{key} takes {expected}."),
         next,
     )
+}
+
+/// The suggestion that removes the environment variable `var`: `unset` on POSIX shells,
+/// PowerShell's `Remove-Item Env:` when `windows` is true (with `cmd`'s `set VAR=` named in the
+/// explanation).
+fn unset_suggestion(var: &str, windows: bool) -> Suggestion {
+    if windows {
+        Suggestion::new(
+            format!("Remove-Item Env:{var}"),
+            format!(
+                "remove the variable in PowerShell (in cmd.exe, `set {var}=` does the same), \
+                 or set it to a value paper accepts"
+            ),
+        )
+    } else {
+        Suggestion::new(
+            format!("unset {var}"),
+            "remove the variable, or set it to a value paper accepts",
+        )
+    }
 }
 
 fn order_conflict(
@@ -417,6 +465,11 @@ fn order_conflict(
         "above"
     };
     let flag = set_flag(origin, scope);
+    let direction = if conflict.other == Key::LargeFilesWarnMb {
+        "at least"
+    } else {
+        "at most"
+    };
     let in_file = match origin {
         Some(Origin::File(path)) => format!(" in {}", path.display()),
         _ => String::new(),
@@ -428,7 +481,7 @@ fn order_conflict(
         vec![
             Suggestion::new(
                 format!("paper config set {flag}{key} {other_value}"),
-                format!("make {key} at least {other_value}, to match {other}"),
+                format!("make {key} {direction} {other_value}, to match {other}"),
             ),
             Suggestion::new(
                 format!("paper config set {flag}{other} {value}"),
@@ -446,14 +499,6 @@ fn set_flag(origin: Option<&Origin>, scope: Scope) -> &'static str {
         None => scope == Scope::Project,
     };
     if project { "--project " } else { "" }
-}
-
-fn origin_note(origin: Option<&Origin>) -> String {
-    match origin {
-        None => String::new(),
-        Some(Origin::Env(var)) => format!(" (from {var} in the environment)"),
-        Some(Origin::File(path)) => format!(" (in {})", path.display()),
-    }
 }
 
 impl From<OpenError> for PaperError {
@@ -1191,6 +1236,82 @@ mod tests {
                 !message.contains("`paper "),
                 "a message states what happened; commands go in `next`: {message}"
             );
+        }
+    }
+
+    // ---- PV-014 ----
+
+    #[test]
+    fn unsetting_a_variable_on_unix_uses_unset() {
+        let suggestion = unset_suggestion("PAPER_UI_COLOR", false);
+        assert_eq!(suggestion.command, "unset PAPER_UI_COLOR");
+    }
+
+    #[test]
+    fn unsetting_a_variable_on_windows_uses_powershell_and_names_cmd() {
+        let suggestion = unset_suggestion("PAPER_UI_COLOR", true);
+        assert_eq!(suggestion.command, "Remove-Item Env:PAPER_UI_COLOR");
+        assert!(
+            suggestion.explanation.contains("set PAPER_UI_COLOR="),
+            "the cmd form is named: {suggestion:?}"
+        );
+    }
+
+    fn gitignore_path() -> PathBuf {
+        PathBuf::from("/work/.gitignore")
+    }
+
+    fn permission_denied() -> io::Error {
+        io::Error::from(io::ErrorKind::PermissionDenied)
+    }
+
+    #[test]
+    fn a_gitignore_that_cannot_be_read_says_read() {
+        let cause = GitignoreError::Read {
+            path: gitignore_path(),
+            source: io_error(),
+        };
+        assert_eq!(
+            cause.to_string(),
+            "could not read /work/.gitignore",
+            "the message names the action that failed"
+        );
+        let error = PaperError::from_gitignore(&cause, "paper init");
+        assert_project(&error);
+        assert_eq!(error.message, "Paper could not update .gitignore");
+        assert!(error.why.contains("could not read"), "{error:?}");
+    }
+
+    #[test]
+    fn a_gitignore_that_cannot_be_written_says_write() {
+        let cause = GitignoreError::Write {
+            path: gitignore_path(),
+            source: io_error(),
+        };
+        assert_eq!(cause.to_string(), "could not write /work/.gitignore");
+        let error = PaperError::from_gitignore(&cause, "paper init");
+        assert_project(&error);
+        assert!(error.why.contains("could not write"), "{error:?}");
+    }
+
+    #[test]
+    fn permission_denied_on_gitignore_is_a_user_error_naming_the_file() {
+        for cause in [
+            GitignoreError::Read {
+                path: gitignore_path(),
+                source: permission_denied(),
+            },
+            GitignoreError::Write {
+                path: gitignore_path(),
+                source: permission_denied(),
+            },
+        ] {
+            let error = PaperError::from_gitignore(&cause, "paper init");
+            assert_user(&error);
+            let text = format!("{} {}", error.message, error.why);
+            assert!(text.contains(".gitignore"), "{error:?}");
+            assert!(error.why.contains("/work/.gitignore"), "{error:?}");
+            assert_eq!(error.next[0].command, "paper init", "{error:?}");
         }
     }
 }

@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use super::init::InitError;
+use super::init::{InitError, ProfileSource};
 use crate::config::{ConfigFile, Key, Value};
 use crate::fs_util::write_atomic;
 use crate::profile::{Profile, detect, gitignore};
@@ -16,8 +16,7 @@ const GITIGNORE_FILE: &str = ".gitignore";
 #[derive(Debug)]
 pub(super) struct ProfilePlan {
     profile: Profile,
-    detected: bool,
-    from_paper_toml: bool,
+    source: ProfileSource,
     gitignore: Option<String>,
     paper_toml: Option<String>,
 }
@@ -26,8 +25,7 @@ pub(super) struct ProfilePlan {
 #[derive(Debug)]
 pub(super) struct ProfileReport {
     pub profile: String,
-    pub detected: bool,
-    pub from_paper_toml: bool,
+    pub profile_source: ProfileSource,
     pub written: Vec<String>,
     pub tips: Vec<String>,
 }
@@ -40,18 +38,18 @@ impl ProfilePlan {
             Some(Value::Text(name)) => Profile::builtin(&name),
             _ => None,
         };
-        let (profile, detected, from_paper_toml) = match (existing, choice) {
+        let (profile, source) = match (existing, choice) {
             (Some(existing), Some(requested)) if existing.name != requested.name => {
                 return Err(InitError::ProfileConflict {
                     requested: requested.name.clone(),
                     existing: existing.name.clone(),
                 });
             }
-            (Some(existing), None) => (existing.clone(), false, true),
-            (_, Some(requested)) => (requested.clone(), false, false),
+            (Some(existing), None) => (existing.clone(), ProfileSource::PaperToml),
+            (_, Some(requested)) => (requested.clone(), ProfileSource::Chosen),
             (None, None) => {
                 let files = visible_files(workdir)?;
-                (detect(&files).clone(), true, false)
+                (detect(&files).clone(), ProfileSource::Detected)
             }
         };
         let existing_gitignore = gitignore::read(workdir)?;
@@ -64,8 +62,7 @@ impl ProfilePlan {
         };
         Ok(Self {
             profile,
-            detected,
-            from_paper_toml,
+            source,
             gitignore,
             paper_toml,
         })
@@ -87,8 +84,7 @@ impl ProfilePlan {
         }
         Ok(ProfileReport {
             profile: self.profile.name.clone(),
-            detected: self.detected,
-            from_paper_toml: self.from_paper_toml,
+            profile_source: self.source,
             written,
             tips: self.profile.tips.clone(),
         })

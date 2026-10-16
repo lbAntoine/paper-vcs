@@ -38,9 +38,18 @@ pub enum GitignoreError {
         /// The `.gitignore` involved.
         path: PathBuf,
     },
-    /// The file could not be read or written.
-    #[error("could not update {path}")]
-    Io {
+    /// The file exists but could not be read (permissions, a folder in its place, a disk error).
+    #[error("could not read {path}")]
+    Read {
+        /// The `.gitignore` involved.
+        path: PathBuf,
+        /// What went wrong.
+        #[source]
+        source: io::Error,
+    },
+    /// The new text could not be written.
+    #[error("could not write {path}")]
+    Write {
         /// The `.gitignore` involved.
         path: PathBuf,
         /// What went wrong.
@@ -157,7 +166,7 @@ fn render_block(profile: &Profile, eol: &str, terminated: bool) -> String {
 ///
 /// # Errors
 ///
-/// [`GitignoreError::NotUtf8`] or [`GitignoreError::Io`].
+/// [`GitignoreError::NotUtf8`] or [`GitignoreError::Read`].
 ///
 /// # Panics
 ///
@@ -169,7 +178,7 @@ pub fn read(workdir: &Path) -> Result<Option<String>, GitignoreError> {
             .map(Some)
             .map_err(|_| GitignoreError::NotUtf8 { path }),
         Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(None),
-        Err(source) => Err(GitignoreError::Io { path, source }),
+        Err(source) => Err(GitignoreError::Read { path, source }),
     }
 }
 
@@ -178,7 +187,7 @@ pub fn read(workdir: &Path) -> Result<Option<String>, GitignoreError> {
 ///
 /// # Errors
 ///
-/// Everything [`apply`] and [`read`] report, and [`GitignoreError::Io`].
+/// Everything [`apply`] and [`read`] report, and [`GitignoreError::Write`].
 ///
 /// # Panics
 ///
@@ -188,7 +197,7 @@ pub fn apply_to_file(workdir: &Path, profile: &Profile) -> Result<bool, Gitignor
     match apply(read(workdir)?.as_deref(), profile)? {
         Some(text) => {
             write_atomic(&path, text.as_bytes())
-                .map_err(|source| GitignoreError::Io { path, source })?;
+                .map_err(|source| GitignoreError::Write { path, source })?;
             Ok(true)
         }
         None => Ok(false),

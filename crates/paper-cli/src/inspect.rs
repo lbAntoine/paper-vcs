@@ -56,8 +56,9 @@ pub fn diff(
     }
     let (project, locator) = open_and_snapshot(cli)?;
     let (points, mut paths) = split_args(&project, args)?;
-    // A word that sat where a point could be, and is neither a point nor a file.
-    let ambiguous_word = (points.len() < 2 && !paths.is_empty())
+    // A word that sat where a point could be, and is neither a point nor a file. A word with
+    // `/` or `.` is treated as a file; a line name with `/` or `.` also gets the file wording.
+    let ambiguous_word = (points.len() < 2 && !paths.is_empty() && !paths[0].contains(['/', '.']))
         .then(|| {
             locator
                 .project_path(&paths[0])

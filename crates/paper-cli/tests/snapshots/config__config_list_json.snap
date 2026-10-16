@@ -3,6 +3,7 @@ source: crates/paper-cli/tests/config.rs
 expression: env.redact_json(&run.stdout)
 ---
 {
+  "notes": [],
   "schema": 1,
   "settings": [
     {

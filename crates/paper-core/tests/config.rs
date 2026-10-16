@@ -771,7 +771,12 @@ fn a_bad_env_value_names_the_variable_and_says_to_unset_it() {
     .unwrap_err();
     let shown = PaperError::from(error);
     assert!(shown.message.contains("PAPER_UI_COLOR"), "{shown:?}");
-    assert_eq!(shown.next[0].command, "unset PAPER_UI_COLOR");
+    let expected = if cfg!(windows) {
+        "Remove-Item Env:PAPER_UI_COLOR"
+    } else {
+        "unset PAPER_UI_COLOR"
+    };
+    assert_eq!(shown.next[0].command, expected);
 }
 
 #[test]
@@ -875,4 +880,138 @@ fn a_relative_xdg_config_home_is_ignored() {
                 .join("config.toml")
         )
     );
+}
+
+// ---- mixed line endings (PV-014 item 12) ----
+
+#[test]
+fn a_mixed_file_keeps_its_existing_line_endings_when_a_key_changes() {
+    let original = "# mine\r\n[ui]\r\ncolor = \"auto\"\nother = 1\r\n";
+    let (_dir, file) = file_with(original);
+
+    let rendered = file.with(Key::UiColor, text("never")).unwrap().render();
+
+    assert_eq!(
+        rendered,
+        "# mine\r\n[ui]\r\ncolor = \"never\"\nother = 1\r\n"
+    );
+}
+
+#[test]
+fn a_new_table_in_a_mixed_file_uses_the_ending_of_the_first_line_and_keeps_old_bytes() {
+    let original = "# mine\r\n[user]\nname = \"Mina Park\"\r\n";
+    let (_dir, file) = file_with(original);
+
+    let rendered = file.with(Key::UiColor, text("never")).unwrap().render();
+
+    assert!(rendered.starts_with(original), "{rendered:?}");
+    let added = &rendered[original.len()..];
+    assert!(added.contains("color = \"never\"\r\n"), "{added:?}");
+    assert!(!added.replace("\r\n", "").contains('\n'), "{added:?}");
+}
+
+#[test]
+fn a_new_table_in_an_lf_first_file_uses_lf_even_if_later_lines_are_crlf() {
+    let original = "# mine\n[user]\r\nname = \"Mina Park\"\r\n";
+    let (_dir, file) = file_with(original);
+
+    let rendered = file.with(Key::UiColor, text("never")).unwrap().render();
+
+    assert!(rendered.starts_with(original), "{rendered:?}");
+    let added = &rendered[original.len()..];
+    assert!(added.contains("color = \"never\"\n"), "{added:?}");
+    assert!(!added.contains('\r'), "{added:?}");
+}
+
+// ---- no final newline, and comments above a key (PV-014 review round 1) ----
+
+fn reloaded(file: &ConfigFile) -> (tempfile::TempDir, ConfigFile, String) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("config.toml");
+    file.write(&path).unwrap();
+    let bytes = fs::read_to_string(&path).unwrap();
+    let again = ConfigFile::load(&path).unwrap();
+    (dir, again, bytes)
+}
+
+#[test]
+fn an_lf_file_without_a_final_newline_gains_a_key_in_an_existing_table() {
+    let (_dir, file) = file_with("[user]\nname = \"A\"");
+    let updated = file.with(Key::UserEmail, text("a@b.org")).unwrap();
+    let (_d, again, bytes) = reloaded(&updated);
+    assert_eq!(bytes, "[user]\nname = \"A\"\nemail = \"a@b.org\"\n");
+    assert_eq!(again.get(Key::UserEmail).unwrap(), Some(text("a@b.org")));
+    assert_eq!(again.get(Key::UserName).unwrap(), Some(text("A")));
+}
+
+#[test]
+fn a_crlf_file_without_a_final_newline_gains_a_key_with_crlf() {
+    let (_dir, file) = file_with("[user]\r\nname = \"A\"");
+    let updated = file.with(Key::UserEmail, text("a@b.org")).unwrap();
+    let (_d, again, bytes) = reloaded(&updated);
+    assert_eq!(bytes, "[user]\r\nname = \"A\"\r\nemail = \"a@b.org\"\r\n");
+    assert_eq!(again.get(Key::UserEmail).unwrap(), Some(text("a@b.org")));
+}
+
+#[test]
+fn editing_the_last_key_of_a_file_without_a_final_newline_works_for_lf_and_crlf() {
+    for (eol, original) in [
+        ("\n", "[user]\nname = \"A\""),
+        ("\r\n", "[user]\r\nname = \"A\""),
+    ] {
+        let (_dir, file) = file_with(original);
+        let updated = file.with(Key::UserName, text("B")).unwrap();
+        let (_d, again, bytes) = reloaded(&updated);
+        assert_eq!(bytes, format!("[user]{eol}name = \"B\"{eol}"));
+        assert_eq!(again.get(Key::UserName).unwrap(), Some(text("B")));
+    }
+}
+
+#[test]
+fn a_new_table_after_a_file_without_a_final_newline_is_valid() {
+    let (_dir, file) = file_with("[user]\nname = \"A\"");
+    let updated = file.with(Key::UiColor, text("never")).unwrap();
+    let (_d, again, _bytes) = reloaded(&updated);
+    assert_eq!(again.get(Key::UiColor).unwrap(), Some(text("never")));
+    assert_eq!(again.get(Key::UserName).unwrap(), Some(text("A")));
+}
+
+#[test]
+fn a_comment_above_a_top_level_key_survives_changing_it() {
+    let (_dir, file) = file_with("# why latex\nprofile = \"latex\"\n");
+    let rendered = file.with(Key::Profile, text("generic")).unwrap().render();
+    assert_eq!(rendered, "# why latex\nprofile = \"generic\"\n");
+}
+
+#[test]
+fn a_comment_above_a_key_in_a_table_survives_changing_it() {
+    let (_dir, file) = file_with("[ui]\n# I like colour\ncolor = \"auto\"\n");
+    let rendered = file.with(Key::UiColor, text("never")).unwrap().render();
+    assert_eq!(rendered, "[ui]\n# I like colour\ncolor = \"never\"\n");
+}
+
+// ---- CRLF inside multi-line strings (PV-014 post-approval) ----
+
+#[test]
+fn a_crlf_file_with_a_multi_line_string_keeps_its_bytes_when_a_key_changes() {
+    let original = "[user]\r\nname = \"\"\"a\r\nb\"\"\"\r\n";
+    let (_dir, file) = file_with(original);
+    let updated = file.with(Key::UserEmail, text("a@b.org")).unwrap();
+    let (_d, again, bytes) = reloaded(&updated);
+    assert!(bytes.starts_with(original), "{bytes:?}");
+    assert_eq!(bytes, format!("{original}email = \"a@b.org\"\r\n"));
+    assert_eq!(
+        again.get(Key::UserName).unwrap(),
+        file.get(Key::UserName).unwrap()
+    );
+}
+
+#[test]
+fn an_lf_first_file_keeps_a_crlf_multi_line_string_in_an_unknown_table() {
+    let original = "# mine\n[notes]\ntext = \"\"\"x\r\ny\"\"\"\n";
+    let (_dir, file) = file_with(original);
+    let updated = file.with(Key::UiColor, text("never")).unwrap();
+    let (_d, again, bytes) = reloaded(&updated);
+    assert!(bytes.starts_with(original), "{bytes:?}");
+    assert_eq!(again.get(Key::UiColor).unwrap(), Some(text("never")));
 }

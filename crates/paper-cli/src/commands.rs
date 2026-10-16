@@ -6,7 +6,9 @@ use std::path::{Path, PathBuf};
 
 use paper_core::config::Settings;
 use paper_core::profile::Profile;
-use paper_core::project::{HistoryRequest, PathSelection, Project, SaveOutcome, SaveRequest};
+use paper_core::project::{
+    HistoryRequest, InitError, PathSelection, Project, SaveOutcome, SaveRequest, has_damaged_git,
+};
 use paper_core::{ErrorKind, PaperError, Suggestion};
 use paper_git::{GitRepo, Identity};
 
@@ -72,6 +74,10 @@ pub(crate) fn finish(
 fn init(cli: &Cli, path: Option<&Path>, profile: Option<&str>) -> Output {
     let base = start_dir(cli)?;
     let target = path.map_or_else(|| base.clone(), |p| base.join(p));
+    // A `.git` here that git can't open is reported before git settings are read from it.
+    if has_damaged_git(&target) {
+        return Err(InitError::DamagedGit { path: target }.into());
+    }
     let settings = settings::resolve(Some(&target), &target)?;
     let identity = identity(cli, &settings)?;
     // clap only lets the six built-in names through.
