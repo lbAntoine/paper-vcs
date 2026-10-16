@@ -70,6 +70,7 @@ fn status_reports_line_last_save_and_sorted_changes_with_counts() {
         ("fig.bin", "a\0b"),
         ("gone.tex", "x\n"),
     ]);
+    write(dir.path(), "gone.tex", "y\n");
     save_all(&mut project, "first draft");
     write(dir.path(), "b.tex", "1\n3\n4\n");
     write(dir.path(), "a.tex", "new\n");
@@ -81,8 +82,7 @@ fn status_reports_line_last_save_and_sorted_changes_with_counts() {
         status.line.to_string(),
         project.view().current_line().to_string()
     );
-    // `Project::init` made the only save; `save_all` above had nothing to save.
-    assert_eq!(status.last.message, "Start project");
+    assert_eq!(status.last.message, "first draft");
     assert_eq!(status.last.commit, project.view().current().tip);
     assert_eq!(
         stat_of(&status),

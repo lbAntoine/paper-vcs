@@ -162,11 +162,12 @@ sure?", because undo exists.
 
 The draft is snapshotted before anything is overwritten, so the previous content always
 exists as a commit; the activity log that `undo` reads arrives in v0.2. A path that matches
-no file in the draft or at `<point>` is an error listing every such path, and nothing is
-written. Files that already match are left alone, the executable bit is kept, empty
+no file in the draft or at `<point>` is an error listing every such path. The draft snapshot
+stays (your unsaved edits are recorded), but no working file is changed. Files that already match are left alone, the executable bit is kept, empty
 directories are removed, and a file can be restored over a directory of the same name (and
-back). Files `paper` never records (symlinks, over-size files, nested repositories) are never
-overwritten or deleted, and are listed as skipped. Git's index and HEAD are untouched, so
+back). Files `paper` never records (symlinks, over-size files, nested repositories, ignored files)
+are never overwritten or deleted, nor is anything reached through a symlinked folder; they
+are listed as skipped. Git's index and HEAD are untouched, so
 plain `git status` shows the restored files as unstaged changes.
 
 ### `paper undo` / `paper redo` / `paper activity [-n <N>]` (since v0.2)

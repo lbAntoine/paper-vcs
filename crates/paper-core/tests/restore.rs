@@ -79,6 +79,7 @@ fn paths(list: &[&str]) -> Vec<String> {
     list.iter().map(|path| (*path).to_owned()).collect()
 }
 
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
 fn restore(
@@ -157,7 +158,17 @@ fn restore_from_an_older_save_rewrites_a_directory() {
     fs::remove_file(dir.path().join("sec/deep/x.tex")).unwrap();
     save_all(&mut project, "three");
 
+    let head = git(dir.path(), &["rev-parse", "HEAD"]);
+    let index = git(dir.path(), &["ls-files", "--stage"]);
+
     restore(&mut project, &["sec"], Some("last~2")).unwrap();
+
+    assert_eq!(git(dir.path(), &["rev-parse", "HEAD"]), head);
+    assert_eq!(git(dir.path(), &["ls-files", "--stage"]), index);
+    assert_eq!(
+        git(dir.path(), &["status", "--porcelain"]),
+        " D sec/added/new.tex\n M sec/keep.tex\n?? sec/deep/\n?? sec/recreate.tex\n"
+    );
 
     assert_eq!(read(dir.path(), "sec/keep.tex"), "k1\n");
     assert_eq!(read(dir.path(), "sec/recreate.tex"), "r\n");
@@ -217,6 +228,7 @@ fn restore_without_paths_is_refused() {
     ));
 }
 
+#[cfg(unix)]
 #[test]
 fn restore_keeps_the_executable_bit() {
     let (dir, mut project) = project_with(&[("run.sh", "#!/bin/sh\n")]);
@@ -264,6 +276,7 @@ fn restoring_a_file_that_already_matches_is_a_no_op() {
     assert_eq!(project.view().current().draft, draft);
 }
 
+#[cfg(unix)]
 #[test]
 fn restore_never_touches_symlinks_and_reports_symlinks_in_the_from_tree() {
     let (dir, project) = project_with(&[("a.tex", "a\n")]);
@@ -306,4 +319,107 @@ fn after_restore_the_draft_matches_the_working_files() {
     assert_eq!(fresh.changes, vec![]);
     assert_eq!(git(dir.path(), &["status", "--porcelain"]), "");
     fsck(dir.path());
+}
+
+#[test]
+fn a_refused_restore_keeps_the_unsaved_edit_recorded_but_changes_no_file() {
+    let (dir, mut project) = project_with(&[("a.tex", "a\n")]);
+    write(dir.path(), "a.tex", "unsaved edit\n");
+    let draft = project.view().current().draft.clone();
+
+    let err = restore(&mut project, &["a.tex", "nope.tex"], None).unwrap_err();
+
+    assert!(matches!(err, RestoreError::UnknownPaths { .. }));
+    assert_eq!(read(dir.path(), "a.tex"), "unsaved edit\n");
+    // I1: the edit is recorded in the draft even though the restore was refused.
+    assert_ne!(project.view().current().draft, draft);
+    let stored = project.status(&StatusOptions { snapshot: false }).unwrap();
+    assert_eq!(stored.changes.len(), 1);
+    assert_eq!(stored.changes[0].path, "a.tex");
+}
+
+#[test]
+fn restore_never_overwrites_an_ignored_file_sitting_at_a_saved_path() {
+    let (dir, mut project) = project_with(&[("a.tex", "a\n"), ("out.log", "saved log\n")]);
+    // The file is saved, then becomes ignored and untracked in the draft.
+    write(dir.path(), ".gitignore", "out.log\n");
+    save_all(&mut project, "two");
+    git(dir.path(), &["rm", "--cached", "-q", "out.log"]);
+    // Delete it from the draft by recording its removal, then bring back different content.
+    fs::remove_file(dir.path().join("out.log")).unwrap();
+    project.snapshot().unwrap();
+    write(dir.path(), "out.log", "my local log\n");
+
+    let restored = restore(&mut project, &["out.log"], Some("last")).unwrap();
+
+    assert_eq!(read(dir.path(), "out.log"), "my local log\n");
+    assert_eq!(restored.skipped, vec!["out.log".to_owned()]);
+    assert_eq!(restored.changes, vec![]);
+}
+
+#[cfg(unix)]
+#[test]
+fn restore_does_not_write_through_a_symlinked_parent_directory() {
+    let outside = tempfile::tempdir().unwrap();
+    let (dir, mut project) = project_with(&[("sec/one.tex", "1\n"), ("keep.tex", "k\n")]);
+    fs::remove_dir_all(dir.path().join("sec")).unwrap();
+    std::os::unix::fs::symlink(outside.path(), dir.path().join("sec")).unwrap();
+
+    let restored = restore(&mut project, &["sec/one.tex"], None).unwrap();
+
+    assert_eq!(fs::read_dir(outside.path()).unwrap().count(), 0);
+    assert_eq!(restored.skipped, vec!["sec/one.tex".to_owned()]);
+}
+
+#[cfg(unix)]
+#[test]
+fn restore_never_overwrites_a_symlink_in_the_working_files() {
+    let (dir, mut project) = project_with(&[("a.tex", "a\n"), ("b.tex", "b\n")]);
+    fs::remove_file(dir.path().join("a.tex")).unwrap();
+    std::os::unix::fs::symlink("b.tex", dir.path().join("a.tex")).unwrap();
+
+    // `from` has a regular file at a.tex; the user's symlink stays.
+    let restored = restore(&mut project, &["a.tex"], None).unwrap();
+
+    assert!(
+        fs::symlink_metadata(dir.path().join("a.tex"))
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert_eq!(restored.skipped, vec!["a.tex".to_owned()]);
+}
+
+#[cfg(unix)]
+#[test]
+fn restore_never_overwrites_an_oversize_untracked_file() {
+    let options = SnapshotOptions {
+        warn_file_bytes: 50,
+        max_file_bytes: 100,
+    };
+    let (dir, mut project) = project_with_options(&[("big.dat", "small\n")], &options);
+    // Removed from the draft, then recreated too big to track: the draft doesn't know it.
+    fs::remove_file(dir.path().join("big.dat")).unwrap();
+    project.snapshot().unwrap();
+    let big = "x".repeat(500);
+    write(dir.path(), "big.dat", &big);
+
+    let restored = restore(&mut project, &["big.dat"], None).unwrap();
+
+    assert_eq!(read(dir.path(), "big.dat"), big);
+    assert_eq!(restored.skipped, vec!["big.dat".to_owned()]);
+    assert_eq!(restored.changes, vec![]);
+}
+
+#[cfg(unix)]
+#[test]
+fn restore_never_touches_files_under_a_nested_repository() {
+    let (dir, mut project) = project_with(&[("vendor/lib.tex", "saved\n")]);
+    git(dir.path(), &["init", "-q", "vendor"]);
+    write(dir.path(), "vendor/lib.tex", "nested edit\n");
+
+    let restored = restore(&mut project, &["vendor"], None).unwrap();
+
+    assert_eq!(read(dir.path(), "vendor/lib.tex"), "nested edit\n");
+    assert_eq!(restored.skipped, vec!["vendor/lib.tex".to_owned()]);
 }

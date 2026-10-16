@@ -32,7 +32,7 @@ pub struct FileDiffEntry {
 
 #[derive(Debug, thiserror::Error)]
 pub enum DiffError {
-    #[error("these paths are in neither of the compared saves: {}; run `paper status` or `paper show <point>` to see the files", paths.join(", "))]
+    #[error("these paths are not in the draft or in either save being compared: {}; run `paper status` or `paper show <point>` to see the files", paths.join(", "))]
     UnknownPaths { paths: Vec<String> },
     #[error(transparent)]
     Resolve(#[from] ResolveError),

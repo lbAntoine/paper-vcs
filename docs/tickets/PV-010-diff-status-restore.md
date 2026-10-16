@@ -6,7 +6,7 @@
   Runs in parallel with PV-003 (CLI). PV-011 wires these commands into the CLI afterwards.
 - **Touches:** `crates/paper-core/src/project/mod.rs`, `crates/paper-core/src/project/diff.rs` (new),
   `crates/paper-core/src/project/status.rs` (new), `crates/paper-core/src/project/restore.rs` (new),
-  `crates/paper-core/src/project/save.rs` (visibility of helpers only, if needed),
+  `crates/paper-core/src/project/save.rs` and `history.rs` (visibility of helpers only),
   `crates/paper-core/tests/diff.rs` (new), `crates/paper-core/tests/status.rs` (new),
   `crates/paper-core/tests/restore.rs` (new),
   `docs/specs/02-cli.md` (§ `paper status`, § `paper diff`, § `paper restore` only)
@@ -105,7 +105,7 @@ completes the v0.1 command set (`status`, `diff --lines`, `restore`).
 - [ ] `restore <file>` (default `last`) puts back the saved content; the edit made before it still exists in the old draft commit (reachable via the reflog or an object id recorded by the test).
 - [ ] `restore --from last~2` restores a whole directory: modified files rewritten, files added since deleted, files deleted since recreated, empty directories removed.
 - [ ] `restore` of a file that doesn't exist at the point deletes it.
-- [ ] `restore` with an unknown path writes nothing (working files and refs byte-for-byte unchanged) and lists every unknown path.
+- [ ] `restore` with an unknown path changes no working file (the I1 snapshot of unsaved edits is kept) and lists every unknown path.
 - [ ] `restore` keeps the executable bit (Unix), and a file/directory flip works.
 - [ ] After `restore`, the draft matches the working files (a following `status` with `snapshot: false` equals one with `snapshot: true`), `git fsck --strict` is clean, `git status --porcelain` lists the restored files as unstaged, and HEAD and the index are unchanged.
 - [ ] Specs updated (only the three sections).
@@ -176,3 +176,18 @@ completes the v0.1 command set (`status`, `diff --lines`, `restore`).
 - NIT: diff's `UnknownPaths` says "neither of the compared saves" when one side is the draft.
 - NIT: `history.rs` touched (visibility only) but not in Touches → record it in the ticket.
 - Coordinator decisions: fix everything in one round. A refused restore keeps the I1 snapshot (unsaved edits are recorded) but changes no working file; reword the spec and the AC that way and pin it with a test that has unsaved edits. Ignored working files at a `from` path go in `skipped`, untouched. Adding tests is authorised; don't weaken any.
+
+### GREEN (review round 1) · rust-engineer · 2026-10-16
+
+- Windows gating: Unix-only imports and tests in `tests/restore.rs` are `#[cfg(unix)]`.
+- `restore` now decides everything before touching disk: all blobs are read and obstacles
+  checked first. A path is skipped (reported, untouched) if the path or any parent is a symlink
+  on disk, if an untracked file or directory (ignored, oversize, nested repo) is in the way, or
+  if a parent is a file the restore isn't removing. `RestoreError::Io` now has an action
+  ("restore"/"remove"), a project-relative path and a next step.
+- Refused restore keeps the I1 snapshot; spec and AC reworded; test with unsaved edits added.
+- New tests: ignored file at a saved path, symlinked parent, working-file symlink, oversize
+  untracked file, nested repo. Directory-restore test also checks HEAD, index and porcelain
+  (actual porcelain shows `?? sec/deep/`, ` M sec/keep.tex` etc. relative to HEAD).
+- status test saves "first draft" after a real edit (gone.tex y), asserts last.message.
+- diff `UnknownPaths` wording; `history.rs` added to Touches.

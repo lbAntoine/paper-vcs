@@ -3,7 +3,7 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use paper_git::{CommitId, FileKind, GitError};
 
@@ -36,7 +36,7 @@ pub struct Restored {
 pub enum RestoreError {
     #[error("say which files to restore, for example `paper restore main.tex`")]
     NoPaths,
-    #[error("these paths are not in your draft or in that save: {}; nothing was changed. Run `paper status` or `paper show <point>` to see the files", paths.join(", "))]
+    #[error("these paths are not in your draft or in that save: {}; no files were changed. Run `paper status` or `paper show <point>` to see the files", paths.join(", "))]
     UnknownPaths { paths: Vec<String> },
     #[error(transparent)]
     Save(#[from] SaveError),
@@ -44,9 +44,14 @@ pub enum RestoreError {
     Resolve(#[from] ResolveError),
     #[error(transparent)]
     Git(#[from] GitError),
-    #[error("could not write {path}")]
+    #[error(
+        "could not {action} {path}; your previous draft is recorded, run `paper status` to see where things stand"
+    )]
     Io {
-        path: PathBuf,
+        /// "restore" or "remove".
+        action: &'static str,
+        /// Relative to the project folder.
+        path: String,
         #[source]
         source: io::Error,
     },
@@ -59,7 +64,7 @@ impl Project {
     ///
     /// # Errors
     ///
-    /// [`RestoreError::NoPaths`], [`RestoreError::UnknownPaths`] (nothing is written), and the
+    /// [`RestoreError::NoPaths`], [`RestoreError::UnknownPaths`] (no working file is changed), and the
     /// wrapped lower-level errors.
     ///
     /// # Panics
@@ -98,52 +103,66 @@ impl Project {
             .filter(|file| request.paths.iter().any(|p| matches(p, file)))
             .collect();
         let mut skipped = Vec::new();
-        let mut changes = Vec::new();
-        let mut deletes = Vec::new();
-        let mut writes = Vec::new();
+        let mut deletes: Vec<&String> = Vec::new();
+        let mut candidates = Vec::new();
         for path in targets {
             let wanted = from_files.get(path);
-            let kept_by_snapshot =
-                is_left_alone(&before.skipped, path) || self.on_disk_is_symlink(path);
-            if wanted.is_some_and(|f| f.kind == FileKind::Symlink) || kept_by_snapshot {
+            let kept = is_left_alone(&before.skipped, path) || self.on_disk_is_symlink(path);
+            if wanted.is_some_and(|f| f.kind == FileKind::Symlink) || kept {
+                skipped.push(path.clone());
+            } else if wanted.is_none() {
+                deletes.push(path);
+            } else if wanted != draft_files.get(path) {
+                candidates.push(path);
+            }
+        }
+        let doomed: BTreeSet<&str> = deletes.iter().map(|p| p.as_str()).collect();
+
+        // Decide everything, and read every blob, before the first byte on disk changes.
+        let mut writes = Vec::new();
+        for path in candidates {
+            let file = &from_files[path];
+            if self.blocked(path, draft_files.contains_key(path), &doomed) {
                 skipped.push(path.clone());
                 continue;
             }
-            let current = draft_files.get(path);
-            if wanted == current {
-                continue;
-            }
-            let kind = match (wanted, current) {
-                (None, _) => ChangeKind::Deleted,
-                (_, None) => ChangeKind::Added,
-                _ => ChangeKind::Modified,
-            };
-            changes.push(Change {
-                path: path.clone(),
-                kind,
-            });
-            match wanted {
-                Some(file) => writes.push((path, file)),
-                None => deletes.push(path),
-            }
+            writes.push((path, file.kind, self.repo.read_blob(&file.blob)?));
         }
+        skipped.sort();
+
+        let mut changes: Vec<Change> = deletes
+            .iter()
+            .map(|path| Change {
+                path: (*path).clone(),
+                kind: ChangeKind::Deleted,
+            })
+            .chain(writes.iter().map(|(path, _, _)| Change {
+                path: (*path).clone(),
+                kind: if draft_files.contains_key(*path) {
+                    ChangeKind::Modified
+                } else {
+                    ChangeKind::Added
+                },
+            }))
+            .collect();
+        changes.sort_by(|a, b| a.path.cmp(&b.path));
 
         // Deletions first, so a file turning into a directory (or back) finds room.
         for path in deletes {
             self.delete_working_file(path)?;
         }
-        for (path, file) in writes {
+        for (path, kind, bytes) in writes {
             let io_err = |source| RestoreError::Io {
-                path: self.repo.workdir().join(path),
+                action: "restore",
+                path: path.clone(),
                 source,
             };
-            let bytes = self.repo.read_blob(&file.blob)?;
             let absolute = self.repo.workdir().join(path);
             if let Some(parent) = absolute.parent() {
                 fs::create_dir_all(parent).map_err(io_err)?;
             }
             write_atomic(&absolute, &bytes).map_err(io_err)?;
-            set_executable(&absolute, file.kind == FileKind::Executable).map_err(io_err)?;
+            set_executable(&absolute, kind == FileKind::Executable).map_err(io_err)?;
         }
 
         // Record the new working files so the draft and the stat cache match them.
@@ -155,9 +174,44 @@ impl Project {
         })
     }
 
+    /// Whether writing `path` would clobber or escape through something paper doesn't track:
+    /// a symlinked parent, an untracked (ignored or oversize) file or directory in the way,
+    /// or a parent that is a file the restore isn't removing.
+    fn blocked(&self, path: &str, in_draft: bool, doomed: &BTreeSet<&str>) -> bool {
+        let root = self.repo.workdir();
+        let mut prefix = String::new();
+        for part in path.split('/').take(path.matches('/').count()) {
+            if !prefix.is_empty() {
+                prefix.push('/');
+            }
+            prefix.push_str(part);
+            match fs::symlink_metadata(root.join(&prefix)) {
+                Ok(meta) if meta.file_type().is_symlink() => return true,
+                Ok(meta) if meta.is_file() && !doomed.contains(prefix.as_str()) => return true,
+                _ => {}
+            }
+        }
+        if in_draft {
+            return false;
+        }
+        match fs::symlink_metadata(root.join(path)) {
+            Ok(meta) if meta.is_dir() => !only_holds(root, path, doomed),
+            Ok(_) => true,
+            Err(_) => false,
+        }
+    }
+
+    /// Whether the path, or any directory above it, is a symlink on disk.
     fn on_disk_is_symlink(&self, path: &str) -> bool {
-        fs::symlink_metadata(self.repo.workdir().join(path))
-            .is_ok_and(|meta| meta.file_type().is_symlink())
+        let root = self.repo.workdir();
+        let mut prefix = String::new();
+        path.split('/').any(|part| {
+            if !prefix.is_empty() {
+                prefix.push('/');
+            }
+            prefix.push_str(part);
+            fs::symlink_metadata(root.join(&prefix)).is_ok_and(|meta| meta.file_type().is_symlink())
+        })
     }
 
     /// Removes a file, then the directories it leaves empty.
@@ -169,7 +223,8 @@ impl Project {
             Err(err) if err.kind() == io::ErrorKind::NotFound => {}
             Err(source) => {
                 return Err(RestoreError::Io {
-                    path: absolute,
+                    action: "remove",
+                    path: path.to_owned(),
                     source,
                 });
             }
@@ -184,6 +239,21 @@ impl Project {
         }
         Ok(())
     }
+}
+
+/// Whether every file under the directory `dir` is about to be removed by this restore.
+fn only_holds(root: &Path, dir: &str, doomed: &BTreeSet<&str>) -> bool {
+    let Ok(entries) = fs::read_dir(root.join(dir)) else {
+        return false;
+    };
+    entries.flatten().all(|entry| {
+        let child = format!("{dir}/{}", entry.file_name().to_string_lossy());
+        match entry.file_type() {
+            Ok(kind) if kind.is_dir() => only_holds(root, &child, doomed),
+            Ok(kind) if kind.is_file() => doomed.contains(child.as_str()),
+            _ => false,
+        }
+    })
 }
 
 /// Whether the snapshot left `path` out (or something above it, like a nested repository).
