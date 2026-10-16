@@ -1,6 +1,6 @@
 # PV-005: config get/set/list and identity
 
-- **Status:** In progress
+- **Status:** Done
 - **Branch:** `feat/PV-005-config`
 - **Depends on:** PV-003, PV-011 (merged). Runs alone.
 - **Touches:** `crates/paper-core/src/config/` (new), `crates/paper-core/src/lib.rs`,
@@ -128,6 +128,29 @@ identity in saves, the colour default, and the large-file thresholds.
 
 ## Summary
 
+`paper config get|set|list [--project]` and identity from paper's own settings.
+
+- paper-core `config` module (`keys`, `file`, `settings`): typed keys with a home, validation,
+  `toml_edit` writes that keep comments and layout (inline tables too), and atomic writes.
+  Precedence is flag > `PAPER_*` env > `paper.toml` > user config > git (identity only) > default.
+- Identity and UI settings are never read from or written to `paper.toml`. If they are found
+  there, `config list`/`get` report them as a privacy note.
+- Errors name where a bad value came from (variable or file, with its line) and suggest a fix
+  that works there.
+- The CLI uses the settings: save authors, `--color` falling back to `ui.color`, and the
+  large-file thresholds. `init` asks for a name and email once on a terminal.
+- `diff.default = "words"` is accepted and has no effect until v0.3.
+
+Deviations: `diff.default = "words"` is accepted rather than rejected (review decision, so a
+shared `paper.toml` from a later version doesn't break older ones). Notes go to stderr, even
+under `--json`. JSON keeps `"source": "default"` for unset values while human output shows `-`.
+
+Follow-ups in PV-014: the order-conflict wording when `warn_mb` > `max_mb`, the repeated words
+note, CRLF normalisation of mixed-ending files, the duplicate `Origin` note function, the
+POSIX-only `unset` suggestion, and a `notes` field in JSON. One full-suite run had a single
+failure that 34 later runs didn't reproduce, and its name wasn't captured. The reviewer found no
+nondeterminism in this branch; the `Env::redact` word-prefix flaw (PV-014) is a possible cause.
+
 ## Handoff log
 
 ### RED · test-author · 2026-10-16
@@ -182,3 +205,9 @@ identity in saves, the colour default, and the large-file thresholds.
 - 8: `diff.default = words` is accepted everywhere; `get`/`list` note "no effect until v0.3" on stderr. AC line and spec updated. Authorised test changes: core `invalid_values_are_user_errors_that_say_what_is_allowed` (words removed from the invalid list), core `words_for_diff_default_says_not_yet` (now `..._is_accepted_and_has_no_effect_yet`), CLI `invalid_values_and_unknown_keys...` (words case removed) and CLI `diff_default_words_says_not_yet` (now accepted). Nothing else weakened.
 - 9: unset shows source `-` in the human list (JSON keeps `default`, as the RED test asserts); `profile` no-value why no longer mentions git; relative `XDG_CONFIG_HOME` ignored; no-settings-folder message per platform; CRLF files get CRLF lines.
 - Snapshot re-read: only `config_list` changed (profile source `default` -> `-`).
+
+### Review round 2 · reviewer · 2026-10-16
+- Verdict: APPROVE. Tests (6 full runs, `--no-fail-fast`), clippy and fmt pass. Every round-1 finding verified; the test changes are exactly the four authorised `words` changes.
+- GREEN choices accepted: notes on stderr under `--json`; JSON `"default"` against human `-` (`value: null` already means unset).
+- Deferred to PV-014: `order_conflict` says "at least" when `warn_mb` must be lowered; the words note repeats itself; mixed-ending files get all-CRLF; the duplicate `Origin` note; POSIX-only `unset`; a long line in 02-cli.
+- Flake hunt: no cause found (no env mutation, shared paths, timing assertions or map ordering). The only known risk is the existing `Env::redact` word-prefix flaw, about 1e-4 per run.
