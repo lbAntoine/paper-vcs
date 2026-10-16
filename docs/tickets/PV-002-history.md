@@ -152,3 +152,20 @@ says how many saves the line has.
   first-parent chain at or before it (`expect` on an unrepresentable civil time; documented).
 - Specs: 01-concepts.md § Points and 02-cli.md (`history`, `show`) updated.
 - fmt, clippy and the full suite pass.
+
+### Review · reviewer · 2026-10-16
+- Verdict: CHANGES. Checks: tests pass, clippy pass (isolated target).
+- BLOCKER: a panic reachable from user input. `resolve_date`'s `expect` fails for
+  `date:9999-12-31` (past jiff's Timestamp max in every zone), and for `date:-9999-01-01` east
+  of about +2h. DST gaps and folds are safe (compatible disambiguation) → a cutoff past the max
+  means no limit (the tip); before the min, `NoSaveBefore`. Test both; remove the `# Panics` claim.
+- MINOR: `NoSaveBefore` prints `{date:?}` (Rust Debug) → a readable date.
+- MINOR: `NotEnoughHistory` says "only 1 saves" and doesn't name the line.
+- MINOR: the 7-character hash fallback isn't checked for uniqueness → shortest unique hex
+  prefix, minimum 7, also for `Ambiguous` candidates.
+- MINOR: `ancestors` walked several times per command → reuse `Known` (`resolve_with`), filter
+  `known.commits` for `--all`.
+- MINOR: `history::touches` duplicates `save::matches` → share one function.
+- NIT: an inclusive end in a DST fold uses the earlier offset; the later one would be more
+  inclusive. Optional.
+- Coordinator: fix all of these in one round. Adding tests is authorised; don't weaken any.
