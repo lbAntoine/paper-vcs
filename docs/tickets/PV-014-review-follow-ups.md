@@ -142,3 +142,14 @@ All 14 items done. fmt, clippy (`-D warnings`) clean; full suite (`--no-fail-fas
 Deviations to review:
 - `tests/redaction.rs`: the RED fixture `OTHER_ID = "mostlykmnopqrstu"` made the word "mostly" (in two tests that require it to stay) a whole-token prefix of a known id, which no whole-token rule can leave alone while replacing "most". Changed only the constant to `"mostkmnopqrstuvw"`; assertions untouched.
 - `crates/paper-core/tests/profile.rs`: `initialized.detected` no longer exists (item 11); the five assertions now compare `profile_source` with `ProfileSource::Detected`.
+
+### Review · reviewer · 2026-10-16
+- Verdict: CHANGES. Tests, clippy and fmt pass. Items 1, 2, 10, 11 verified (no snapshot changed from item 1; the RED fixture change was a genuine fixture error; the resolve/history refactor keeps every assertion and bound). Item 12 probed with real files in many shapes; one shape fails.
+- BLOCKER: item 12 regression. A config file without a final newline gets invalid TOML on `config set` (`name = "A"email = …`), breaking every later command; a CRLF file without a final newline gets an LF ending. `raw` and the `toml_edit` document drift when toml_edit adds the final newline.
+- MAJOR: item 5 only works without a repository above. Inside a parent repo, a damaged `child/.git` gives "inside another project … paper init <outer>", which would adopt the outer repo.
+- MINOR: the damaged-`.git` check is duplicated in core and CLI, and the core path has no test.
+- MINOR: the item-4 comment and spec say a word with `/` or `.` can't be a line name; line names allow both.
+- MINOR: wrong odds in a history.rs comment; `profile.rs` asserts `!= Detected` instead of the exact variant.
+- MINOR, pre-existing: `config set` drops a comment line directly above a top-level key (`# c` above `profile = …`).
+- NITs: the redaction residual-risk comment should mention longer k–z words; item 13's rewrapping is unfinished (02-cli lines 113, 369, 372).
+- Coordinator decisions: fix everything in this round, the pre-existing comment drop included (same file, same promise). One core predicate for "the target's own .git is damaged" (target has `.git` and the enclosing workdir isn't the target), used by both core and CLI, with core and CLI tests including a parent repository. Add the `raw`/document invariant as a `debug_assert` with a safe fallback. Adding tests is authorised; don't weaken any.
