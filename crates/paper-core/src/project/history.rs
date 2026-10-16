@@ -124,7 +124,7 @@ impl Project {
         })
     }
 
-    fn entry(&self, commit: &Commit, known: &Known) -> HistoryEntry {
+    pub(super) fn entry(&self, commit: &Commit, known: &Known) -> HistoryEntry {
         HistoryEntry {
             commit: commit.id.clone(),
             change_id: commit.change_id,
