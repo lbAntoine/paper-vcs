@@ -230,3 +230,12 @@ All findings fixed.
 - status tests for a nested repo and for a large file (a real 10 MB file: the threshold is a core default the CLI can't change), with snapshots.
 - spec: deleted text files keep `−N lines` (02-cli example and text), restore skipped reasons and JSON, direct `paper-diff` edge in 03-architecture.
 - nits: real example in the rooted-path `next`, read failure is a project failure, no needless clone.
+
+### Review round 2 · reviewer · 2026-10-16
+- Verdict: CHANGES. Tests, clippy and fmt pass on macOS. Every round-1 finding verified fixed, including the `paper init newproj` reproduction (now exit 0).
+- BLOCKER: `tests/restore.rs`'s `skipped` helper is `#[cfg(unix)]` but a test on every platform calls it → Windows can't compile the file. One-line fix.
+- MINOR, deferred: the mistyped-point wording also applies to words that can't be points (`diff sections/nope.tex`); keep the file wording unless the word parsed as a point.
+- MINOR, deferred: `paper init` in a folder whose own `.git` is broken is a project error (exit 3), should be a user error.
+- NIT, deferred: long doc-comment lines in `paper-git/src/config.rs`.
+- The 10 MB large-file test is acceptable on CI; lower the threshold through config once PV-005 exists.
+- Escalated to the maintainer (two rounds without approval). Decision: the same engineer removes the `cfg`, no third review round; the coordinator checks the diff, and windows-latest CI verifies. Deferred items go to PV-014.
