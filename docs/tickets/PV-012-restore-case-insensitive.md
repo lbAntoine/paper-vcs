@@ -3,8 +3,9 @@
 - **Status:** In progress
 - **Branch:** `feat/PV-012-restore-case-insensitive`
 - **Depends on:** PV-010, PV-014 (merged). Runs in parallel with PV-008 (save's path selection).
-- **Touches:** `crates/paper-core/src/project/restore.rs` (and a new sibling module under
-  `crates/paper-core/src/project/` if it grows past ~400 lines), `crates/paper-core/tests/restore.rs`,
+- **Touches:** `crates/paper-core/src/project/restore.rs`, `crates/paper-core/src/project/restore_plan.rs` (new),
+  `crates/paper-core/src/project/mod.rs`, `crates/paper-core/src/snapshot/mod.rs` (added by the
+  coordinator after the reproduction below), `crates/paper-core/tests/restore.rs`,
   `docs/specs/02-cli.md` (§ `paper restore` only)
 - **Must not touch:** `crates/paper-core/src/project/save.rs` (including `matches`), `crates/paper-core/tests/save.rs` (PV-008).
 - **Specs:** `02-cli.md` § `paper restore`; `01-concepts.md` I1, I6; found in the PV-010 review, round 2
@@ -103,3 +104,10 @@ case) as on Linux, and never leaves a file/folder swap half done.
 - Root listings now expect `paper.toml` explicitly (the dotfile filter stays; `.gitignore` is hidden by it).
 - "Draft matches" now compares `status` with `snapshot: false` to `snapshot: true` (new helper `assert_draft_records_working_files`), modelled on `after_restore_the_draft_matches_the_working_files`.
 - All 20 restore tests pass against d0cd6c5 on macOS.
+
+### Reproduction · coordinator · 2026-10-16
+- Reproduced on `main` (d67ad0d) with the CLI on macOS: save `Notes.tex`, replace it on disk with `notes.tex`, `paper restore .`.
+  - **On disk the result is already right** (`Notes.tex` with the saved content): bug 1 as described in Context no longer reproduces, fixed incidentally by PV-014's restore changes.
+  - **The real case bug is in snapshot:** on a case-insensitive filesystem, a tracked `Notes.tex` still "exists" through `notes.tex`, so the draft records both spellings. Before the restore, `status` shows `modified Notes.tex` and `new notes.tex`; after it, `new notes.tex` although no such file exists.
+- GREEN's `snapshot/mod.rs` change (record a tracked path the walk didn't produce only if its exact spelling is listed) is the fix, so `snapshot/mod.rs` joins Touches.
+- The fixed RED tests pass against `main`'s code for the three case-only tests, because the "draft records the working files" check compares two equally wrong views. They must also assert the draft tree's exact file list. Bug 2 (blocked flip) still reproduces and its test fails on `main`, as it should.
