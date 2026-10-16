@@ -1,6 +1,7 @@
 //! Relative times for `paper history`.
-// RED stub: unused until GREEN wires it into `run`.
-#![allow(dead_code)]
+
+use jiff::Timestamp;
+use jiff::tz::TimeZone;
 
 /// Renders `then` relative to `now` (both seconds since the Unix epoch, UTC).
 ///
@@ -9,8 +10,27 @@
 /// - under a day: `1 hour ago`, `N hours ago`
 /// - a day to under two days: `yesterday`
 /// - older: the UTC date, `YYYY-MM-DD`
-pub fn relative_time(_then: i64, _now: i64) -> String {
-    todo!("PV-003")
+pub fn relative_time(then: i64, now: i64) -> String {
+    let elapsed = now.saturating_sub(then);
+    let minutes = elapsed / 60;
+    let hours = elapsed / 3600;
+    match elapsed {
+        ..60 => "just now".to_owned(),
+        60..120 => "1 minute ago".to_owned(),
+        120..3600 => format!("{minutes} minutes ago"),
+        3600..7200 => "1 hour ago".to_owned(),
+        7200..86_400 => format!("{hours} hours ago"),
+        86_400..172_800 => "yesterday".to_owned(),
+        _ => utc_date(then),
+    }
+}
+
+/// `YYYY-MM-DD` in UTC; the raw seconds if the time is outside what dates can show.
+fn utc_date(seconds: i64) -> String {
+    Timestamp::from_second(seconds).map_or_else(
+        |_| seconds.to_string(),
+        |ts| ts.to_zoned(TimeZone::UTC).strftime("%Y-%m-%d").to_string(),
+    )
 }
 
 #[cfg(test)]

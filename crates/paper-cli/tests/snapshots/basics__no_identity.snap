@@ -1,0 +1,8 @@
+---
+source: crates/paper-cli/tests/basics.rs
+expression: env.redact(&run.stderr)
+---
+error: Paper doesn't know who you are yet
+  why:  Every save records its author, and neither a name nor an email is set in your git configuration.
+  next: git config --global user.name "Your Name"         # set the name saves are made under
+        git config --global user.email "you@example.org"  # set your email address

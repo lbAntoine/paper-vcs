@@ -1,0 +1,7 @@
+---
+source: crates/paper-cli/tests/init.rs
+expression: env.redact(&run.stderr)
+---
+error: This folder is already a paper project
+  why:  [TMP]/work already has paper's history, so there is nothing to set up.
+  next: paper history  # see its saves

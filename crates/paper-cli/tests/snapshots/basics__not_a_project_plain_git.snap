@@ -1,0 +1,7 @@
+---
+source: crates/paper-cli/tests/basics.rs
+expression: env.redact(&run.stderr)
+---
+error: This is a git repo but not a paper project yet
+  why:  [TMP]/work has git history, but paper hasn't been set up in it, so it has no drafts or lines to work with.
+  next: paper init  # adopt this repository; nothing in it is rewritten

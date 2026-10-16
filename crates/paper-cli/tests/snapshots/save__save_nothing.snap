@@ -1,0 +1,5 @@
+---
+source: crates/paper-cli/tests/save.rs
+expression: env.redact(&run.stdout)
+---
+Nothing to save.

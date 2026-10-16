@@ -1,0 +1,25 @@
+---
+source: crates/paper-cli/tests/save.rs
+expression: env.redact_json(&run.stdout)
+---
+{
+  "change_id": "[ID]",
+  "commit": "[HASH]",
+  "id": "[ID]",
+  "line": "main",
+  "message": "Only main",
+  "remaining": [
+    {
+      "kind": "modified",
+      "path": "related.tex"
+    }
+  ],
+  "saved": true,
+  "saved_files": [
+    {
+      "kind": "modified",
+      "path": "main.tex"
+    }
+  ],
+  "schema": 1
+}

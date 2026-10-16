@@ -1,0 +1,7 @@
+---
+source: crates/paper-cli/tests/basics.rs
+expression: env.redact(&run.stderr)
+---
+error: This folder is not a paper project
+  why:  [TMP]/work is not inside a paper project, and there is no git repository above it.
+  next: paper init  # make this folder a paper project

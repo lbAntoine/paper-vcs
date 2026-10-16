@@ -190,3 +190,26 @@ exit codes. The CLI is the first real front-end over `paper-core`.
   checked negatively (piped and `--color never` have no escapes).
 - Questions: none blocking. Note `Project::open` takes the exact workdir, so GREEN must use
   `GitRepo::enclosing_workdir` for discovery from `sections/`.
+
+### GREEN · rust-engineer · 2026-10-16
+
+- Implemented: `paper_git::configured_identity` (repo config via `gix::discover`, else
+  `File::from_globals`, which honours `GIT_CONFIG_GLOBAL`/`GIT_CONFIG_NOSYSTEM`); `paper-core`
+  `error.rs` conversions for every enum (plus `From<ParsePointError>`, needed by `show` for a
+  malformed point; one extra unit test); the CLI: `cli.rs`, `run.rs` (parse, exit codes, clap
+  override), `commands.rs` (discovery, identity, I1 snapshot, the four commands), `panic.rs`
+  (crash report, `PAPER_DEBUG_PANIC` in debug builds only), `error.rs` (three-part and JSON
+  errors), `render/{human,json,style,time}.rs`.
+- Snapshots: generated the 19 `.snap` files in `tests/snapshots/` (the RED entry counted 17) and read each one against
+  02-cli wording and the three-part format. Padding in `history` uses a fixed 14-column time
+  field so the redacted snapshot doesn't depend on which relative time was printed.
+- Decisions: line tips are shown as `(main)` after the message; `show` prints the date as a
+  relative time (the test redaction only blanks relative times and `YYYY-MM-DD`), `--json`
+  carries the exact RFC 3339 time; the short ID after `save` comes from `history -n 1`
+  (`Saved` has only the full change ID); `--all-but` conflicts with paths in clap; unparseable
+  points become a user error through `From<ParsePointError>`.
+- Specs: `02-cli.md` (global behaviour, init, save, history, show) and `03-architecture.md`
+  (Configuration, Errors).
+- Not done / follow-ups: paths for `save`/`history` are passed as given (relative to the
+  repository root, not the current subfolder); the `Describe this save:` prompt is untested
+  (needs a pty); core `Display` texts still mention `paper lines` (PV-011).

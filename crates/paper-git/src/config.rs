@@ -2,6 +2,7 @@
 
 use std::path::Path;
 
+use crate::error::ResultExt;
 use crate::{GitError, Identity};
 
 /// The `user.name` and `user.email` git would use for a commit made from `path`.
@@ -17,6 +18,28 @@ use crate::{GitError, Identity};
 /// # Panics
 ///
 /// Never.
-pub fn configured_identity(_path: &Path) -> Result<Option<Identity>, GitError> {
-    todo!("PV-003: read user.name and user.email from git config")
+pub fn configured_identity(path: &Path) -> Result<Option<Identity>, GitError> {
+    let (name, email) = if let Ok(repo) = gix::discover(path) {
+        let config = repo.config_snapshot();
+        (
+            value(config.string("user.name")),
+            value(config.string("user.email")),
+        )
+    } else {
+        let config = gix::config::File::from_globals().context("read the git configuration")?;
+        (
+            value(config.string("user.name")),
+            value(config.string("user.email")),
+        )
+    };
+    Ok(match (name, email) {
+        (Some(name), Some(email)) if !name.trim().is_empty() && !email.trim().is_empty() => {
+            Some(Identity { name, email })
+        }
+        _ => None,
+    })
+}
+
+fn value<T: ToString>(raw: Option<T>) -> Option<String> {
+    raw.map(|v| v.to_string())
 }

@@ -10,22 +10,33 @@ column maps each command to the [roadmap](05-roadmap.md).
 | `-C <path>` | Run as if started in `<path>` |
 | `--json` | Machine-readable output. Every command supports it, and the schema is versioned (`"schema": 1`) |
 | `--no-snapshot` | Skip the automatic snapshot (I1). For scripts and editors only |
-| `-q, --quiet` / `-v, --verbose` | Less output / more output. Verbose adds git terms in parentheses |
+| `-q, --quiet` / `-v, --verbose` | Less output / more output. `-q` prints only errors (and `--json` output). Verbose adds git terms in parentheses, e.g. `Saved kmrw: Tighten intro (commit 3fa9c1e)` |
 | `--color <auto\|always\|never>` | Respects `NO_COLOR` |
 
 **Project discovery:** walk up from the current directory until a `.git` is found. If the
 repo has no `.git/paper/` yet, commands other than `init` and `clone` fail with:
 `This is a git repo but not a paper project yet. Run: paper init`.
 
+Every command except `init`, `--help` and `--version` records the working files first
+(I1), unless `--no-snapshot`. `save` does so as part of saving.
+
+The identity (`user.name`, `user.email`) comes from git config for now. If it is missing,
+the command fails with the two `git config --global user.…` commands to run; asking
+interactively and the paper user config come later.
+
 **Exit codes**
 
 | Code | Meaning |
 |---|---|
 | 0 | Success, including a friendly no-op such as "nothing to save" |
-| 1 | User error: bad arguments, unknown point, etc. |
+| 1 | User error: bad arguments (including unknown flags and missing arguments, where clap would exit with 2), unknown point, etc. |
 | 2 | Needs attention: unresolved conflicts, or a remote that has diverged and needs sync |
 | 3 | Project error: corrupted state, lock held too long, git binary missing for network ops |
 | 101 | Bug (panic). Prints the issue-tracker URL and a report file path |
+
+A panic writes `crash-<timestamp>.txt` to the user cache folder (`$XDG_CACHE_HOME/paper` or
+`~/.cache/paper` on Unix, `%LOCALAPPDATA%\paper` on Windows). Debug builds panic on purpose
+when `PAPER_DEBUG_PANIC=1` is set, so tests can exercise this path.
 
 **Error format** (always three parts):
 
@@ -35,6 +46,13 @@ error: nothing to keep — you are on "main", which is not a try
   next: paper lines            # see your tries
         paper keep try/intro   # keep a specific one
 ```
+
+Errors go to stderr. With `--json`, an error is one object on stdout with the same exit
+code: `{"schema":1,"error":{"kind":"user","message":…,"why":…,"next":[{"command":…,"explanation":…}]}}`,
+where `kind` is `user`, `needs_attention` or `project`.
+
+**JSON output:** one object per command on stdout, with `"schema": 1`. Times are RFC 3339
+in the author's UTC offset. Change kinds are `added`, `modified` or `deleted`.
 
 ---
 
@@ -50,8 +68,13 @@ error: nothing to keep — you are on "main", which is not a try
 - **Detached HEAD in an existing repo:** refuse, and suggest `git switch <branch>` first.
 - `--profile` accepts `latex | markdown | typst | quarto | jupyter | generic`. The default is
   auto-detected from the files present (`*.tex` → latex, …), falling back to generic.
+  *Not yet effective:* the name is validated, but profiles (ignores, `paper.toml`) arrive
+  later, and `--help` says so.
+- It reports whether the project was created or adopted, how many files are tracked, the
+  files left out (too large, symlinks, nested repositories) and any branches skipped.
 - If no identity is found in git config or paper config, ask for name and email once and
-  store them in the user config.
+  store them in the user config. *Today:* only git config is read; without an identity
+  `init` fails with the `git config --global user.…` commands and writes nothing.
 - If the folder is inside a cloud-sync root (OneDrive, Dropbox, iCloud Drive, Google Drive),
   warn and ask for confirmation (`--yes` skips the prompt). See [04-content](04-content.md#cloud-sync-folders).
 
@@ -82,7 +105,7 @@ Other states it reports:
 - With no paths, saves the whole draft. With paths, saves only those files, and the rest
   stays in the new draft. This replaces the staging area.
 - If `<message>` is missing and stdin is a TTY, prompt with one line (`Describe this save:`).
-  Otherwise it is an error. No `$EDITOR` by default. `paper config set editor …` opts in.
+  Otherwise it is a user error (exit 1). No `$EDITOR` by default. `paper config set editor …` opts in.
 - A path selects the file with exactly that path, or every file under it when it names a
   directory (`sections` and `sections/` are the same). Only whole path components match:
   `sec` does not select `sections/intro.tex`. `--all-but` saves everything except the
@@ -103,6 +126,8 @@ Other states it reports:
   commits. If git is on another branch (or detached), it refuses too and says to run
   `git switch <line>`.
 - An empty draft means a no-op: `Nothing to save.` (exit 0).
+- It prints the short change ID and message, the files saved, and the files left in the draft.
+  `--all-but` can't be combined with paths.
 - If conflict markers are still present in files being saved: warn, and require `--with-conflicts`.
 - **Effect:** the draft becomes a save on the current line, the line advances, a new empty
   draft is created, and git HEAD and the index are updated to match (I6).
@@ -117,15 +142,22 @@ tqlpvn  yesterday     Add ablation figure         ◆ arxiv-v1
 zzvoko  2026-09-10    Start project
 ```
 
+The tip of a line is marked with the line's name in parentheses, e.g. `(main)`. Times read
+`just now`, `N minutes ago`, `N hours ago`, `yesterday`, then the UTC date `YYYY-MM-DD`.
+
 `<path>` restricts the list to saves touching that file or anything under that directory
 (whole path components; a trailing `/` is optional). `-n` limits the number of saves. `--all` shows
-every line's saves, each once, and `--graph` draws the lines. The draft is not a save and is
+every line's saves, each once. `--graph` (draw the lines) is not yet available and fails with
+a user error. The draft is not a save and is
 not listed. IDs are the shortest unique change-ID prefix (min 4 letters), or 7 hash characters
 for saves made with plain git.
 
 ### `paper show <point>` (since v0.1)
 
 Metadata for the save (author, date, change ID, message, milestones) followed by its diff against its first parent (the first save shows every file as added).
+*Today:* the metadata and the list of changed files with their kind (`added`, `modified`,
+`deleted`); the file diffs come later. The date reads like `history` times; `--json` has the
+exact timestamp.
 `paper show @` shows the draft's unsaved changes against `last`. `<point>` follows the
 [points](01-concepts.md#points-how-you-name-a-state) rules.
 

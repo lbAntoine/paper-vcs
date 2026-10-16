@@ -1,0 +1,47 @@
+---
+source: crates/paper-cli/tests/history.rs
+expression: env.redact_json(&run.stdout)
+---
+{
+  "saves": [
+    {
+      "author": {
+        "email": "mina@uni.example",
+        "name": "Mina Park"
+      },
+      "change_id": "[ID]",
+      "commit": "[HASH]",
+      "id": "[ID]",
+      "message": "Rewrite intro",
+      "time": "[TIME]",
+      "tip_of": [
+        "main"
+      ]
+    },
+    {
+      "author": {
+        "email": "mina@uni.example",
+        "name": "Mina Park"
+      },
+      "change_id": "[ID]",
+      "commit": "[HASH]",
+      "id": "[ID]",
+      "message": "Add related work",
+      "time": "[TIME]",
+      "tip_of": []
+    },
+    {
+      "author": {
+        "email": "mina@uni.example",
+        "name": "Mina Park"
+      },
+      "change_id": "[ID]",
+      "commit": "[HASH]",
+      "id": "[ID]",
+      "message": "Start project",
+      "time": "[TIME]",
+      "tip_of": []
+    }
+  ],
+  "schema": 1
+}

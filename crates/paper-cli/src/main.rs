@@ -1,7 +1,9 @@
 //! The `paper` command-line interface: argument parsing, prompts and rendering over `paper-core`.
 
 mod cli;
+mod commands;
 mod error;
+mod panic;
 mod render;
 mod run;
 

@@ -1,0 +1,9 @@
+---
+source: crates/paper-cli/tests/save.rs
+expression: env.redact(&run.stdout)
+---
+Saved [ID]: Only main
+  modified  main.tex
+
+Left in the draft (not saved):
+  modified  related.tex
