@@ -155,11 +155,11 @@
       "id": "c6026c86",
       "title": "PV-006: Release pipeline (cargo-dist) + v0.1.0 acceptance run",
       "description": "",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "medium",
       "sprint": "v0.1",
       "created_at": "2026-09-25T12:32:57Z",
-      "updated_at": "2026-10-15T23:27:41Z"
+      "updated_at": "2026-10-16T22:19:13Z"
     },
     {
       "id": "156f45b9",
