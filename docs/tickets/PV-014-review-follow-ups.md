@@ -1,6 +1,6 @@
 # PV-014: review follow-ups from PV-011, PV-013, PV-005 and PV-004
 
-- **Status:** In progress
+- **Status:** Done
 - **Branch:** `feat/PV-014-review-follow-ups`
 - **Depends on:** PV-004, PV-005, PV-011, PV-013 (merged). Runs alone.
 - **Touches:** `crates/paper-cli/tests/common/mod.rs`, `crates/paper-cli/tests/*.rs` (and snapshots
@@ -103,6 +103,33 @@ Source tickets in brackets. "Test" means a test that fails before the fix.
 
 ## Summary
 
+All 14 deferred review items from PV-011, PV-013, PV-005 and PV-004 are closed.
+
+- Test reliability: the CLI test redaction replaces only whole tokens that are a prefix of a known
+  change ID or hash (`redact_ids`), so ordinary words are no longer rewritten. No existing
+  snapshot changed. The residual risk (a whole k–z word equal to an ID's first letters, 16^-n) is
+  documented. Shared `all_commits` helper and corrected comments in the resolve and history tests.
+- Error wording: file typos in `diff` get the file wording; a damaged `.git` at the `init` target
+  is a user error, also inside a parent repository (one predicate, `has_damaged_git`, for core and
+  CLI); the order-conflict direction; the `words` note; a Windows `unset` form; `.gitignore` read
+  and write errors split, with permission denied a user error.
+- Code: one `Origin` note; `ProfileSource` enum (JSON `detected` unchanged); `ConfigFile` keeps
+  existing bytes and line endings (mixed files, no final newline, CRLF multi-line strings) and the
+  comment above a key it edits; doc fixes and rewrapping.
+- `notes` in `config get`/`list` JSON (always present).
+- 20 consecutive full-suite runs with 0 failures on the final commit (608 tests each).
+
+Deviations: the `diff__diff_unknown_path` snapshot changed (item 4's rule); one RED redaction
+fixture constant was corrected; the comment drop above a key (pre-existing) was fixed here. After
+review round 2 approved, a one-line fix to the new raw/document check (it panicked in debug builds
+on CRLF multi-line strings) went in without a third round; the coordinator checked the diff and
+that its two tests fail before it.
+
+Follow-up: PV-015, a set value containing `
+` comes back as `
+` in a CRLF file
+(pre-existing).
+
 ## Handoff log
 
 ### RED · test-author · 2026-10-16
@@ -165,3 +192,12 @@ Deviations to review:
 ### GREEN (post-approval) · rust-engineer · 2026-10-16
 
 `consistent_raw` and its `debug_assert` compare with CRLF normalised on both sides (multi-line strings keep their CRLF); two tests added; the item-4 comment in inspect.rs reworded. fmt, clippy and the full suite pass.
+
+### Review round 2 · reviewer · 2026-10-16
+- Verdict: APPROVE. The blocker and major were fixed and re-probed with real files and the built binary (every file shape, damaged and valid `.git` forms, worktrees, nested repos).
+- MINOR (fixed after approval by coordinator decision): `consistent_raw` compared against a document that keeps CRLF in multi-line strings, so debug builds panicked on valid files and release builds rewrote their endings.
+- MINOR (fixed with it): the item-4 comment in inspect.rs.
+- Pre-existing, deferred to PV-015: a set value with `\r\n` round-trips as `\r\r\n` in a CRLF file.
+
+### Close · coordinator · 2026-10-16
+- Post-approval commit checked: the diff is the comparison and the comment only; both new tests panic on the previous `file.rs`. fmt and clippy clean; 20/20 full-suite runs, 0 failures.
