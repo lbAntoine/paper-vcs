@@ -116,6 +116,15 @@ fn the_repository_config_wins_over_the_global_one() {
     assert_eq!(identity.as_deref(), Some("Local Lou <lou@lab.example>"));
 }
 
+#[test]
+fn a_damaged_repository_is_an_error_not_a_silent_fallback() {
+    let dir = tempfile::tempdir().unwrap();
+    // A `.git` file that points nowhere: there is a repository here, but it can't be opened.
+    std::fs::write(dir.path().join(".git"), "gitdir: does/not/exist\n").unwrap();
+
+    assert!(configured_identity(dir.path()).is_err());
+}
+
 /// Runs this test binary again as a child with an isolated environment; the child body
 /// is `child_prints_identity`.
 fn identity_in_child(path: &Path, global: &Path) -> Option<String> {

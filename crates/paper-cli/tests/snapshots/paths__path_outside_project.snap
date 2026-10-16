@@ -1,0 +1,7 @@
+---
+source: crates/paper-cli/tests/paths.rs
+expression: env.redact(&run.stderr)
+---
+error: ../elsewhere.tex is outside this project
+  why:  Paper only works with files inside the project folder, [TMP]/work.
+  next: paper -C <project folder> <command>  # run paper on the project, and name files inside it

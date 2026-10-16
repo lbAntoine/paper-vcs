@@ -53,15 +53,17 @@ pub enum Command {
     Save {
         /// What changed, in a few words (asked for on a terminal when missing).
         message: Option<String>,
-        /// Save only these files or folders; the rest stays in the draft.
+        /// Save only these files or folders (relative to where you run paper); the rest stays in
+        /// the draft.
         paths: Vec<String>,
-        /// Save everything except these files or folders.
-        #[arg(long, num_args = 1.., conflicts_with = "paths")]
+        /// Save everything except this file or folder; repeat the flag for more.
+        #[arg(long, num_args = 1, action = clap::ArgAction::Append, conflicts_with = "paths")]
         all_but: Vec<String>,
     },
     /// List saves, newest first.
     History {
-        /// Only saves that touch this file, or anything under this folder.
+        /// Only saves that touch this file, or anything under this folder (relative to where you
+        /// run paper).
         path: Option<String>,
         /// Show the saves of every line, not just the current one.
         #[arg(long)]

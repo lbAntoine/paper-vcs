@@ -4,6 +4,7 @@ mod cli;
 mod commands;
 mod error;
 mod panic;
+mod paths;
 mod render;
 mod run;
 

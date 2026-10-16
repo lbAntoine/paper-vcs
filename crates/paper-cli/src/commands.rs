@@ -11,6 +11,7 @@ use paper_core::{ErrorKind, PaperError, Suggestion};
 use paper_git::{GitRepo, Identity, configured_identity};
 
 use crate::cli::{Cli, Command};
+use crate::paths::Paths;
 use crate::render::style::Style;
 use crate::render::{Verbosity, human, json};
 
@@ -73,18 +74,12 @@ fn save(
     verbosity: Verbosity,
     style: Style,
 ) -> Output {
-    let mut project = open(cli)?;
+    let (mut project, locator) = open(cli)?;
     let message = match message {
         Some(message) => message.to_owned(),
         None => prompt_for_message(cli),
     };
-    let selection = if !paths.is_empty() {
-        PathSelection::Only(paths.to_vec())
-    } else if !all_but.is_empty() {
-        PathSelection::AllBut(all_but.to_vec())
-    } else {
-        PathSelection::All
-    };
+    let selection = selection(&locator, paths, all_but)?;
     let outcome = project.save(&SaveRequest {
         message: message.clone(),
         paths: selection,
@@ -101,6 +96,43 @@ fn save(
         },
         || json::save(&outcome, &short_id, &message),
     ))
+}
+
+/// Which files a save takes, with paths made relative to the project folder.
+fn selection(
+    locator: &Paths,
+    paths: &[String],
+    all_but: &[String],
+) -> Result<PathSelection, PaperError> {
+    let resolve = |given: &[String]| -> Result<Vec<String>, PaperError> {
+        given.iter().map(|p| locator.project_path(p)).collect()
+    };
+    if !paths.is_empty() {
+        let resolved = resolve(paths)?;
+        // `.` names the whole project folder (or, from a subfolder, everything below it).
+        let whole_project = resolved.iter().any(String::is_empty);
+        Ok(if whole_project {
+            PathSelection::All
+        } else {
+            PathSelection::Only(resolved)
+        })
+    } else if !all_but.is_empty() {
+        let resolved = resolve(all_but)?;
+        if resolved.iter().any(String::is_empty) {
+            return Err(PaperError {
+                kind: ErrorKind::User,
+                message: "--all-but can't leave out the whole project".to_owned(),
+                why: "Everything would be excluded, so there would be nothing to save.".to_owned(),
+                next: vec![Suggestion {
+                    command: "paper save --all-but <file>".to_owned(),
+                    explanation: "name the files to leave in the draft".to_owned(),
+                }],
+            });
+        }
+        Ok(PathSelection::AllBut(resolved))
+    } else {
+        Ok(PathSelection::All)
+    }
 }
 
 /// The shortest unique ID of the newest save on the current line.
@@ -151,13 +183,19 @@ fn history(
             }],
         });
     }
-    let project = open_and_snapshot(cli)?;
+    let (project, locator) = open_and_snapshot(cli)?;
+    let path = match path {
+        Some(given) => Some(locator.project_path(given)?).filter(|p| !p.is_empty()),
+        None => None,
+    };
     let entries = project.history(&HistoryRequest {
-        path: path.map(str::to_owned),
+        path: path.clone(),
         all_lines: all,
         limit,
     })?;
-    let scope = path.map_or_else(|| "yet".to_owned(), |p| format!("touch {p}"));
+    let scope = path
+        .as_ref()
+        .map_or_else(|| "yet".to_owned(), |p| format!("touch {p}"));
     Ok(finish(
         cli,
         || human::history(&entries, now(), verbosity, style, &scope),
@@ -167,7 +205,7 @@ fn history(
 
 fn show(cli: &Cli, point: &str, verbosity: Verbosity, style: Style) -> Output {
     let point: Point = point.parse()?;
-    let project = open_and_snapshot(cli)?;
+    let (project, _) = open_and_snapshot(cli)?;
     let shown = project.show(&point)?;
     Ok(finish(
         cli,
@@ -203,12 +241,7 @@ fn start_dir(cli: &Cli) -> Result<PathBuf, PaperError> {
 }
 
 fn failure(message: &str, err: &dyn std::error::Error) -> PaperError {
-    PaperError {
-        kind: ErrorKind::Project,
-        message: message.to_owned(),
-        why: err.to_string(),
-        next: Vec::new(),
-    }
+    PaperError::project_failure(message, err)
 }
 
 /// `user.name` and `user.email` from git config, or the "who are you" error.
@@ -219,20 +252,21 @@ fn identity(path: &Path) -> Result<Identity, PaperError> {
 }
 
 /// Finds the project that contains the working folder (walking up) and opens it.
-fn open(cli: &Cli) -> Result<Project, PaperError> {
+fn open(cli: &Cli) -> Result<(Project, Paths), PaperError> {
     let start = start_dir(cli)?;
     let Some(workdir) = GitRepo::enclosing_workdir(&start) else {
         return Err(PaperError::not_a_project(&start, false));
     };
     let identity = identity(&workdir)?;
-    Ok(Project::open(&workdir, identity)?)
+    let paths = Paths::new(&start, &workdir);
+    Ok((Project::open(&workdir, identity)?, paths))
 }
 
 /// Opens the project and, unless `--no-snapshot`, records the working files first (I1).
-fn open_and_snapshot(cli: &Cli) -> Result<Project, PaperError> {
-    let mut project = open(cli)?;
+fn open_and_snapshot(cli: &Cli) -> Result<(Project, Paths), PaperError> {
+    let (mut project, paths) = open(cli)?;
     if !cli.no_snapshot {
         project.snapshot()?;
     }
-    Ok(project)
+    Ok((project, paths))
 }

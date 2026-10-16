@@ -58,15 +58,10 @@ struct InitOut {
 struct SaveOut {
     schema: u32,
     saved: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
     id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     change_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     commit: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     line: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
     saved_files: Vec<FileChange>,
     remaining: Vec<FileChange>,

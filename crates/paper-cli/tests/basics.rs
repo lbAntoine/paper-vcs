@@ -157,6 +157,10 @@ fn init_without_an_identity_suggests_git_config_and_writes_nothing() {
 }
 
 #[test]
+#[cfg_attr(
+    not(debug_assertions),
+    ignore = "PAPER_DEBUG_PANIC is compiled out of release builds"
+)]
 fn a_panic_exits_101_writes_a_crash_report_and_names_it() {
     let env = Env::new();
     env.project_with_three_saves();

@@ -41,7 +41,7 @@ fn write_report(report: &str) -> Option<PathBuf> {
     let dir = cache_dir()?;
     fs::create_dir_all(&dir).ok()?;
     let stamp = jiff::Timestamp::now().strftime("%Y%m%dT%H%M%SZ");
-    let path = dir.join(format!("crash-{stamp}.txt"));
+    let path = dir.join(format!("crash-{stamp}-{}.txt", std::process::id()));
     fs::write(&path, report).ok()?;
     Some(path)
 }

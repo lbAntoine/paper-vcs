@@ -1,0 +1,18 @@
+---
+source: crates/paper-cli/tests/json_errors.rs
+expression: env.redact_json(&run.stdout)
+---
+{
+  "error": {
+    "kind": "user",
+    "message": "This folder is not a paper project",
+    "next": [
+      {
+        "command": "paper init",
+        "explanation": "make this folder a paper project"
+      }
+    ],
+    "why": "[TMP]/work is not inside a paper project, and there is no git repository above it."
+  },
+  "schema": 1
+}

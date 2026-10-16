@@ -6,6 +6,8 @@ use std::process::ExitCode;
 use clap::Parser;
 use clap::error::ErrorKind as ClapKind;
 
+use paper_core::{ErrorKind, PaperError, Suggestion};
+
 use crate::cli::Cli;
 use crate::commands;
 use crate::error::{self, exit_code};
@@ -37,12 +39,41 @@ pub fn run() -> ExitCode {
 }
 
 /// `--help` and `--version` succeed; every other argument problem is a user error (1), not
-/// clap's default 2, which the CLI reserves for "needs attention".
+/// clap's default 2, which the CLI reserves for "needs attention". Under `--json` the error is
+/// the usual JSON object on stdout.
 fn clap_exit(err: &clap::Error) -> ExitCode {
-    let _ = err.print();
+    let wants_json = std::env::args_os().any(|arg| arg == "--json");
     match err.kind() {
-        ClapKind::DisplayHelp | ClapKind::DisplayVersion => ExitCode::SUCCESS,
-        _ => ExitCode::from(1),
+        ClapKind::DisplayHelp | ClapKind::DisplayVersion => {
+            let _ = err.print();
+            ExitCode::SUCCESS
+        }
+        _ if wants_json => {
+            print_stdout(&error::json(&argument_error(err)));
+            ExitCode::from(1)
+        }
+        _ => {
+            let _ = err.print();
+            ExitCode::from(1)
+        }
+    }
+}
+
+/// clap's complaint as a three-part error: its first line says what is wrong.
+fn argument_error(err: &clap::Error) -> PaperError {
+    let rendered = err.render().to_string();
+    let first = rendered
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .unwrap_or("the command line could not be understood");
+    PaperError {
+        kind: ErrorKind::User,
+        message: first.trim_start_matches("error: ").to_owned(),
+        why: "paper could not understand the command line.".to_owned(),
+        next: vec![Suggestion {
+            command: "paper --help".to_owned(),
+            explanation: "see the commands and options".to_owned(),
+        }],
     }
 }
 

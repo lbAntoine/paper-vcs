@@ -20,6 +20,10 @@ repo has no `.git/paper/` yet, commands other than `init` and `clone` fail with:
 Every command except `init`, `--help` and `--version` records the working files first
 (I1), unless `--no-snapshot`. `save` does so as part of saving.
 
+**Paths** on the command line (`save`, `history`) are relative to where you run paper (or to
+`-C`), so `paper history intro.tex` works from `sections/`. `./` and `\` (on Windows) are
+accepted, `.` means that folder, and a path outside the project is a user error.
+
 The identity (`user.name`, `user.email`) comes from git config for now. If it is missing,
 the command fails with the two `git config --global user.…` commands to run; asking
 interactively and the paper user config come later.
@@ -49,10 +53,13 @@ error: nothing to keep — you are on "main", which is not a try
 
 Errors go to stderr. With `--json`, an error is one object on stdout with the same exit
 code: `{"schema":1,"error":{"kind":"user","message":…,"why":…,"next":[{"command":…,"explanation":…}]}}`,
-where `kind` is `user`, `needs_attention` or `project`.
+where `kind` is `user`, `needs_attention` or `project`. Argument errors under `--json` use the
+same object (exit 1). Every error has all three parts: errors of kind `project` suggest
+reporting the problem at the issue tracker.
 
 **JSON output:** one object per command on stdout, with `"schema": 1`. Times are RFC 3339
-in the author's UTC offset. Change kinds are `added`, `modified` or `deleted`.
+in the author's UTC offset. Change kinds are `added`, `modified` or `deleted`. Every key is always present, with `null`
+when a value doesn't apply (e.g. the ID of a save that wasn't made).
 
 ---
 
@@ -112,8 +119,8 @@ sizes for binary files, taken from the line diff. `paper status` snapshots first
   Otherwise it is a user error (exit 1). No `$EDITOR` by default. `paper config set editor …` opts in.
 - A path selects the file with exactly that path, or every file under it when it names a
   directory (`sections` and `sections/` are the same). Only whole path components match:
-  `sec` does not select `sections/intro.tex`. `--all-but` saves everything except the
-  matches.
+  `sec` does not select `sections/intro.tex`. `--all-but` (one path per flag, repeatable: `--all-but a --all-but b`) saves everything except
+  the matches.
 - A path with no unsaved changes is an error that lists every such path
   (`None of these paths has unsaved changes: …`), and nothing is written. This catches
   typos, in `--all-but` too.

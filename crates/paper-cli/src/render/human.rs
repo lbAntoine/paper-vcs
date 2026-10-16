@@ -186,11 +186,7 @@ pub fn show(shown: &Shown, now: i64, verbosity: Verbosity, style: Style) -> Stri
         let _ = writeln!(out, "Line:    latest save of {}", lines.join(", "));
     }
     if verbosity.verbose {
-        let _ = writeln!(
-            out,
-            "Git:     {}",
-            style.dim(&format!("(commit {})", short_hash(&entry.commit)))
-        );
+        let _ = writeln!(out, "Commit:  {}", short_hash(&entry.commit));
     }
     out.push('\n');
     if shown.changes.is_empty() {

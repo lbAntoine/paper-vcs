@@ -56,11 +56,20 @@ impl PaperError {
 
     /// A failure of paper's own state or of the machine; `cause` is named in `why`.
     fn project(message: impl Into<String>, cause: &dyn std::error::Error) -> Self {
+        Self::project_failure(message, cause)
+    }
+
+    /// A [`ErrorKind::Project`] error: `why` names `cause` and its sources, and `next` asks
+    /// for a report at the issue tracker.
+    pub fn project_failure(message: impl Into<String>, cause: &dyn std::error::Error) -> Self {
         Self {
             kind: ErrorKind::Project,
             message: message.into(),
             why: cause_chain(cause),
-            next: Vec::new(),
+            next: vec![Suggestion::new(
+                "report it at https://github.com/lbAntoine/paper-vcs/issues",
+                "include what you ran and the message above",
+            )],
         }
     }
 
@@ -279,7 +288,7 @@ impl From<ResolveError> for PaperError {
                 back,
                 available,
             } => Self::user(
-                format!("There is no save {back} before the last one"),
+                format!("`last~{back}` goes further back than this line's saves"),
                 format!("The line '{line}' has only {available} saves."),
                 history(),
             ),
@@ -390,6 +399,10 @@ mod tests {
 
     fn assert_project(error: &PaperError) {
         assert_eq!(error.kind, ErrorKind::Project, "{error:?}");
+        assert!(
+            !error.next.is_empty(),
+            "every error has all three parts: {error:?}"
+        );
         assert_filled(error);
     }
 

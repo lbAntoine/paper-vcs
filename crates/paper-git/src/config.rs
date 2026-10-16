@@ -19,7 +19,11 @@ use crate::{GitError, Identity};
 ///
 /// Never.
 pub fn configured_identity(path: &Path) -> Result<Option<Identity>, GitError> {
-    let (name, email) = if let Ok(repo) = gix::discover(path) {
+    // Start at the nearest folder that exists: `paper init new-folder` asks before it is made.
+    let start = path.ancestors().find(|p| p.exists()).unwrap_or(path);
+    let in_repository = start.ancestors().any(|p| p.join(".git").exists());
+    let (name, email) = if in_repository {
+        let repo = gix::discover(start).context("open the repository")?;
         let config = repo.config_snapshot();
         (
             value(config.string("user.name")),

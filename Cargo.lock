@@ -1309,6 +1309,7 @@ version = "0.1.0-dev"
 dependencies = [
  "assert_cmd",
  "clap",
+ "dunce",
  "insta",
  "jiff",
  "paper-core",

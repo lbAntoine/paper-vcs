@@ -227,3 +227,23 @@ exit codes. The CLI is the first real front-end over `paper-core`.
 - NITs: `NotEnoughHistory` wording; `-v show` double parentheses; crash report names collide within a second; panic test fails under `--release`.
 - Coordinator decisions: fix everything in this round. Paths are fixed here, not in PV-011. Strip the Windows verbatim prefix now rather than waiting for CI. `--all-but` repeats (`--all-but a --all-but b`). Argument errors under `--json` are JSON too. Project errors suggest reporting at the issue tracker. JSON keys always present (`null` when absent). Adding tests is authorised; don't weaken any.
 - Coordinator: main (PV-010) merged into the branch as 8f32d38 before this round; no conflicts.
+
+### GREEN (review round 1) · rust-engineer · 2026-10-16
+
+- JSON errors: new `tests/json_errors.rs` (user error, not-a-project, project error with exit 3,
+  clap argument errors, empty stderr) with 5 new snapshots; human project-error snapshot too.
+- Paths: new `paths.rs` resolves `save`/`history` paths against the start folder, drops `.`,
+  normalises `\` (Windows), and rejects paths outside the project (user error). Unit tests plus
+  `tests/paths.rs` (from `sections/`, `./`, `..`, outside, `history .`). Absolute paths work.
+- Windows: test helper uses `dunce::canonicalize` (new workspace dep `dunce`, also used by the CLI
+  for the symlink-spelling fallback).
+- `--all-but`: one value per flag, repeatable; test that the message after it stays the message.
+- Clap errors under `--json` print the JSON user-error object (detected by scanning for `--json`).
+- Project errors get a "report it at <issue tracker>" suggestion (`PaperError::project_failure`,
+  public); `assert_project` now requires `next`. JSON keys are always present (`null`);
+  existing snapshots were unchanged.
+- `configured_identity`: global fallback only when no `.git` exists above the (nearest existing)
+  path; other discovery errors are returned; test with a damaged `.git` file.
+- Nits: `NotEnoughHistory` wording, `-v show` prints `Commit:  abc1234`, crash report names add
+  the pid, panic test ignored in release builds (release test run passes).
+- Specs: 02-cli global behaviour, save, history.
