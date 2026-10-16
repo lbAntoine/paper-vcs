@@ -3,11 +3,15 @@
 use paper_git::GitError;
 
 use super::Project;
+use super::diff::file_diff;
 use super::history::HistoryEntry;
 use super::resolve::ResolveError;
 use super::save::SaveError;
 use crate::name::LineName;
+use paper_diff::FileDiff;
+
 use crate::snapshot::{ChangeKind, Skipped};
+use crate::tree_diff::diff_trees;
 
 /// How `status` reads the draft.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,7 +73,52 @@ impl Project {
     /// # Panics
     ///
     /// Never.
-    pub fn status(&mut self, _options: &StatusOptions) -> Result<Status, StatusError> {
-        todo!("PV-010")
+    pub fn status(&mut self, options: &StatusOptions) -> Result<Status, StatusError> {
+        let (skipped, large) = if options.snapshot {
+            let state = self.snapshot()?;
+            (state.skipped, state.large)
+        } else {
+            (Vec::new(), Vec::new())
+        };
+        let line = self.view.current();
+        let tip_tree = self.repo.read_commit(&line.tip)?.tree;
+        let draft_tree = self.repo.read_commit(&line.draft)?.tree;
+        let old = self.repo.tree_files(&tip_tree)?;
+        let new = self.repo.tree_files(&draft_tree)?;
+
+        let mut changes = Vec::new();
+        for change in diff_trees(&self.repo, &tip_tree, &draft_tree)? {
+            let diff = file_diff(&self.repo, old.get(&change.path), new.get(&change.path))?;
+            let stat = match diff {
+                FileDiff::Text(text) => ChangeStat::Lines {
+                    added: text.added,
+                    removed: text.removed,
+                },
+                FileDiff::Identical => ChangeStat::Lines {
+                    added: 0,
+                    removed: 0,
+                },
+                FileDiff::Binary { old_size, new_size } => ChangeStat::Bytes {
+                    old: old_size,
+                    new: new_size,
+                },
+            };
+            changes.push(StatusEntry {
+                path: change.path,
+                kind: change.kind,
+                stat,
+            });
+        }
+
+        let known = self.known()?;
+        let tip = self.repo.read_commit(&line.tip)?;
+        let last = self.entry(&tip, &known);
+        Ok(Status {
+            line: self.view.current_line().clone(),
+            last,
+            changes,
+            skipped,
+            large,
+        })
     }
 }

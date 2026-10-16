@@ -266,21 +266,28 @@ fn restoring_a_file_that_already_matches_is_a_no_op() {
 
 #[test]
 fn restore_never_touches_symlinks_and_reports_symlinks_in_the_from_tree() {
-    let (dir, mut project) = project_with(&[("a.tex", "a\n")]);
-    // A symlink committed with plain git is in the `from` tree but never written by paper.
+    let (dir, project) = project_with(&[("a.tex", "a\n")]);
+    // A symlink committed with plain git is in that save's tree. Only paper's view decides
+    // what `last` is, so point the line's tip at that commit (a later version adopts it).
+    let old_tip = project.view().current().tip.to_string();
     std::os::unix::fs::symlink("a.tex", dir.path().join("link")).unwrap();
     git(dir.path(), &["add", "link"]);
     git(dir.path(), &["commit", "-m", "link"]);
+    let link_save = git(dir.path(), &["rev-parse", "HEAD"]);
+    let view_path = dir.path().join(".git/paper/view.json");
+    let view = fs::read_to_string(&view_path).unwrap();
+    assert!(view.contains(&old_tip));
+    fs::write(&view_path, view.replace(&old_tip, link_save.trim())).unwrap();
+    let mut project = Project::open(dir.path(), identity()).unwrap();
     fs::remove_file(dir.path().join("link")).unwrap();
     write(dir.path(), "link", "plain file now\n");
 
-    let restored = restore(&mut project, &["link"], Some("last")).ok();
+    let restored = restore(&mut project, &["link"], Some("last")).unwrap();
 
-    // Whatever the outcome for the commit-level state, the user's file is not overwritten.
+    // Skipped files are never overwritten; the symlink entry is reported.
     assert_eq!(read(dir.path(), "link"), "plain file now\n");
-    if let Some(restored) = restored {
-        assert_eq!(restored.skipped, vec!["link".to_owned()]);
-    }
+    assert_eq!(restored.skipped, vec!["link".to_owned()]);
+    assert_eq!(restored.changes, vec![]);
 }
 
 #[test]

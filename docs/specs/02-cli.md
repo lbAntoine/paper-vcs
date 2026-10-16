@@ -77,6 +77,10 @@ Other states it reports:
 - Office files kept at their previous version because they were being written;
 - an empty draft (`Nothing unsaved.`).
 
+Until word diffs arrive (v0.3), each change shows line counts (`+12 −3 lines`) for text and
+sizes for binary files, taken from the line diff. `paper status` snapshots first (I1);
+`--no-snapshot` reads the stored draft instead and lists no skipped or large files.
+
 ### `paper save [<message>] [<paths>…] [--all-but <paths>…]` (since v0.1)
 
 - With no paths, saves the whole draft. With paths, saves only those files, and the rest
@@ -143,11 +147,27 @@ Text defaults to `--words` from v0.3 on. From v0.7, `.docx` gets a text diff, an
 summary (see [04-content](04-content.md#diff)). `--lines` on an Office file shows the line
 diff of the extracted text, which is handy for piping.
 
+Paths restrict the output to those files, or to everything under a directory (whole path
+components). A path that names no file in either save is an error listing every such path,
+so a typo never looks like "no differences"; a path that exists but is unchanged prints
+nothing. `--stat` summarises with the line counts of each file's diff. The front-end
+snapshots before comparing against `@`.
+
 ### `paper restore <paths>… [--from <point>]` (since v0.1)
 
 Replaces those paths in the draft with their content at `<point>` (default `last`). Paths
-that don't exist at `<point>` are deleted. Undoable. There is no "are you sure?", because
-undo exists.
+that don't exist at `<point>` are deleted. Paths follow the rule of `paper save` (a file, or
+everything under a directory), and at least one is required. Undoable. There is no "are you
+sure?", because undo exists.
+
+The draft is snapshotted before anything is overwritten, so the previous content always
+exists as a commit; the activity log that `undo` reads arrives in v0.2. A path that matches
+no file in the draft or at `<point>` is an error listing every such path, and nothing is
+written. Files that already match are left alone, the executable bit is kept, empty
+directories are removed, and a file can be restored over a directory of the same name (and
+back). Files `paper` never records (symlinks, over-size files, nested repositories) are never
+overwritten or deleted, and are listed as skipped. Git's index and HEAD are untouched, so
+plain `git status` shows the restored files as unstaged changes.
 
 ### `paper undo` / `paper redo` / `paper activity [-n <N>]` (since v0.2)
 

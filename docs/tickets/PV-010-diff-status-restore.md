@@ -141,3 +141,23 @@ completes the v0.1 command set (`status`, `diff --lines`, `restore`).
   is asserted only if restore succeeds). Tighten it if the implementation chooses a definite
   outcome. The `UnknownPaths` order asserted is the order the user gave.
 - Questions: none.
+
+### GREEN · rust-engineer · 2026-10-16
+
+- Implemented `Project::diff`, `status` and `restore` in `project/{diff,status,restore}.rs`.
+  `diff.rs` exports a `pub(super) file_diff` helper that `status` reuses for its line counts.
+  `history.rs`: `entry` became `pub(super)` (visibility only) so `status` can build `last`.
+- `restore` skips (reports in `Restored.skipped`) symlink entries in the `from` tree, paths the
+  snapshot skipped (or under a skipped nested repository), and anything that is a symlink on
+  disk. Deletions run first, then empty parent directories are pruned, then writes (atomic,
+  mode 0755/0644), then a second snapshot.
+- Specs: only the three sections of `02-cli.md` (status line counts and `--no-snapshot`, diff
+  typo guard and `--stat`, restore rules).
+- Test change: the symlink restore test now points the view's tip at a plain-git commit holding
+  a symlink (edits `view.json`, reopens) because `resolve` only knows paper's lines, and
+  asserts `skipped == ["link"]`, no changes and the user's file intact. Nothing else weakened.
+- Follow-up: `restore` runs its first snapshot before the unknown-path check, so a refused
+  restore still records the draft (harmless, I1).
+- Test fix: `status.rs` asserted `last.message == "first draft"`, but `save_all` is a no-op there
+  (`init` already saved the starting files, as the RED note says), so the tip is "Start project".
+  The assertion now expects that message; the line, commit and counts assertions are unchanged.

@@ -81,7 +81,8 @@ fn status_reports_line_last_save_and_sorted_changes_with_counts() {
         status.line.to_string(),
         project.view().current_line().to_string()
     );
-    assert_eq!(status.last.message, "first draft");
+    // `Project::init` made the only save; `save_all` above had nothing to save.
+    assert_eq!(status.last.message, "Start project");
     assert_eq!(status.last.commit, project.view().current().tip);
     assert_eq!(
         stat_of(&status),
