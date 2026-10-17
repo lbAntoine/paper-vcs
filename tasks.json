@@ -15,11 +15,11 @@
       "id": "e1a0c019",
       "title": "PV-019: project lock with a 5 s wait (std File::try_lock)",
       "description": "GitHub issue #37. Size S. Parallel with PV-017.",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "high",
       "sprint": "v0.2-a",
       "created_at": "2026-10-17T08:47:11Z",
-      "updated_at": "2026-10-17T08:47:11Z"
+      "updated_at": "2026-10-17T08:53:37Z"
     },
     {
       "id": "e1a0c020",
