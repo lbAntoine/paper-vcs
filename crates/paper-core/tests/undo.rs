@@ -135,7 +135,7 @@ fn stored(dir: &Path) -> (String, String, String, String, BTreeMap<String, Vec<u
         git(dir, &["for-each-ref", "--format=%(refname) %(objectname)"])
             .lines()
             .filter(|line| !line.starts_with("refs/paper/keep "))
-            .map(|line| format!("{line}\n"))
+            .flat_map(|line| [line, "\n"])
             .collect(),
         git(dir, &["ls-files", "--stage"]),
         // Read the file: `symbolic-ref` fails on a detached HEAD.
