@@ -3,7 +3,7 @@
 Each version is small, shippable and demo-able. Each ships with a GitHub Release and a
 short changelog entry written in researcher words. The target is **one version every
 2–3 weeks**. Plain git is always available underneath, so every version is usable on its
-own. Starting at v0.3, users can already share work by running `git push`.
+own. Since v0.1, users can already share work by running `git push`.
 
 ## v0.1: Walking skeleton (local, single line)
 
