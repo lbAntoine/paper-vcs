@@ -8,7 +8,7 @@ use paper_core::config::Settings;
 use paper_core::profile::Profile;
 use paper_core::project::{
     HistoryRequest, InitError, LockOptions, PathSelection, Project, SaveOutcome, SaveRequest,
-    has_damaged_git,
+    UndoError, UndoOutcome, has_damaged_git,
 };
 use paper_core::{ErrorKind, PaperError, Suggestion};
 use paper_git::{GitRepo, Identity};
@@ -19,6 +19,7 @@ use crate::inspect;
 use crate::paths::Paths;
 use crate::prompt;
 use crate::render::style::Style;
+use crate::render::undo::{self, Verb};
 use crate::render::{Verbosity, human, json};
 use crate::settings;
 
@@ -54,6 +55,8 @@ pub fn execute(cli: &Cli, style: Style) -> Output {
         } => inspect::diff(cli, args, paths, *words, *stat, since.as_deref(), style),
         Command::Config { action } => config_cmd::run(cli, action),
         Command::Activity { limit } => activity(cli, *limit, style),
+        Command::Undo { to } => undo(cli, to.as_deref()),
+        Command::Redo => undo_family(cli, Verb::Redo, Project::redo),
         Command::Restore { paths, from } => inspect::restore(cli, paths, from.as_deref()),
     }
 }
@@ -231,6 +234,30 @@ fn activity(cli: &Cli, limit: usize, style: Style) -> Output {
         cli,
         || human::activity(&entries, now(), style),
         || json::activity(&entries),
+    ))
+}
+
+/// `paper undo` and `paper undo --to <id>`.
+fn undo(cli: &Cli, to: Option<&str>) -> Output {
+    match to {
+        Some(prefix) => undo_family(cli, Verb::GoBack, |project| project.undo_to(prefix)),
+        None => undo_family(cli, Verb::Undo, Project::undo),
+    }
+}
+
+/// Opens the project (core snapshots first, so the CLI doesn't), runs one undo-family command
+/// and renders what it did.
+fn undo_family(
+    cli: &Cli,
+    verb: Verb,
+    run: impl FnOnce(&mut Project) -> Result<UndoOutcome, UndoError>,
+) -> Output {
+    let (mut project, _) = open(cli)?;
+    let outcome = run(&mut project)?;
+    Ok(finish(
+        cli,
+        || undo::human(verb, &outcome),
+        || undo::json(verb, &outcome),
     ))
 }
 

@@ -252,7 +252,21 @@ impl Env {
     /// Replaces ids, hashes and the temp root in `text` so snapshots are stable.
     pub fn redact(&self, text: &str) -> String {
         let out = redact_root(text, &self.root.to_string_lossy());
-        redact_ids(&out, &self.known_ids())
+        let out = redact_ids(&out, &self.known_ids());
+        redact_op_ids(&out, &self.op_ids())
+    }
+
+    /// The id of every activity op on disk (the file names in `.git/paper/activity/ops`).
+    fn op_ids(&self) -> Vec<String> {
+        let Ok(dir) = fs::read_dir(self.work.join(".git/paper/activity/ops")) else {
+            return Vec::new();
+        };
+        dir.filter_map(Result::ok)
+            .filter_map(|entry| {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                name.strip_suffix(".json").map(str::to_owned)
+            })
+            .collect()
     }
 
     /// `(change id, commit hash)` of every commit git can see from the work folder.
@@ -339,6 +353,29 @@ pub fn redact_ids(text: &str, ids: &[(String, String)]) -> String {
     };
     for c in text.chars() {
         if is_token_char(c) {
+            token.push(c);
+        } else {
+            flush(&mut token, &mut out);
+            out.push(c);
+        }
+    }
+    flush(&mut token, &mut out);
+    out
+}
+
+/// Replaces whole tokens of `text` that are a prefix (at least four characters) of an activity
+/// op id with `[ID]`, like change ids. Op ids are random, so the full id and the short ids
+/// `paper` prints would otherwise differ on every run.
+pub fn redact_op_ids(text: &str, op_ids: &[String]) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut token = String::new();
+    let flush = |token: &mut String, out: &mut String| {
+        let is_op_id = token.len() >= 4 && op_ids.iter().any(|id| id.starts_with(token.as_str()));
+        out.push_str(if is_op_id { "[ID]" } else { token });
+        token.clear();
+    };
+    for c in text.chars() {
+        if c.is_ascii_alphanumeric() {
             token.push(c);
         } else {
             flush(&mut token, &mut out);

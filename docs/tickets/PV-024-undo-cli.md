@@ -84,3 +84,13 @@ what didn't.
 - Failure mode: all 19 fail with `unrecognized subcommand 'undo'` (clap exit 1). No stubs added: tests drive the binary only. Pre-existing tests all pass.
 - Snapshots not written (ids are random): `undo_to_unknown`, `undo_json`, `redo_json`, `undo_to_json` are for GREEN to accept and review.
 - Assumptions for GREEN: the warning counts skipped paths (`2 files were left ...`); `Skipped` list format reuses `restore`'s `path  (reason)`; `changed` entries are `{path, kind}`.
+
+### GREEN · rust-engineer · 2026-10-18
+
+- Added `paper undo [--to <id>]` and `paper redo` (`cli.rs`, `commands.rs`), rendering in the new `render/undo.rs` (human and JSON, fixed key set). Core snapshots first, so the CLI adds none. Errors reuse core's `PaperError` conversions.
+- Refactor: `restore`'s skipped-path rendering moved into `restore_skipped_lines` (human) and `restore_skipped` (JSON) so undo reuses it; `restore` output unchanged.
+- Human layout: `Undid: ...` / `Redid: ...` / `Went back to <id>: ...`, then `Changed N files:` (as restore lists them), `Skipped (left as they are):`, then the `files_match` warning. N counts skipped paths.
+- Deviation: for exactly one skipped path the warning reads `1 file was left as it is (see above); ... record it as an edit, ...` (grammar); two or more use the decided wording.
+- Tests: `tests/common/mod.rs` gained `redact_op_ids` (whole-token prefixes, at least 4 chars, of op file names in `.git/paper/activity/ops`), applied by `Env::redact`; change-id and hash handling is untouched and all existing snapshots are byte-identical. Four new snapshots accepted after review: `undo_to_unknown`, `undo_json`, `redo_json`, `undo_to_json`.
+- Spec: `02-cli.md` § undo/redo/activity only (output, JSON, walk-back in user words, edits first, activity kinds `undo`/`redo`; `go back to` entries have kind `undo`).
+- Verified with `INSTA_UPDATE=no` and an empty `GIT_CONFIG_GLOBAL`: fmt, clippy `-D warnings` and the full suite pass.

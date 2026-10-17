@@ -301,12 +301,35 @@ inside a separate git repository, a file paper doesn't track in the way, …). I
 
 ### `paper undo` / `paper redo` / `paper activity [-n <N>]` (since v0.2)
 
-- `undo` reverts the most recent activity entry that hasn't been undone. Repeated `undo`
-  goes further back. Before undoing, it snapshots, so edits made since then are themselves
-  an entry that can be redone.
-- `redo` re-applies the most recently undone entry. A new state-changing command clears
-  the redo stack.
-- `paper undo --to <activity-id>` restores the state right after that entry.
+- `undo` takes back the last thing you or paper did. Unsaved edits go first (`Undid: edited
+  sections/intro.tex`); then each `undo` steps one state further back, through every earlier
+  state, including states that were themselves undone. The files follow: the command rewrites
+  or deletes the files that differ. Before undoing, it snapshots, so edits made since the last
+  command are an entry of their own and can be redone.
+- `redo` brings back what you just undid (`Redid: save "Rewrite intro"`). Any other change
+  that adds to the activity log, including the edits a later command records, clears what you
+  can redo.
+- `paper undo --to <activity-id>` goes back to the state right after that entry, taking the
+  short id from `paper activity` (`Went back to a41c: save "Add related work"`). It can also go
+  to an entry that was undone. An empty, unknown or ambiguous id is a user error (exit 1) and
+  changes nothing; an ambiguous one lists the candidates.
+- Output: the first line says what happened (`Undid: <description>`, `Redid: <description>`,
+  `Went back to <id>: <description>`), then `Changed N files:` with the files the command
+  rewrote (listed as `restore` lists them), then `Skipped (left as they are):` with one
+  `path  (reason)` line per file paper does not record that it left alone (the reasons of
+  `restore`). If any file was skipped, a last line warns: `2 files were left as they are (see
+  above); your next paper command will record them as edits, and that clears what you can
+  redo.` (`1 file was left as it is ... record it as an edit ...` for a single file.) When
+  there is nothing to take back or bring back, the output is `Nothing to undo.` or `Nothing to
+  redo.` and the exit code is 0.
+- After a plain `git commit` or `git switch`, `undo`, `redo` and `undo --to` refuse with the
+  errors of `save` and change nothing.
+- `--json`: `{"schema":1,"outcome","entry","changed","skipped","files_match"}`, every key
+  always present. `outcome` is `undone`, `redone`, `went_back`, `nothing_to_undo` or
+  `nothing_to_redo`. `entry` is `{"id","short_id","time","kind","description"}` (what was
+  undone, redone or gone back to) or `null`; `changed` is `[{"path","kind"}]` and `skipped` is
+  `[{"path","reason",...}]`, as in `restore --json`; `files_match` is `false` when skipped files
+  keep their own content, `true` otherwise, and `null` when nothing happened.
 - `activity [-n <N>] [--json]` lists the entries from the current head back, newest first
   (default 20). It doesn't snapshot first, so listing the log never adds to it, but it takes
   the lock like every command. Each line is `<id>  <time>  <description>`: the shortest
@@ -323,15 +346,16 @@ b7e0  9 minutes ago   edited sections/intro.tex, main.tex
 
   Descriptions: `edited a.tex, b.tex, c.tex and 2 more` (sorted, at most three paths),
   `save "<first line of the message>"`, `restore <paths> from <point in paper's spelling, or last>`, `start the project`,
-  `adopt the git repository`, `upgrade to paper format 2`. Several restored paths are listed
+  `adopt the git repository`, `upgrade to paper format 2`, `undo: <description of what was undone>`,
+  `redo: <description>` and `go back to <id>: <description>`. Several restored paths are listed
   in the order given, separated by `, `, at most three then `and N more`; restoring the whole
   project is `restore everything from <point>`. A point is written in paper's spelling, so
   `last~0` is `last`.
   `-n` must be at least 1. The listing reads the operations on the chain from `head`; if one of
   them is damaged or missing, the command stops with a project error and lists nothing.
   `--json`: `{"schema":1,"entries":[{"id","short_id","time","kind","description"}]}`, every key
-  always present; `time` is RFC 3339, `kind` is `init`, `migrate`, `snapshot`, `save` or
-  `restore`.
+  always present; `time` is RFC 3339, `kind` is `init`, `migrate`, `snapshot`, `save`,
+  `restore`, `undo` or `redo` (`go back to` entries have kind `undo`).
 
 ### Lines: `paper try`, `keep`, `drop`, `switch`, `lines` (since v0.4)
 

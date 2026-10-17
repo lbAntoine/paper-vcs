@@ -1,0 +1,7 @@
+---
+source: crates/paper-cli/tests/undo.rs
+expression: env.redact(&run.stderr)
+---
+error: No entry in the activity log starts with 'zzzz'
+  why:  Nothing was undone or changed. A typo in the id is the usual cause; ids are made of the digits 0-9 and the letters a-f, and are the first column of the activity list.
+  next: paper activity  # list the entries and their ids

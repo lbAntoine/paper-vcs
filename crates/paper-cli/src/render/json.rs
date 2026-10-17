@@ -290,7 +290,7 @@ pub fn activity(entries: &[ActivityEntry]) -> String {
     })
 }
 
-fn op_kind_name(kind: OpKind) -> &'static str {
+pub(super) fn op_kind_name(kind: OpKind) -> &'static str {
     match kind {
         OpKind::Init => "init",
         OpKind::Migrate => "migrate",
