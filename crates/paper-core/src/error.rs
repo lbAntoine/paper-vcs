@@ -12,7 +12,7 @@ use crate::point::ParsePointError;
 use crate::profile::gitignore::GitignoreError;
 use crate::project::{
     DiffError, HistoryError, InitError, OpenError, ResolveError, RestoreError, SaveError,
-    ShowError, StatusError,
+    ShowError, StatusError, UndoError,
 };
 
 /// Who has to act, which decides the CLI exit code.
@@ -725,6 +725,12 @@ impl From<StatusError> for PaperError {
             StatusError::Resolve(inner) => inner.into(),
             StatusError::Git(_) => Self::project("Paper could not read the draft", &error),
         }
+    }
+}
+
+impl From<UndoError> for PaperError {
+    fn from(_error: UndoError) -> Self {
+        todo!("PV-023: teaching errors for undo")
     }
 }
 

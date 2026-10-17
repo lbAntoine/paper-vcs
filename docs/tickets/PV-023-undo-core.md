@@ -106,3 +106,29 @@ back out of the files, and `redo` replays them. The CLI commands are PV-024.
 ## Summary
 
 ## Handoff log
+
+### RED · test-author · 2026-10-18
+
+- Tests: `crates/paper-core/tests/undo.rs`, 23 tests. All fail on `todo!()` in `Project::undo` (18) or
+  `Project::undo_to` (5). Every pre-existing test still passes; fmt and clippy are clean (run with an
+  empty `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_NOSYSTEM=1`, `INSTA_UPDATE=no`).
+- Coverage: undo/redo of a save (byte-level files, refs, `git log`, `status --porcelain`, HEAD, fsck,
+  marker absent); edits entry on undo with unsaved edits; adds/deletes and emptied folders; redo cleared
+  by a new command and by new edits; `NothingToUndo`/`NothingToRedo` record nothing; op bookkeeping
+  (`position`, `redo`, `view`, kind) read from op files; `activity` descriptions; `undo --to` on the
+  chain, on a redo stack only, by full id, with unsaved edits; ambiguous (crafted op files) and unknown
+  prefixes with teaching errors via `PaperError`; undo of a restore; refusals after a plain-git commit,
+  `git checkout -b`, detached HEAD (undo, redo and `--to`, files edited, nothing written); ignored file
+  skipped like restore (`Blocked` + `KeptForSwap`); a `#[cfg(unix)]` symlink test; one scripted session
+  (edit, save, restore, edit, undo x4 + nothing, redo x4 + nothing) with exact state at each step.
+- Stubs: `crates/paper-core/src/project/undo.rs` (`Undone`, `UndoOutcome`, `UndoError`, `Project::{undo,
+  redo, undo_to}`), `OpKind::{Undo, Redo}` (plus their names in `paper-cli` `render/json.rs`, needed to
+  compile), `impl From<UndoError> for PaperError` (`todo!()`).
+- API choices the tests pin: `UndoError::Save(SaveError)` carries `save`'s refusals;
+  `UnknownEntry { prefix }`, `AmbiguousEntry { prefix, candidates: Vec<ActivityEntry> }`;
+  `undo_to(&str)`; the refusal check happens before the snapshot (like `save`); the unknown/ambiguous
+  tests run on a clean tree.
+- Not tested: the `checkout-pending` marker's file format (the ticket does not define one; PV-025 hook
+  needed to observe it mid-checkout). Only its absence afterwards is asserted.
+- The symlink test is weak on purpose (symlink and target untouched); how the snapshot treats a tracked
+  file replaced by a symlink decides whether a skip is reported.

@@ -13,6 +13,7 @@ mod restore;
 mod restore_plan;
 mod save;
 mod status;
+mod undo;
 
 use std::fs;
 use std::io;
@@ -37,6 +38,7 @@ pub use resolve::{Candidate, PointKind, ResolveError, Resolved};
 pub use restore::{RestoreError, RestoreRequest, RestoreSkip, Restored, SkippedPath};
 pub use save::{DraftState, PathSelection, SaveError, SaveOutcome, SaveRequest, Saved};
 pub use status::{ChangeStat, Status, StatusEntry, StatusError, StatusOptions};
+pub use undo::{UndoError, UndoOutcome, Undone};
 
 /// Version of the on-disk format in `.git/paper/`. Migrations are keyed on it.
 pub const FORMAT_VERSION: u32 = 2;
