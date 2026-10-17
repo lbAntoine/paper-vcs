@@ -174,7 +174,11 @@ the local view and warns: `This was already shared; your co-authors still have i
 ## Git interop
 
 Paper treats git as a peer that may change things between runs. In step 3, it compares the
-actual repo with `exported.json`:
+actual repo with `exported.json`. *Planned for v0.4 (roadmap § v0.4: Interop); the table
+below is the target behaviour.* *Today (v0.1 to v0.3):* paper does not import external
+changes. When the line moved under it, `save` refuses and writes nothing, and the error names
+`git log <line>`. After a `git pull`, `status` shows the pulled edits as unsaved changes and
+`history` doesn't list the pulled saves. Syncing with co-authors is v0.6.
 
 | External change (via `git`) | Paper's reaction |
 |---|---|

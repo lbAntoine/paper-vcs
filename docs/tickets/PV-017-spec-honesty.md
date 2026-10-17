@@ -55,3 +55,29 @@ Keep the specs' style: a short "*Today:* …" or "(since v0.N)" note, not a rewr
 ## Summary
 
 ## Handoff log
+
+### DOCS · rust-engineer · 2026-10-17
+
+Docs only, no code changed. Edited README (status note, "Everything is undoable"), 02-cli §
+`paper init`, § `paper save`, § `paper restore`, § Escape hatches, and 03-architecture § Git interop.
+
+Checked with the built binary (isolated env, `git init -b main`, throwaway folder, deleted):
+- `paper help concepts`, `help git`, `help large-files`: each prints `error: unrecognized
+  subcommand '<topic>'`, exit 1.
+- Pull scenario (bare remote, push from clone A with `paper init`, push a `b.txt` commit from clone B, `git pull` in A):
+  `status` shows `Draft (unsaved): new b.txt +1 −0 lines`; `history` shows only `Start project`;
+  `paper save "mine"` exits 1 with "The line 'main' was changed outside paper ... Paper can't
+  save on top of that yet ... next: git log main".
+- `init --help` and `save --help` have no `--yes` or `--with-conflicts`; no cloud-sync check in the code.
+
+Versions, from `docs/specs/05-roadmap.md`:
+- Importing external git changes: "v0.4: Safe experiments" bullet "Interop: `git checkout` and branch creation imported correctly".
+- Syncing with co-authors: "v0.6: Collaboration" (`clone`, `remote`, `sync`, `share`).
+- Cloud-sync warning: "v0.7: Office documents" bullet "...and the cloud-sync folder warning at `init`/`clone`".
+- `--with-conflicts`: "v0.4" bullet "Fast-forward or merge on keep, in-progress keep with conflicts, `keep --abort`".
+- `help large-files`: "v0.3" bullet "`warn_mb` / `max_mb`, "Skipped" in `status`, `help large-files`". The roadmap names no
+  version for `help concepts` / `help git`; only "v0.8: Hardening" says "`paper help` topics complete", so I wrote "no version given".
+- Undo: "v0.2: Nothing is ever lost" (`undo`, `redo`, `activity`).
+
+Deviation: the README "Everything is undoable" bullet also got "(from v0.2)", which the ticket's scope didn't list but fits "README states what works today".
+Follow-up: the spec's `--yes` flag and `warn` at init are also unimplemented (noted in 02-cli).
