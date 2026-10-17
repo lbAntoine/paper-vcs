@@ -5,7 +5,7 @@ use std::fmt::Write as _;
 
 use paper_core::profile::Profile;
 use paper_core::project::FileDiffEntry;
-use paper_core::project::{HistoryEntry, Initialized, ProfileSource, Saved, Shown};
+use paper_core::project::{ActivityEntry, HistoryEntry, Initialized, ProfileSource, Saved, Shown};
 use paper_core::snapshot::{Change, ChangeKind, SkipReason, Skipped};
 
 use super::Verbosity;
@@ -207,6 +207,35 @@ pub fn history(
             );
         }
         out.push('\n');
+    }
+    out
+}
+
+/// `paper activity`: one line per entry, `<id>  <time>  <description>`.
+pub fn activity(entries: &[ActivityEntry], now: i64, style: Style) -> String {
+    if entries.is_empty() {
+        return "No activity yet.\n".to_owned();
+    }
+    let id_width = entries
+        .iter()
+        .map(|e| e.short_id.chars().count())
+        .max()
+        .unwrap_or(0);
+    let mut out = String::new();
+    for entry in entries {
+        let id = format!("{:<id_width$}", entry.short_id);
+        let seconds = entry
+            .time
+            .parse::<jiff::Timestamp>()
+            .map_or(now, jiff::Timestamp::as_second);
+        let time = format!("{:<TIME_WIDTH$}", relative_time(seconds, now));
+        let _ = writeln!(
+            out,
+            "{}  {}  {}",
+            style.id(&id),
+            style.dim(&time),
+            entry.description
+        );
     }
     out
 }

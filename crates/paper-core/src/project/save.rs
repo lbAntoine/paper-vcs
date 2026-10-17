@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use paper_git::{ChangeId, CommitId, FileKind, GitError, NewCommit, TreeEdit};
 
 use super::{Project, draft_ref, line_ref, signature_now, write_draft};
-use crate::activity::{ActivityError, OpKind};
+use crate::activity::{ActivityError, OpKind, describe};
 use crate::name::LineName;
 use crate::snapshot::{Change, ChangeKind, Skipped, SnapshotError, StatCache, snapshot};
 use crate::tree_diff::diff_trees;
@@ -109,14 +109,15 @@ impl Project {
     ///
     /// [`SaveError`] if the working files can't be read or the repository can't be written.
     pub fn snapshot(&mut self) -> Result<DraftState, SaveError> {
-        self.snapshot_as(OpKind::Snapshot, "record the working files")
+        self.snapshot_as(OpKind::Snapshot, None)
     }
 
-    /// [`Project::snapshot`], recording the op (if the draft changed) under `kind`.
+    /// [`Project::snapshot`], recording the op (if the draft changed) under `kind`. Without a
+    /// `description`, the op says which files were edited since the previous draft.
     pub(super) fn snapshot_as(
         &mut self,
         kind: OpKind,
-        description: &str,
+        description: Option<&str>,
     ) -> Result<DraftState, SaveError> {
         let line_name = self.view.current_line().clone();
         let line = self.view.current().clone();
@@ -143,7 +144,16 @@ impl Project {
                     draft: rewritten,
                 },
             );
-            self.record(kind, view, description)?;
+            let description = if let Some(text) = description {
+                text.to_owned()
+            } else {
+                let paths: Vec<String> = diff_trees(&self.repo, &draft.tree, &snap.tree)?
+                    .into_iter()
+                    .map(|change| change.path)
+                    .collect();
+                describe::edited(&paths)
+            };
+            self.record(kind, view, &description)?;
         }
         snap.cache
             .save(&self.paper_dir)
@@ -250,7 +260,7 @@ impl Project {
                 draft: new_draft,
             },
         );
-        self.record(OpKind::Save, view, "save")?;
+        self.record(OpKind::Save, view, &describe::saved(message))?;
 
         Ok(SaveOutcome::Saved(Saved {
             save,

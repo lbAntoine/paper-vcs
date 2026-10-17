@@ -391,9 +391,9 @@ fn finish(
         fs::remove_dir_all(activity.root()).map_err(|source| io_error(activity.root(), source))?;
     }
     let description = if initialized.adopted {
-        "adopt project"
+        "adopt the git repository"
     } else {
-        "start project"
+        "start the project"
     };
     activity.append(OpKind::Init, &view, description)?;
     activity.make_durable()?;

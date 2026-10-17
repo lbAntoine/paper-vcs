@@ -78,7 +78,7 @@ struct Operation {
     position: OpId,             // logical "current" op for undo/redo
     redo: Vec<OpId>,            // the redo stack
     description: String,
-    // PV-021 adds `command` (argv as typed, for `paper activity`) and `user`.
+    // `description` is the researcher-facing text `paper activity` shows; there is no `command` or `user` field.
 }
 ```
 
@@ -181,10 +181,15 @@ value means "unknown". Besides every command that opens a project, project-level
 9. unlock
 ```
 
-**Snapshot and op folding.** For commands that change state, the snapshot from step 4 is
-folded into that command's operation. `undo` after `save` then brings the edits back as the
-draft, which is what users expect. For read-only commands (`status`, `diff`, `history`), a
-changed snapshot is recorded as its own `Snapshot` op, but only if something changed.
+**Edits entries.** When step 4 finds working-file edits made since the last command, it
+records them as their own `Snapshot` op (description `edited a.tex, b.tex …`), and the
+command then records its own op. A state-changing command therefore records at most two
+entries: edits found first (only if there were any), then the command. Read-only commands
+(`status`, `diff`, `history`, `show`) record only the edits entry, and only if something
+changed. `undo` steps back one entry at a time: undoing a `save` gives the unsaved edits back
+as the draft, and a second `undo` visibly undoes the edits entry. `paper activity` skips
+step 4 and reads only the ops reachable from `head`, never the `ops/` directory listing, so
+crash leftovers there are ignored.
 
 **Crash safety.** The source of truth is `activity/head`. Steps 7 and 8 are idempotent and
 are replayed by step 2. Losing power at any point leaves either the old state or the new

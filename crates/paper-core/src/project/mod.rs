@@ -1,5 +1,6 @@
 //! A paper project: a git repository plus paper's own state in `.git/paper/`.
 
+mod activity;
 mod diff;
 mod history;
 mod init;
@@ -25,6 +26,7 @@ use crate::name::LineName;
 use crate::snapshot::SnapshotOptions;
 use crate::view::{View, ViewError};
 
+pub use activity::ActivityEntry;
 pub use diff::{DiffError, DiffRequest, FileDiffEntry};
 pub use history::{HistoryEntry, HistoryError, HistoryRequest, ShowError, Shown};
 pub use init::{InitError, Initialized, ProfileSource, has_damaged_git};

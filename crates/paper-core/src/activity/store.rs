@@ -183,6 +183,36 @@ impl ActivityLog {
         Ok(())
     }
 
+    /// The ids named by the `*.json` files in `ops/`, from the file names alone (nothing is
+    /// read or parsed). Empty if the folder doesn't exist.
+    ///
+    /// # Errors
+    ///
+    /// [`ActivityError::Io`] if the folder can't be listed.
+    pub fn op_file_names(&self) -> Result<Vec<String>, ActivityError> {
+        let dir = self.ops_dir();
+        let entries = match fs::read_dir(&dir) {
+            Ok(entries) => entries,
+            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(source) => return Err(ActivityError::Io { path: dir, source }),
+        };
+        let mut names = Vec::new();
+        for entry in entries {
+            let path = entry
+                .map_err(|source| ActivityError::Io {
+                    path: dir.clone(),
+                    source,
+                })?
+                .path();
+            if path.extension().is_some_and(|x| x == "json")
+                && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
+            {
+                names.push(stem.to_owned());
+            }
+        }
+        Ok(names)
+    }
+
     /// How many `*.json` op files `ops/` holds (`.tmp*` files don't count); `usize::MAX`
     /// if the folder can't be listed, so callers treat it as "possibly real history".
     #[must_use]

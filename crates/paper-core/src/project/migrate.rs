@@ -25,7 +25,7 @@ pub(super) fn migrate_to_current(paper_dir: &Path) -> Result<(), OpenError> {
                 path: paper_dir.join(OLD_VIEW),
             })
         })?;
-        log.append(OpKind::Migrate, &view, "migrate from format 1")?;
+        log.append(OpKind::Migrate, &view, "upgrade to paper format 2")?;
     }
     log.make_durable()?;
     let version_path = paper_dir.join(VERSION_FILE);

@@ -10,7 +10,7 @@ use paper_git::{CommitId, FileKind, GitError};
 use super::Project;
 use super::resolve::ResolveError;
 use super::save::{SaveError, matches};
-use crate::activity::OpKind;
+use crate::activity::{OpKind, describe};
 use crate::fs_util::write_atomic;
 use crate::point::Point;
 use crate::snapshot::{Change, ChangeKind, SkipReason, Skipped};
@@ -212,7 +212,8 @@ impl Project {
         }
 
         // Record the new working files so the draft and the stat cache match them.
-        self.snapshot_as(OpKind::Restore, "restore files")?;
+        let description = describe::restored(&request.paths, &from_point.to_string());
+        self.snapshot_as(OpKind::Restore, Some(&description))?;
         Ok(Restored {
             from,
             changes,

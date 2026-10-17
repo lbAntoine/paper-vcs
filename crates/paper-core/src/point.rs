@@ -56,6 +56,19 @@ impl std::fmt::Display for DateSpec {
     }
 }
 
+impl std::fmt::Display for Point {
+    /// The spelling a researcher types, so messages can echo a point back.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Draft => f.write_str("@"),
+            Self::Last { back: 0 } => f.write_str("last"),
+            Self::Last { back } => write!(f, "last~{back}"),
+            Self::Date(spec) => write!(f, "date:{spec}"),
+            Self::Name(name) => f.write_str(name),
+        }
+    }
+}
+
 impl DateSpec {
     /// The Last instant the spec covers (inclusive). `date:2026-09-01` covers the whole day
     pub fn inclusive_end(self) -> DateTime {
@@ -161,6 +174,24 @@ fn validate_name(name: &str) -> Result<(), ParsePointError> {
 mod tests {
     use super::*;
     use jiff::civil::{date, datetime};
+
+    #[test]
+    fn every_point_parses_back_from_its_display() {
+        let points = [
+            Point::Draft,
+            Point::Last { back: 0 },
+            Point::Last { back: 3 },
+            Point::Date(DateSpec::Day(date(2026, 9, 1))),
+            Point::Date(DateSpec::Minute(datetime(2026, 9, 1, 14, 30, 0, 0))),
+            Point::Name("try/intro".to_owned()),
+            Point::Name("thèse".to_owned()),
+        ];
+        for point in points {
+            assert_eq!(point.to_string().parse::<Point>().unwrap(), point);
+        }
+        // Paper's spelling: `last~0` is recorded as `last`.
+        assert_eq!("last~0".parse::<Point>().unwrap().to_string(), "last");
+    }
 
     fn parse(s: &str) -> Result<Point, ParsePointError> {
         s.parse()

@@ -1,0 +1,44 @@
+---
+source: crates/paper-cli/tests/activity.rs
+expression: env.redact_json(&run.stdout)
+---
+{
+  "entries": [
+    {
+      "description": "save \"Rewrite intro\"",
+      "id": "[ID]",
+      "kind": "save",
+      "short_id": "[ID]",
+      "time": "[TIME]"
+    },
+    {
+      "description": "edited sections/intro.tex",
+      "id": "[ID]",
+      "kind": "snapshot",
+      "short_id": "[ID]",
+      "time": "[TIME]"
+    },
+    {
+      "description": "save \"Add related work\"",
+      "id": "[ID]",
+      "kind": "save",
+      "short_id": "[ID]",
+      "time": "[TIME]"
+    },
+    {
+      "description": "edited related.tex",
+      "id": "[ID]",
+      "kind": "snapshot",
+      "short_id": "[ID]",
+      "time": "[TIME]"
+    },
+    {
+      "description": "start the project",
+      "id": "[ID]",
+      "kind": "init",
+      "short_id": "[ID]",
+      "time": "[TIME]"
+    }
+  ],
+  "schema": 1
+}
