@@ -80,7 +80,7 @@ fn init_in_an_empty_folder_creates_a_first_save_and_an_empty_draft() {
 
     assert_eq!(
         fs::read_to_string(dir.path().join(".git/paper/version")).unwrap(),
-        "1\n"
+        "2\n"
     );
     git(dir.path(), &["fsck", "--strict", "--no-progress"]);
 }

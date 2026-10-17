@@ -111,12 +111,20 @@ fn exists(dir: &Path, path: &str) -> bool {
     dir.join(path).exists()
 }
 
+/// The head op's view, pretty-printed: `.git/paper/activity/head` names the op file.
+fn head_view_json(dir: &Path) -> String {
+    let head = fs::read_to_string(dir.join(".git/paper/activity/head")).unwrap();
+    let op = fs::read(dir.join(format!(".git/paper/activity/ops/{}.json", head.trim()))).unwrap();
+    let op: serde_json::Value = serde_json::from_slice(&op).unwrap();
+    serde_json::to_string_pretty(&op["view"]).unwrap()
+}
+
 /// Everything a refused restore must leave alone.
 fn stored(dir: &Path) -> (String, String, String) {
     (
         git(dir, &["for-each-ref", "--format=%(refname) %(objectname)"]),
         git(dir, &["ls-files", "--stage"]),
-        fs::read_to_string(dir.join(".git/paper/view.json")).unwrap(),
+        head_view_json(dir),
     )
 }
 
@@ -297,10 +305,17 @@ fn restore_never_touches_symlinks_and_reports_symlinks_in_the_from_tree() {
     git(dir.path(), &["add", "link"]);
     git(dir.path(), &["commit", "-m", "link"]);
     let link_save = git(dir.path(), &["rev-parse", "HEAD"]);
-    let view_path = dir.path().join(".git/paper/view.json");
-    let view = fs::read_to_string(&view_path).unwrap();
+    let view = head_view_json(dir.path());
     assert!(view.contains(&old_tip));
-    fs::write(&view_path, view.replace(&old_tip, link_save.trim())).unwrap();
+    // View changes are ops now: append one holding the edited view.
+    let edited = serde_json::from_str(&view.replace(&old_tip, link_save.trim())).unwrap();
+    paper_core::activity::ActivityLog::open(&dir.path().join(".git/paper"))
+        .append(
+            paper_core::activity::OpKind::Snapshot,
+            &edited,
+            "test: point the tip at a plain-git save",
+        )
+        .unwrap();
     drop(project); // a project holds the project lock until it is dropped
     let mut project = Project::open(dir.path(), identity()).unwrap();
     fs::remove_file(dir.path().join("link")).unwrap();

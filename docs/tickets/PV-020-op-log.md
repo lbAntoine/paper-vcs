@@ -100,3 +100,53 @@ yet, but nothing is overwritten any more either.
 ## Summary
 
 ## Handoff log
+
+### RED · test-author · 2026-10-17
+
+**New tests (31):** `crates/paper-core/tests/activity.rs` (29 tests, 28 fail, 1 passes by design:
+`plain_git_still_agrees_after_a_session_of_commands`, a regression guard) and 2 unit tests in
+`crates/paper-core/src/project/init_profile.rs` (`reprepare_*`, both fail).
+Existing tests now failing for the intended reason (13): `tests/save.rs` 10, `tests/restore.rs` 2,
+`tests/init.rs` 1. Everything else passes (paper-cli included).
+
+**How each group fails on main**
+- Project-level tests (init/save/restore/migration/damage): `.git/paper/activity/head` does not
+  exist (init still writes `view.json`), so the `head_id` helper's `unwrap` panics; `format_version_is_2`
+  fails on the assertion (`FORMAT_VERSION` is deliberately NOT bumped in the stubs).
+- `ActivityLog` / `OpId` tests and `reprepare` tests: `todo!()` panics in the stubs.
+- Damage tests call `head_id` first (to prove the project really is format 2), so they cannot pass
+  by accident through `UnsupportedFormat`.
+
+**Stubs added (all `todo!()`)**: `crates/paper-core/src/activity/mod.rs` (`OpId` with `FromStr`,
+`Display`, `random`; `OpKind`; `Op` (derive serde, fields as in the ticket, `time` is a `String`);
+`ActivityError {Io, Corrupt, MissingOp}`; `ActivityLog::{open, head, read, append}`);
+`ProfilePlan::reprepare` in `init_profile.rs`; `Activity(#[from] ActivityError)` variants on
+`OpenError`, `InitError`, `SaveError`, mapped to project errors in `error.rs` (plain plumbing, same
+arms as `View(_)`). Two `#[allow(dead_code)]` (field `root`, `reprepare`): drop them in GREEN.
+
+**Changes to existing tests (all listed)**
+- `tests/save.rs`: new helper `head_view_json`; `stored()` reads `view_json` through it instead of
+  `view.json`. No assertion changed.
+- `tests/restore.rs`: new helper `head_view_json`; `stored()` uses it. In
+  `restore_never_touches_symlinks_and_reports_symlinks_in_the_from_tree` (a test body, not a helper)
+  the rewrite of `view.json` became "read the head view, replace the tip, `ActivityLog::append` an
+  `OpKind::Snapshot` op with the edited view"; same assertions.
+- `tests/init.rs`: `init_in_an_empty_folder_...` asserted `version` == `"1\n"`; now `"2\n"` (the
+  binding format change).
+
+**Decisions for GREEN worth knowing**
+- Migration tests do not constrain the op count after an interrupted migration (a repeated step may
+  leave an orphan op), only that the head chain's root is a `migrate` op with parent `null`, the view
+  is the original, `view.json` is gone and `view.json.v1` exists. The clean path must give exactly
+  one op.
+- Op/head damage tests only require a project error with all three parts (rule 6), via `PaperError`.
+- Adoption re-read: not deterministically testable end to end, so unit tests call
+  `ProfilePlan::reprepare(workdir, choice)` (to be called after taking the lock in `adopt` and the
+  fresh-init path). GREEN may restructure but must keep equivalent unit tests.
+- The existing `an_interrupted_init_can_be_run_again` (version removed, then `init` again) must keep
+  passing with ops/head already on disk.
+- `View::save` still exists (its unit tests are untouched); GREEN removes it together with its tests.
+
+**Checks:** ran `activity` tests with `GIT_CONFIG_GLOBAL` pointing to an empty file and
+`GIT_CONFIG_NOSYSTEM=1`: same results (no dependence on a global identity). No Unix-only APIs, no
+`/tmp` paths in the new tests. fmt and clippy `-D warnings` clean. Questions: none.

@@ -13,6 +13,7 @@ use super::{
     write_draft,
 };
 use super::{LockError, LockOptions, ProjectLock};
+use crate::activity::ActivityError;
 use crate::config::ConfigError;
 use crate::name::LineName;
 use crate::profile::{Profile, gitignore::GitignoreError};
@@ -87,6 +88,8 @@ pub enum InitError {
     Snapshot(#[from] SnapshotError),
     #[error(transparent)]
     View(#[from] ViewError),
+    #[error(transparent)]
+    Activity(#[from] ActivityError),
     #[error("could not write {path}")]
     Io {
         path: PathBuf,

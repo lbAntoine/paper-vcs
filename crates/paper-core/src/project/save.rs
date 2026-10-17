@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use paper_git::{ChangeId, CommitId, FileKind, GitError, NewCommit, TreeEdit};
 
 use super::{Project, draft_ref, line_ref, signature_now, write_draft};
+use crate::activity::ActivityError;
 use crate::name::LineName;
 use crate::snapshot::{Change, ChangeKind, Skipped, SnapshotError, StatCache, snapshot};
 use crate::tree_diff::diff_trees;
@@ -91,6 +92,8 @@ pub enum SaveError {
     Snapshot(#[from] SnapshotError),
     #[error(transparent)]
     View(#[from] ViewError),
+    #[error(transparent)]
+    Activity(#[from] ActivityError),
     #[error("could not write {path}")]
     Io {
         path: PathBuf,

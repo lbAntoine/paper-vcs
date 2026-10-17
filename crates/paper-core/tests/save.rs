@@ -104,6 +104,14 @@ fn change_id_header(dir: &Path, rev: &str) -> String {
         .to_owned()
 }
 
+/// The head op's view, pretty-printed: `.git/paper/activity/head` names the op file.
+fn head_view_json(dir: &Path) -> String {
+    let head = fs::read_to_string(dir.join(".git/paper/activity/head")).unwrap();
+    let op = fs::read(dir.join(format!(".git/paper/activity/ops/{}.json", head.trim()))).unwrap();
+    let op: serde_json::Value = serde_json::from_slice(&op).unwrap();
+    serde_json::to_string_pretty(&op["view"]).unwrap()
+}
+
 /// Everything a refused or empty save must leave alone.
 #[derive(Debug, PartialEq, Eq)]
 struct Stored {
@@ -117,7 +125,7 @@ fn stored(dir: &Path, project: &Project) -> Stored {
     Stored {
         refs: git(dir, &["for-each-ref", "--format=%(refname) %(objectname)"]),
         view: project.view().clone(),
-        view_json: fs::read_to_string(dir.join(".git/paper/view.json")).unwrap(),
+        view_json: head_view_json(dir),
         index_tree: git(dir, &["ls-files", "--stage"]),
     }
 }

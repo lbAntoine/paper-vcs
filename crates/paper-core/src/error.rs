@@ -262,6 +262,7 @@ impl From<InitError> for PaperError {
             InitError::Git(_)
             | InitError::Snapshot(_)
             | InitError::View(_)
+            | InitError::Activity(_)
             | InitError::Io { .. } => Self::project("Paper could not set up this folder", &error),
         }
     }
@@ -540,9 +541,10 @@ impl From<OpenError> for PaperError {
                 )];
                 converted
             }
-            OpenError::Git(_) | OpenError::View(_) | OpenError::Io { .. } => {
-                Self::project("Paper could not open this project", &error)
-            }
+            OpenError::Git(_)
+            | OpenError::View(_)
+            | OpenError::Activity(_)
+            | OpenError::Io { .. } => Self::project("Paper could not open this project", &error),
         }
     }
 }
@@ -596,6 +598,7 @@ impl From<SaveError> for PaperError {
             SaveError::Git(_)
             | SaveError::Snapshot(_)
             | SaveError::View(_)
+            | SaveError::Activity(_)
             | SaveError::Io { .. } => Self::project("Paper could not save", &error),
         }
     }

@@ -19,6 +19,7 @@ use paper_git::{
     ChangeId, CommitId, GitError, GitRepo, GitTime, Identity, NewCommit, Signature, TreeId,
 };
 
+use crate::activity::ActivityError;
 use crate::name::LineName;
 use crate::snapshot::SnapshotOptions;
 use crate::view::{View, ViewError};
@@ -69,6 +70,8 @@ pub enum OpenError {
     Incomplete { path: PathBuf },
     #[error(transparent)]
     View(#[from] ViewError),
+    #[error(transparent)]
+    Activity(#[from] ActivityError),
     #[error("could not read {path}")]
     Io {
         path: PathBuf,
