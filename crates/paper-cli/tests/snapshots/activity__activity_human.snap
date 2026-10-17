@@ -1,0 +1,9 @@
+---
+source: crates/paper-cli/tests/activity.rs
+expression: env.redact(&run.stdout)
+---
+[ID]  [TIME]  save "Rewrite intro"
+[ID]  [TIME]  edited sections/intro.tex
+[ID]  [TIME]  save "Add related work"
+[ID]  [TIME]  edited related.tex
+[ID]  [TIME]  start the project

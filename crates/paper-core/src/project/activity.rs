@@ -1,0 +1,34 @@
+//! Listing the operation log for `paper activity`.
+
+use super::Project;
+use crate::activity::{ActivityError, OpId, OpKind};
+
+/// One line of `paper activity`: an operation, as the researcher sees it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActivityEntry {
+    pub id: OpId,
+    /// The shortest unique prefix of `id` among the listed entries, at least 4 characters.
+    pub short_id: String,
+    /// RFC 3339, as stored in the op.
+    pub time: String,
+    pub kind: OpKind,
+    /// In researcher vocabulary, as the command recorded it.
+    pub description: String,
+}
+
+impl Project {
+    /// The newest `limit` entries of the activity log, newest first: `head`, then back along
+    /// `parent`. Reads only the ops on that chain, never the other files in `ops/`. Does not
+    /// snapshot and does not record anything.
+    ///
+    /// # Errors
+    ///
+    /// [`ActivityError`] if `head` or an op on the chain is missing or damaged.
+    ///
+    /// # Panics
+    ///
+    /// Never.
+    pub fn activity(&self, _limit: usize) -> Result<Vec<ActivityEntry>, ActivityError> {
+        todo!("PV-021: list the head chain")
+    }
+}

@@ -53,6 +53,7 @@ pub fn execute(cli: &Cli, style: Style) -> Output {
             ..
         } => inspect::diff(cli, args, paths, *words, *stat, since.as_deref(), style),
         Command::Config { action } => config_cmd::run(cli, action),
+        Command::Activity { limit: _ } => todo!("PV-021: paper activity"),
         Command::Restore { paths, from } => inspect::restore(cli, paths, from.as_deref()),
     }
 }

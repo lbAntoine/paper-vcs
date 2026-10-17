@@ -6,8 +6,10 @@
 
 mod id;
 mod op;
+mod short;
 mod store;
 
 pub use id::{InvalidOpId, OpId};
 pub use op::{Op, OpKind};
+pub use short::{MIN_SHORT_ID, short_ids};
 pub use store::{ActivityError, ActivityLog};

@@ -83,3 +83,24 @@ entry is one step `paper undo` (PV-023/024) will be able to take back.
 ## Summary
 
 ## Handoff log
+
+### RED · test-author · 2026-10-17
+
+**Tests.**
+- `crates/paper-core/tests/activity.rs` (appended, section "PV-021"): 26 new tests. 23 fail, 3 pass on main.
+  - Descriptions and entry counts: init/adopt, migrate, save (edits + save, save alone, nothing to save), edits description (1 file, 3 sorted, `and 1 more`, `and 3 more`, add + delete), restore (edits + restore, `from last~1`, no-op, edits only), status (edits only if changed, `snapshot: false`).
+  - Listing: head chain with every field, limit, leftover files in `ops/` ignored, `activity` records and snapshots nothing.
+  - Short ids: 400 random ops (unique, >= 4 hex, minimal), unique among the listed entries only (limit 40), and the pure `short_ids` on crafted ids (no clash, shared prefixes, differ only in the last character, empty). Nothing depends on a particular random id.
+- `crates/paper-cli/tests/activity.rs` (new): 15 tests, all fail (the command is a `todo!()`). Human and JSON snapshots (`activity__activity_human.snap`, `activity__activity_json.snap`, written by hand, ids/times/padding redacted by insta filters), unique hex short ids, `-n`, default 20, fixed JSON key set, `--json` before and after the subcommand, no snapshot/no record, `status`/`diff`/`history`/`show` record edits only when files changed, save/restore/init entries, not-a-project error, busy project exit 3, `git fsck`/`status` clean.
+
+**Pass on main, acceptable.** `a_save_that_finds_nothing_to_save_records_nothing`, `a_restore_that_changes_nothing_records_nothing`, `status_without_a_snapshot_records_nothing`: they pin existing PV-020 behaviour the ticket keeps. Every test that pins a new rule (descriptions, listing, short ids, CLI) fails on main: wrong description (`record the working files`, `save`, `start project`), or `todo!()`. Existing tests all pass.
+
+**Stubs.** `paper_core::project::{ActivityEntry, Project::activity(&self, limit: usize) -> Result<Vec<ActivityEntry>, ActivityError>}` (new `project/activity.rs`; fields `id: OpId, short_id: String, time: String` (RFC 3339), `kind: OpKind, description: String`); `paper_core::activity::{short_ids(&[OpId]) -> Vec<String>, MIN_SHORT_ID}` (new `activity/short.rs`); CLI `Command::Activity { limit }` (`-n`, default 20) dispatching to `todo!()`.
+
+**Format choices the tests pin (decided from the Decisions section; please confirm).**
+- Edits description: `edited a, b, c` then ` and N more` with no comma before `and` (`edited a.tex, b.tex, c.tex and 1 more`). Paths are the files that differ from the previous draft (added, modified and deleted all count), sorted bytewise before truncating. The ticket's example `edited sections/intro.tex, main.tex` is not sorted; the acceptance criterion says sorted, so the tests follow the criterion.
+- `restore <path> from <point as typed>` (`last` when `--from` is absent).
+- Human line: `<short id>  <time padded to 14>  <description>`, like `history`. JSON `kind` is the lowercase op kind (`init`, `snapshot`, `save`, ...), `time` is the op's RFC 3339 time.
+- `short_ids` returns prefixes in input order, grows a prefix until no other id shares it.
+
+**Questions.** None blocking.
