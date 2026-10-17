@@ -1,6 +1,6 @@
 # PV-021: activity entries for every command; paper activity
 
-- **Status:** In progress
+- **Status:** Done
 - **Issue:** #39
 - **Branch:** `feat/PV-021-activity`
 - **Depends on:** PV-020 (operation log, merged). Runs alone.
@@ -82,6 +82,27 @@ entry is one step `paper undo` (PV-023/024) will be able to take back.
 
 ## Summary
 
+Every command's work shows up in `paper activity` in researcher words, one undoable step per
+entry.
+
+- Edits found when a command starts get their own entry (`edited a.tex, b.tex and 2 more`, paths
+  sorted), then the command records its own: `save "<subject>"` (first line of the message),
+  `restore <paths> from <point>` (`restore everything …` when the root is among them; points in
+  paper's spelling), `start the project` / `adopt the git repository`, `upgrade to paper format 2`.
+  Read-only commands record edits only when files changed; `activity` records nothing and
+  doesn't snapshot.
+- `paper activity [-n N] [--json]`: the head chain newest first, short ids unique against every
+  op file in `ops/` (at least 4 hex), relative times; `-n` at least 1; a damaged op stops the
+  listing with a project error.
+- Specs: I4 (one entry for edits found first, plus one for the command), 02-cli § activity,
+  03-architecture "Edits entries" (replacing "folded") and § Domain model.
+
+Deviations: the maintainer chose separate edits entries over folding (2026-10-17); two RED
+expectations corrected (snapshot spacing like `history`, not-a-project exits 1); short ids sized
+against all ops (review decision; noted on #42 for `undo --to`); `Display for Point`.
+
+Follow-up: #50 (PV-028) for multi-line messages in `history`.
+
 ## Handoff log
 
 ### RED · test-author · 2026-10-17
@@ -150,3 +171,7 @@ The JSON snapshot matches byte for byte. All other tests pass, with fmt and clip
 ### GREEN (post-approval) · rust-engineer · 2026-10-17
 
 A restore naming the root among other paths says `everything`; `-n 0` gets a researcher-worded error (exit 1) from a custom parser.
+
+### Review round 2 · reviewer · 2026-10-17
+- Verdict: APPROVE. Both majors confirmed fixed on the built binary; `short_ids_among` correct (temp files ignored, ids only grow); the changed test is stronger; the Point round-trip covers every variant; 02-cli matches the code.
+- Fixed after approval: "everything" when any restored path is the root; a researcher-worded `-n 0` error (exit 1).

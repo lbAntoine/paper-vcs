@@ -35,11 +35,11 @@
       "id": "e1a0c021",
       "title": "PV-021: every command records one operation (snapshot folding); paper activity",
       "description": "GitHub issue #39. Size M. Depends on PV-020.",
-      "status": "in_progress",
+      "status": "done",
       "priority": "high",
       "sprint": "v0.2-a",
       "created_at": "2026-10-17T08:47:11Z",
-      "updated_at": "2026-10-17T10:25:22Z"
+      "updated_at": "2026-10-17T21:51:26Z"
     },
     {
       "id": "e1a0c022",
