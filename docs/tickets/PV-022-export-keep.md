@@ -91,3 +91,24 @@ someone else's.
 ## Summary
 
 ## Handoff log
+
+### RED · test-author · 2026-10-18
+
+- `crates/paper-core/tests/export.rs` (new): 25 tests, no stubs needed (everything goes through
+  the existing public API: `Project`, `View`, files under `.git/paper/`, the `git` binary).
+- **17 fail on assertions** (no `refs/paper/keep`, no `exported.json`): export shape and refs for
+  new/adopted/reopened projects; the keep chain (first op names all commits, one keep commit per
+  op, parents = previous keep + new commits, empty tree, `paper keep-alive`, paper identity,
+  no keep for no-op commands); gc survival (reflogs expired first, then `gc --prune=now`, then
+  `cat-file -e` on every commit any op names); migration (format-1 rewrite, keep + exported.json);
+  missing `exported.json` gets one after `save`/`snapshot`; `check_in_sync` against
+  `exported.json` (refs behind the head op, exported.json naming them, save still allowed).
+- **8 pass on main, on purpose** (they pin behaviour the export step must not break): index
+  untouched by snapshot and by restore (main never touches the index there either; the tests
+  guard against the new export resetting it), index equals the tip tree after init and after
+  `save`, `save` refuses after a plain-git commit / `git switch` / plain-git commit with no
+  `exported.json` (fallback to the view), nothing under `refs/paper/*` is pushed.
+- Assumptions: `exported.json` lives at `.git/paper/exported.json`; keep parents are compared as
+  sets (order not pinned); a deleted `exported.json` is removed with `.ok()` so the test fails for
+  the right reason on main.
+- Existing tests unchanged and passing. Ran with empty `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_NOSYSTEM=1`.
