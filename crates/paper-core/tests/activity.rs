@@ -832,3 +832,33 @@ fn restore_records_its_result_as_a_restore_op_after_a_snapshot_op() {
     assert_eq!(ops[1]["kind"], "snapshot", "{ops:?}");
     assert_eq!(ops[0]["view"], view_value(&project));
 }
+
+#[test]
+fn init_will_not_delete_several_op_files_even_without_a_head() {
+    let dir = new_project_dir();
+    let mut project = Project::open(dir.path(), identity()).unwrap();
+    write(dir.path(), "a.tex", "two\n");
+    save_all(&mut project, "two");
+    drop(project);
+    let ops = op_files(dir.path());
+    assert!(ops.len() >= 2);
+    fs::remove_file(paper(dir.path()).join("version")).unwrap();
+    fs::remove_file(paper(dir.path()).join("activity/head")).unwrap();
+
+    let error = Project::init_with_profile(
+        dir.path(),
+        identity(),
+        &SnapshotOptions::default(),
+        Profile::builtin("generic"),
+    )
+    .unwrap_err();
+
+    assert!(
+        matches!(
+            error,
+            paper_core::project::InitError::ActivityLogInTheWay { .. }
+        ),
+        "{error:?}"
+    );
+    assert_eq!(op_files(dir.path()), ops);
+}

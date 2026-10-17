@@ -27,6 +27,7 @@ pub(super) fn migrate_to_current(paper_dir: &Path) -> Result<(), OpenError> {
         })?;
         log.append(OpKind::Migrate, &view, "migrate from format 1")?;
     }
+    log.make_durable()?;
     let version_path = paper_dir.join(VERSION_FILE);
     write_atomic(&version_path, format!("{FORMAT_VERSION}\n").as_bytes()).map_err(|source| {
         OpenError::Io {

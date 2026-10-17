@@ -396,6 +396,7 @@ fn finish(
         "start project"
     };
     activity.append(OpKind::Init, &view, description)?;
+    activity.make_durable()?;
     cache
         .save(&paper_dir)
         .map_err(|source| io_error(&paper_dir, source))?;
@@ -430,7 +431,7 @@ fn refuse_if_initialized(held: &Held, path: &Path) -> Result<(), InitError> {
     }
     let log = ActivityLog::open(&held.paper_dir);
     let leftover = match log.head() {
-        Ok(None) => true,
+        Ok(None) => log.op_file_count() <= 1,
         Ok(Some(tip)) => log
             .read(&tip)
             .is_ok_and(|op| op.kind == OpKind::Init && op.parent.is_none()),

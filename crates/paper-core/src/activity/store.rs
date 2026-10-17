@@ -163,13 +163,38 @@ impl ActivityLog {
         let head_path = self.head_path();
         fs_util::write_atomic(&head_path, format!("{}\n", op.id).as_bytes())
             .map_err(io_err(&head_path))?;
-        // `head`'s entry, then the `activity/` and `ops/` entries themselves (new on the
-        // first append): all durable before the caller writes `version`.
-        fs_util::sync_dir(&self.root).map_err(io_err(&self.root))?;
-        if let Some(paper_dir) = self.root.parent() {
-            fs_util::sync_dir(paper_dir).map_err(io_err(paper_dir))?;
-        }
+        self.make_durable()?;
         Ok(op)
+    }
+
+    /// Flushes `ops/`, `activity/` (so `head`'s entry) and the folder holding `activity/`.
+    /// `append` does it; callers about to write `version` do it again, so an earlier crash
+    /// that wrote `head` but not these flushes is covered.
+    ///
+    /// # Errors
+    ///
+    /// [`ActivityError::Io`] if a folder can't be flushed.
+    pub fn make_durable(&self) -> Result<(), ActivityError> {
+        let mut dirs = vec![self.ops_dir(), self.root.clone()];
+        dirs.extend(self.root.parent().map(Path::to_path_buf));
+        for dir in dirs {
+            fs_util::sync_dir(&dir).map_err(|source| ActivityError::Io { path: dir, source })?;
+        }
+        Ok(())
+    }
+
+    /// How many `*.json` op files `ops/` holds (`.tmp*` files don't count); `usize::MAX`
+    /// if the folder can't be listed, so callers treat it as "possibly real history".
+    #[must_use]
+    pub fn op_file_count(&self) -> usize {
+        match fs::read_dir(self.ops_dir()) {
+            Ok(entries) => entries
+                .filter_map(Result::ok)
+                .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
+                .count(),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => 0,
+            Err(_) => usize::MAX,
+        }
     }
 }
 

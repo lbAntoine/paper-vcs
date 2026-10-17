@@ -550,15 +550,6 @@ impl From<OpenError> for PaperError {
                 "This project was made by a different version of paper",
                 &error,
             ),
-            OpenError::Incomplete { .. } => {
-                let mut converted =
-                    Self::project("Paper's data for this project is incomplete", &error);
-                converted.next = vec![Suggestion::new(
-                    "paper init",
-                    "run it again to finish setting up (an earlier run may have been interrupted)",
-                )];
-                converted
-            }
             OpenError::Git(_)
             | OpenError::View(_)
             | OpenError::Activity(_)
@@ -877,7 +868,6 @@ mod tests {
         assert_project(&PaperError::from(OpenError::UnsupportedFormat {
             found: "7".to_owned(),
         }));
-        assert_project(&PaperError::from(OpenError::Incomplete { path: path() }));
         assert_project(&PaperError::from(OpenError::View(ViewError::Io {
             path: path(),
             source: io_error(),

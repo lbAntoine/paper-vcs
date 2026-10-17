@@ -67,8 +67,6 @@ pub enum OpenError {
         /// The holder's process id, when known.
         holder: Option<u32>,
     },
-    #[error("paper's state in {path} is incomplete")]
-    Incomplete { path: PathBuf },
     #[error(transparent)]
     View(#[from] ViewError),
     #[error(transparent)]

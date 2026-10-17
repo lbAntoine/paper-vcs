@@ -45,6 +45,11 @@ pub(crate) fn write_new(path: &Path, bytes: &[u8]) -> io::Result<()> {
 /// Whether a failed no-clobber persist means "this filesystem can't do that" rather than
 /// "the file exists" or a real failure.
 fn noclobber_unsupported(error: &io::Error) -> bool {
+    // macOS reports ENOTSUP (45), which std doesn't map to `Unsupported`.
+    #[cfg(target_vendor = "apple")]
+    if error.raw_os_error() == Some(45) {
+        return true;
+    }
     matches!(
         error.kind(),
         io::ErrorKind::Unsupported | io::ErrorKind::PermissionDenied

@@ -219,3 +219,6 @@ tests build them). Checks run with `INSTA_UPDATE=no`, empty `GIT_CONFIG_GLOBAL`,
 7. Restore's post-rewrite op is `OpKind::Restore` (`snapshot_as`); the pre-restore snapshot stays `snapshot`. Test added.
 9. Lock requirement documented on `append`; `sync_dir` ignores `InvalidInput` (EINVAL).
 New tests only; none weakened (`assert_clear_project_error` now also rejects a `paper init` suggestion).
+
+### GREEN (post-approval) · rust-engineer · 2026-10-17
+Removed `OpenError::Incomplete`; `make_durable` before every `version` write (init, migration); init cleanup with no head needs at most one `*.json` op file (test added); `write_new` fallback also accepts macOS ENOTSUP (45, `cfg(target_vendor = "apple")`).
