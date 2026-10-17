@@ -190,3 +190,6 @@ back out of the files, and `redo` replays them. The CLI commands are PV-024.
   "(unreadable operation file)" and no longer turns into an activity error.
 - Specs: step 8 wording, walk-back and skipped-path notes. NITs fixed (docs, `Resolved::To(Op)`, marker path).
 
+### GREEN (post-approval) · rust-engineer · 2026-10-18
+
+- Spec only: the checkout repair rule in 03-architecture § Command lifecycle is now the exact ordered version.

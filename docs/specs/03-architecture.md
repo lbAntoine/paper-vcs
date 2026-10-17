@@ -229,11 +229,16 @@ reported as skipped; everything is decided and every blob read before the first 
 deletions come before writes. `undo`, `redo` and `undo --to` write `checkout-pending` before
 step 6 (keep-alive and op), naming `from` (the head op the command started at) and `tree` (the
 target draft tree); they then record, rewrite the files from the current draft to the target
-tree, refresh the stat cache, and delete the marker. `restore` does not write it. Repair (PV-025)
-on open: if the marker exists and the head op's view has a draft tree equal to the marker's
-`tree`, finish the checkout (the op committed); if head is still the `from` op, the op never
-committed, so drop the marker. A crash anywhere in keep, op, export or checkout is then
-repairable. Finishing a checkout found pending after a crash is PV-025.
+tree, refresh the stat cache, and delete the marker. `restore` does not write it.
+
+Repair (PV-025), on open, if the marker exists, in this order: (1) head is `from`: the op never
+committed, so drop the marker; (2) otherwise, if head's parent is `from` and head's draft tree
+equals `tree`: finish the checkout, rewriting from `from`'s draft tree to `tree`; (3) otherwise
+drop the marker, because the files have been snapshotted since. When finishing, a file is
+overwritten or deleted only if its content still equals its version in one of the two trees; any
+other file is left alone and reported as skipped, so an edit made after the crash is never
+overwritten. Rules 1 and 2 can both hold when the draft didn't change; rule 1 then wins,
+harmlessly. A crash anywhere in keep, op, export or checkout is then repairable.
 
 **Crash safety.** The source of truth is `activity/head`. Steps 7 and 8 are idempotent and
 are replayed by step 2. Losing power at any point leaves either the old state or the new
