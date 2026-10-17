@@ -135,3 +135,20 @@ someone else's.
 - Spec: 03-architecture § On-disk layout (exported.json, keep commit shape, migration) and
   § Command lifecycle (record/export paragraph, steps 6-7, crash window -> PV-025).
 - No test assertion changed. Verified with `INSTA_UPDATE=no`, empty `GIT_CONFIG_GLOBAL`, fmt, clippy.
+
+### Review · reviewer · 2026-10-18
+- Verdict: CHANGES. Tests, clippy and fmt pass. Ordering keep → op → export, the index rule, `exported.json`, the keep chain's reachability by induction (gc probe after expiring reflogs), and "no ref writes outside export" verified.
+- BLOCKER: the migration exports with `Mode::Fresh`, which rewrites every ref and HEAD unchecked. Reproduced with the CLI: a plain-git commit on a v0.1 project, then `paper status` after upgrading, resets `main` to paper's old tip; `exported.json` then lets the next `save` orphan the commit for good. Breaks ADR-0002.
+- MAJOR: nothing tests "leave alone what plain git moved"; the three `save` tests return before export runs.
+- MINOR: the migration's keep-ref reuse is unsafe if `view.json` changed after a crashed attempt.
+- MINOR: after HEAD was left alone and the user switches back, the next export resets the index anyway.
+- MINOR (pre-existing): `status` doesn't say the line moved outside paper.
+- NIT: `Mode::Fresh` is now only for `init`.
+- GREEN's additions: keep "leave plain-git moves alone" and "adopt keeps the index"; replace the keep reuse.
+- Coordinator decisions:
+  - The migration exports with `Mode::Follow { previous: &view }`; tests for a plain-git commit and for a `git switch` on a format-1 project before the first open (refs and HEAD unchanged, `save` refuses).
+  - Tests for leave-alone through `snapshot` and `restore`: ref and HEAD untouched, `exported.json` keeps paper's value, index bytes unchanged, draft ref still exported, a later `save` refuses.
+  - The migration always appends a keep commit; adjust the activity tests' `git_state` helper to exclude `refs/paper/keep` and keep-alive commits (authorised: the behaviour adds that ref on purpose).
+  - Count a head change for the index reset only when git's HEAD differs from the current line.
+  - Document that `Fresh` is for `init` only; fix the spec's migration sentence.
+  - The `status` follow-up becomes its own issue.
