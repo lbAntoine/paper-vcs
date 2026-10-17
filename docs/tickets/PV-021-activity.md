@@ -116,3 +116,5 @@ entry is one step `paper undo` (PV-023/024) will be able to take back.
 2. `activity_outside_a_project_is_a_three_part_error` expects exit 3; not-a-project is a `User` error (exit 1) everywhere else (`basics` snapshots, `PaperError::not_a_project`). Test should say 1.
 
 The JSON snapshot matches byte for byte. All other tests pass, with fmt and clippy clean.
+
+**RED test corrections, authorised by the coordinator.** (1) `activity__activity_human.snap`: only the spacing changed, to the 14-wide time padding `history__history_human.snap` shows (`[ID]  [TIME]        ...`). (2) `activity_outside_a_project_is_a_three_part_error` now expects exit 1 (a user error), not 3. Both blockers above are resolved.

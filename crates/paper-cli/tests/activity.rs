@@ -244,7 +244,7 @@ fn init_leaves_one_entry_and_adopting_says_so() {
 #[test]
 fn activity_outside_a_project_is_a_three_part_error() {
     let env = Env::new();
-    env.paper(&["activity"]).assert_three_part_error(3);
+    env.paper(&["activity"]).assert_three_part_error(1);
 }
 
 #[test]
