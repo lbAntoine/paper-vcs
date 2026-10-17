@@ -119,3 +119,18 @@ operation log (PV-020) relies on it.
 **Pre-existing tests touched** (all only drop the first `Project` before a second `Project::open`, assertions unchanged; comparisons use a cloned `View` taken before the drop): `paper-core/tests/init.rs::open_reads_back_the_project_init_created`, `tests/restore.rs::restore_never_touches_symlinks_and_reports_symlinks_in_the_from_tree`, `tests/save.rs::{snapshot_persists_the_new_draft_in_the_ref_and_the_view, opening_the_project_after_a_save_sees_the_new_tip_and_draft, a_reopened_project_can_save_again}`. No CLI test or helper needed changes. The `fd-lock` mention in the workspace `Cargo.toml` comment is left (not a dependency).
 
 **Checks.** fmt, clippy `-D warnings`, full suite green with `INSTA_UPDATE=no`; the new lock tests also pass with `GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1`.
+
+### Review · reviewer · 2026-10-17
+- Verdict: CHANGES. Tests, clippy and fmt pass on macOS. Polling, the debug-only wait override, read-only commands locking, the crash test and the five adapted tests (drop only) all checked.
+- BLOCKER: on Windows the lock is mandatory, so the pid can't be read from the locked file by anyone else; `holder` is always `None` and four tests assert the pid unconditionally (from std/Win32 semantics; Windows not run locally).
+- MAJOR: `adopt` unlinks `.git/paper/lock` on failure, which breaks mutual exclusion (a waiter can end up locking an unlinked file while a third process locks a new one); it also runs after writes, contrary to its comment.
+- MINOR: `why` hardcodes "5 seconds" though the wait is a parameter; `next` suggests `paper status`, which blocks the same way, and the pid isn't in `next`.
+- MINOR: the spec should state the Windows pid behaviour; project-level `config set` writes `paper.toml` without the lock.
+- MINOR: the workspace `Cargo.toml` comment still plans fd-lock.
+- NITs: `LockOptions::default()`; missing `# Panics` on `ProjectLock::acquire` and `Project::open_with`.
+- Coordinator decisions:
+  - The pid hint goes to a sidecar `.git/paper/lock-holder` that is never locked (written after taking the lock, readable on every OS); update the on-disk layout.
+  - Adoption runs every read-only check before creating `.git/paper/`; when `.git/paper/` already exists, lock first (Busy before AlreadyInitialized); re-check `version` under the lock; the lock file is never unlinked (record it as an invariant in the spec). Existing tests unchanged.
+  - Project-level `config set` takes the project lock.
+  - Fix the minors and NITs.
+  - Adding tests is authorised; don't weaken any.
