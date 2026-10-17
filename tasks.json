@@ -5,11 +5,11 @@
       "id": "e1a0c017",
       "title": "PV-017: spec honesty: version-mark promises v0.1 doesn't keep (git pull, importing external changes, paper help, --with-conflicts, cloud-sync warning, undoable restore)",
       "description": "GitHub issue #34. From the v0.1 goal verification",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "medium",
       "sprint": "v0.2-a",
       "created_at": "2026-10-17T08:32:47Z",
-      "updated_at": "2026-10-17T08:47:11Z"
+      "updated_at": "2026-10-17T08:53:37Z"
     },
     {
       "id": "e1a0c019",
