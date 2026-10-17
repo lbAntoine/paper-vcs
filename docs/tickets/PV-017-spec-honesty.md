@@ -1,6 +1,6 @@
 # PV-017: spec honesty: version-mark promises v0.1 doesn't keep
 
-- **Status:** In progress
+- **Status:** Done
 - **Issue:** #34
 - **Branch:** `feat/PV-017-spec-honesty`
 - **Depends on:** none. Runs in parallel with PV-019 (lock), which edits other sections.
@@ -54,6 +54,22 @@ Keep the specs' style: a short "*Today:* …" or "(since v0.N)" note, not a rewr
 
 ## Summary
 
+The specs and README now say what v0.1 does today and which version brings each promised
+behaviour (versions from 05-roadmap; "*Today:*" claims checked with the built binary).
+
+- README: plain statement that `git pull` isn't supported (status shows pulled edits as unsaved,
+  history hides the saves, `save` refuses); a lead-in marks the feature list as where paper is going.
+- Importing external git changes starts in v0.4 (`git checkout` and branch creation), full
+  interop-table coverage is v0.8, co-authors' work arrives with `sync` in v0.6 (02-cli § save,
+  § Escape hatches; 03-architecture § Git interop, which also gives the exact `save` refusals).
+- Version marks: cloud-sync warning at `init` (v0.7), `save --with-conflicts` (v0.4),
+  `help large-files` (v0.3; `help concepts`/`git` have no roadmap version), restore undoable
+  from v0.2.
+- 05-roadmap intro: `git push` sharing works since v0.1, not v0.3.
+
+Deviations: docs only, so no RED phase (engineer wrote the docs, reviewer reviewed); the
+05-roadmap intro sentence was added to scope during review.
+
 ## Handoff log
 
 ### DOCS · rust-engineer · 2026-10-17
@@ -101,3 +117,7 @@ covered by tests"; the intro now reads "Since v0.1, users can already share work
 ### DOCS (post-approval) · rust-engineer · 2026-10-17
 
 Final wording: save import sentence, README "branch creation", restore rewrap.
+
+### Review round 2 · reviewer · 2026-10-17
+- Verdict: APPROVE. Branch-change and new-commit refusals confirmed on the built binary; every version citation matches 05-roadmap; scope avoids PV-019's sections; no code changed.
+- Fixed after approval: the § save import sentence, "branch creation" in the README, one rewrap.
