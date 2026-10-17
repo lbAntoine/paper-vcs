@@ -7,7 +7,8 @@ use std::path::PathBuf;
 
 use paper_git::{ChangeId, CommitId, FileKind, GitError, NewCommit, TreeEdit};
 
-use super::{Project, draft_ref, line_ref, signature_now, write_draft};
+use super::export::{ExportError, read_exported};
+use super::{Project, line_ref, signature_now, write_draft};
 use crate::activity::{ActivityError, OpKind, describe};
 use crate::name::LineName;
 use crate::snapshot::{Change, ChangeKind, Skipped, SnapshotError, StatCache, snapshot};
@@ -92,6 +93,8 @@ pub enum SaveError {
     Snapshot(#[from] SnapshotError),
     #[error(transparent)]
     Activity(#[from] ActivityError),
+    #[error(transparent)]
+    Export(#[from] ExportError),
     #[error("could not write {path}")]
     Io {
         path: PathBuf,
@@ -135,8 +138,6 @@ impl Project {
                 message: draft.message.clone(),
                 change_id: draft.change_id,
             })?;
-            self.repo
-                .set_ref(&draft_ref(&line_name), &rewritten, "paper: snapshot")?;
             let view = self.view.with_line(
                 line_name,
                 Line {
@@ -245,14 +246,8 @@ impl Project {
         })?;
         let new_draft = write_draft(&self.repo, &draft.tree, &save, &signature)?;
 
-        // The line ref is the commit point: until it moves, plain git sees no save.
-        self.repo
-            .set_ref(&draft_ref(&line_name), &new_draft, "paper: save")?;
-        self.repo.reset_index_to(&save_tree)?;
-        self.repo
-            .set_ref(&line_ref(&line_name), &save, "paper: save")?;
-        // The window between the line ref and the op is deliberate until PV-025 makes
-        // half-done commands recoverable.
+        // `record` writes the keep-alive commit, the op, and then the refs and index; the
+        // window between the op and the export is repaired by PV-025.
         let view = self.view.with_line(
             line_name.clone(),
             Line {
@@ -280,7 +275,16 @@ impl Project {
                 found: head,
             });
         }
-        if self.repo.find_ref(&line_ref(line))?.as_ref() != Some(&self.view.current().tip) {
+        // What paper last wrote; a project from before `exported.json` falls back to the view.
+        let tip = &self.view.current().tip;
+        let written = read_exported(&self.paper_dir)
+            .and_then(|exported| exported.ref_value(&line_ref(line)).map(str::to_owned))
+            .unwrap_or_else(|| tip.as_str().to_owned());
+        if self
+            .repo
+            .find_ref(&line_ref(line))?
+            .is_none_or(|found| found.as_str() != written)
+        {
             return Err(SaveError::OutOfSyncWithGit { line: line.clone() });
         }
         Ok(())

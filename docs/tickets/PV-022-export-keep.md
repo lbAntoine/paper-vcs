@@ -112,3 +112,26 @@ someone else's.
   sets (order not pinned); a deleted `exported.json` is removed with `.ok()` so the test fails for
   the right reason on main.
 - Existing tests unchanged and passing. Ran with empty `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_NOSYSTEM=1`.
+
+### GREEN · rust-engineer · 2026-10-18
+
+- New `crates/paper-core/src/project/export.rs`: `write_keep` (keep commit, then `refs/paper/keep`),
+  `export` (draft and line refs, HEAD, index, `exported.json` via `write_atomic`), `read_exported`
+  (a missing, unreadable or other-schema file is `None`), `ExportError` (public; `Export` variants
+  added to `SaveError`, `InitError`, `OpenError` and their `PaperError` arms).
+- `Project::record` is now keep -> op -> export. `snapshot_as`, `save`, `init` (fresh and adopt) and
+  migration no longer write refs, HEAD or the index. `check_in_sync` compares the line ref with
+  `exported.json`, falling back to the view.
+- Index: reset only when the current line's tip (or the head line) differs from what was last
+  written (`exported.json`, else the previous view). `init` of a new or empty repository resets it;
+  adopting a repository with history leaves the index as it was (staged changes stay staged).
+- Deviations/additions (not in the ticket, both to avoid clobbering plain git): the export leaves
+  alone a `refs/heads/<line>` or HEAD that plain git moved since paper last wrote it, and keeps the
+  old value in `exported.json` so `save` still refuses. Without this, `paper snapshot` after a
+  `git switch` or plain-git commit would have reset HEAD or the branch.
+- Migration reuses an existing `refs/paper/keep` instead of writing a second keep commit: a v0.1
+  project has none, and a leftover one is from an earlier attempt at the same migration. This keeps
+  the existing activity tests (refs and `log --all` unchanged by migration) passing unchanged.
+- Spec: 03-architecture § On-disk layout (exported.json, keep commit shape, migration) and
+  § Command lifecycle (record/export paragraph, steps 6-7, crash window -> PV-025).
+- No test assertion changed. Verified with `INSTA_UPDATE=no`, empty `GIT_CONFIG_GLOBAL`, fmt, clippy.

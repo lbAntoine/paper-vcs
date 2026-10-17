@@ -129,7 +129,8 @@ not an `init` problem, so `init` is never suggested for it.
 Opening a format 1 project (v0.1, whose only state was `view.json`) migrates it under the lock:
 a `migrate` op from `view.json` (parent `null`), then `head`, then `version` = `2`, then
 `view.json` is renamed to `view.json.v1`. Each step is safe to repeat, so a crash is finished
-by the next open. Nothing in git changes. A format above 2 is refused.
+by the next open. The `migrate` op gets a keep-alive commit and an export like any other op
+(the refs already match, and the index is left alone). A format above 2 is refused.
 
 Refs owned by paper live under `refs/paper/` and are never pushed:
 
@@ -138,9 +139,20 @@ Refs owned by paper live under `refs/paper/` and are never pushed:
 | `refs/paper/draft/<line>` | Draft commit of each line |
 | `refs/paper/keep` | Keep-alive chain (see below) |
 
+**`exported.json`** is what paper last wrote into git, nothing more:
+`{"schema":1,"head":"<current line>","refs":{"refs/heads/main":"<hash>",
+"refs/paper/draft/main":"<hash>","refs/paper/keep":"<hash>"}}`, with one `refs/heads/<line>`
+and one `refs/paper/draft/<line>` entry per line. It is written atomically (temporary file,
+fsync, rename) after the refs. `save` compares the line's ref with it, not with the view, to
+tell paper's own writes from plain git's; a project without it (or with an unreadable one) falls
+back to the view, and the next export writes it.
+
 **Keep-alive chain.** Undo needs old commits, but `git gc` prunes anything unreachable.
-Every operation that creates commits appends one synthetic commit to `refs/paper/keep`.
-Its parents are the previous keep commit plus all new commit IDs (an octopus merge). This
+Every operation appends one synthetic commit to `refs/paper/keep`, written before the op
+itself (a crash leaves at worst one extra keep commit). The commit has the empty tree, the
+message `paper keep-alive`, and paper's identity at the current time. Its parents are the
+previous keep commit (if any) plus every commit of the op's view that the previous op's view
+did not have (the first op: all of them), an octopus merge. This
 uses one ref instead of thousands. `paper gc [--older-than 90d]` rebuilds the chain from
 the operations inside the window and deletes older ops. Nothing is garbage-collected
 automatically before v1.0.
@@ -173,13 +185,24 @@ value means "unknown". Besides every command that opens a project, project-level
 4. snapshot     scan working files vs wc-state → new draft tree; amend draft commit if changed
                 (skip .theirs copies; Office files must pass the completeness check, else keep previous blob)
 5. transition   pure function on View → new View + Effects
-6. commit op    write objects, write op json (fsync), rename activity/head
+6. commit op    write objects, the keep-alive commit, then op json (fsync), rename activity/head
 7. export       update refs/heads/*, tags, refs/paper/*, git HEAD → current line, git index → tip tree
-                write exported.json
+                (index only when the current tip changed since the last export), write exported.json
 8. checkout     if the draft tree changed (undo, switch, restore, keep…): write checkout-pending,
                 update working files, refresh wc-state, delete checkout-pending
 9. unlock
 ```
+
+**Record and export.** Commands write commits and then call `Project::record`, which is steps
+6 and 7: the keep-alive commit, the op, then the export. Commands never write refs, HEAD or the
+index themselves. The export sets, for every line in the view, `refs/heads/<line>` to the tip and
+`refs/paper/draft/<line>` to the draft; attaches HEAD to the current line; rewrites the index to
+the current tip's tree only if that tip differs from the last export (rewriting loses git's stat
+data, so `git status` would rehash every file); and then writes `exported.json`. A ref or HEAD that
+plain git moved since paper last wrote it (it matches neither `exported.json` nor the new value)
+is left alone, and `exported.json` keeps what paper wrote, so `save` still refuses. A crash
+between the op (step 6) and the export (step 7) leaves git's refs briefly behind the head op; the
+next command's export brings them in line, and detecting and repairing this on open is PV-025.
 
 **Edits entries.** When step 4 finds working-file edits made since the last command, it
 records them as their own `Snapshot` op (description `edited a.tex, b.tex …`), and the

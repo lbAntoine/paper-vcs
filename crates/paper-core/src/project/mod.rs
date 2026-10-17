@@ -2,6 +2,7 @@
 
 mod activity;
 mod diff;
+mod export;
 mod history;
 mod init;
 mod init_profile;
@@ -28,6 +29,7 @@ use crate::view::{View, ViewError};
 
 pub use activity::ActivityEntry;
 pub use diff::{DiffError, DiffRequest, FileDiffEntry};
+pub use export::ExportError;
 pub use history::{HistoryEntry, HistoryError, HistoryRequest, ShowError, Shown};
 pub use init::{InitError, Initialized, ProfileSource, has_damaged_git};
 pub use lock::{DEFAULT_LOCK_WAIT, LockError, LockOptions, ProjectLock};
@@ -73,6 +75,8 @@ pub enum OpenError {
     View(#[from] ViewError),
     #[error(transparent)]
     Activity(#[from] ActivityError),
+    #[error(transparent)]
+    Export(#[from] ExportError),
     #[error("could not read {path}")]
     Io {
         path: PathBuf,
@@ -136,7 +140,7 @@ impl Project {
             }
         };
         match found.as_str() {
-            "1" => migrate::migrate_to_current(&paper_dir)?,
+            "1" => migrate::migrate_to_current(&repo, &identity, &paper_dir)?,
             "2" => migrate::retire_old_view(&paper_dir)?,
             _ => return Err(OpenError::UnsupportedFormat { found }),
         }
@@ -157,16 +161,27 @@ impl Project {
         })
     }
 
-    /// Records `view` as a new operation, then makes it the project's view. The op file and
-    /// `head` are on disk before the in-memory view changes.
+    /// Records `view` as a new operation, then makes it the project's view: (1) the keep-alive
+    /// commit, (2) the op, (3) the export of refs, HEAD and index. The op file and `head` are on
+    /// disk before the in-memory view changes.
     pub(crate) fn record(
         &mut self,
         kind: OpKind,
         view: View,
         description: &str,
-    ) -> Result<(), ActivityError> {
+    ) -> Result<(), ExportError> {
+        let keep = export::write_keep(&self.repo, &self.identity, Some(&self.view), &view)?;
         ActivityLog::open(&self.paper_dir).append(kind, &view, description)?;
-        self.view = view;
+        let previous = std::mem::replace(&mut self.view, view);
+        export::export(
+            &self.repo,
+            &self.paper_dir,
+            &self.view,
+            &keep,
+            &export::Mode::Follow {
+                previous: &previous,
+            },
+        )?;
         Ok(())
     }
 
