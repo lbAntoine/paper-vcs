@@ -38,7 +38,7 @@ entry is one step `paper undo` (PV-023/024) will be able to take back.
   `save "Rewrite related work"`, `restore sections/intro.tex from last~1`,
   `start the project` / `adopt the git repository`, `upgrade to paper format 2`.
 - **`paper activity [-n N] [--json]`:** the entries from `head` back along `parent`, newest first.
-  Each line: the shortest unique op-id prefix (at least 4 hex characters, among all listed ops),
+  Each line: the shortest unique op-id prefix (at least 4 hex characters, among all ops in the log, from the file names in ops/),
   the time (same relative style as `history`), the description. Default limit 20, `-n` changes
   it. JSON: `{"schema":1,"entries":[{"id","short_id","time","kind","description"}]}`, every key
   always present. `activity` doesn't snapshot first: listing the log mustn't add to it. It
@@ -99,7 +99,7 @@ entry is one step `paper undo` (PV-023/024) will be able to take back.
 
 **Format choices the tests pin (decided from the Decisions section; please confirm).**
 - Edits description: `edited a, b, c` then ` and N more` with no comma before `and` (`edited a.tex, b.tex, c.tex and 1 more`). Paths are the files that differ from the previous draft (added, modified and deleted all count), sorted bytewise before truncating. The ticket's example `edited sections/intro.tex, main.tex` is not sorted; the acceptance criterion says sorted, so the tests follow the criterion.
-- `restore <path> from <point as typed>` (`last` when `--from` is absent).
+- `restore <path> from <point in paper's spelling>` (`last` when `--from` is absent).
 - Human line: `<short id>  <time padded to 14>  <description>`, like `history`. JSON `kind` is the lowercase op kind (`init`, `snapshot`, `save`, ...), `time` is the op's RFC 3339 time.
 - `short_ids` returns prefixes in input order, grows a prefix until no other id shares it.
 
@@ -136,3 +136,11 @@ The JSON snapshot matches byte for byte. All other tests pass, with fmt and clip
   - Document the all-or-nothing listing on a damaged op; reject `-n 0` in clap.
   - NITs: sort-based short ids, delete the dead filter, describe several restored paths in 02-cli.
   - Adding tests is authorised; don't weaken any.
+
+### GREEN (review round 1) · rust-engineer · 2026-10-17
+
+- Restore of the whole project is `restore everything from <point>`; save descriptions use the message's first line, trimmed; `Display for Point` stays (paper's spelling), with a round-trip test over every variant; docs say "paper's spelling".
+- Short ids are sized against every `*.json` file name in `ops/` (`short_ids_among`, sort-and-neighbour, O(n log n)), at least 4 hex; 02-cli updated, including the damaged-op behaviour, several restored paths and `-n >= 1`.
+- `-n 0` is rejected by clap (range 1..). Dead `[TIME]` filter removed from the CLI test settings.
+- New tests: core (root restore, multi-line save, `short_ids_among`, point round trip), CLI (`restore .`, multi-line save, `-n 0`).
+- Test change, per the coordinator's decision 3: `short_ids_are_unique_among_the_listed_entries_only` became `short_ids_are_unique_among_every_op_in_the_log_not_only_the_listed_ones` (it now checks uniqueness and minimality against all op files, since listed-only minimality contradicts the decision). No other assertion touched.

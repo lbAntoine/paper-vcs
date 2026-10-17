@@ -7,7 +7,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use paper_core::activity::{ActivityError, ActivityLog, MIN_SHORT_ID, OpId, OpKind, short_ids};
+use paper_core::activity::{
+    ActivityError, ActivityLog, MIN_SHORT_ID, OpId, OpKind, short_ids, short_ids_among,
+};
 use paper_core::name::LineName;
 use paper_core::profile::Profile;
 use paper_core::project::{
@@ -1062,6 +1064,34 @@ fn restore_after_edits_records_an_edits_entry_then_a_restore_entry() {
 }
 
 #[test]
+fn restoring_the_whole_project_says_everything() {
+    let dir = project_dir_with_two_saves();
+    let mut project = Project::open(dir.path(), identity()).unwrap();
+    write(dir.path(), "a.tex", "an edit to undo\n");
+
+    restore(&mut project, "", None);
+
+    let ops = chain(dir.path());
+    assert_eq!(ops[0]["kind"], "restore");
+    assert_eq!(ops[0]["description"], "restore everything from last");
+}
+
+#[test]
+fn a_save_description_is_the_first_line_of_the_message() {
+    let dir = project_dir_with_two_saves();
+    let mut project = Project::open(dir.path(), identity()).unwrap();
+    write(dir.path(), "a.tex", "multi\n");
+
+    save_all(
+        &mut project,
+        "Fix the \"intro\"\n\nA longer explanation\nover lines",
+    );
+
+    let entries = project.activity(1).unwrap();
+    assert_eq!(entries[0].description, "save \"Fix the \"intro\"\"");
+}
+
+#[test]
 fn restore_from_an_older_save_names_the_point_as_given() {
     let dir = project_dir_with_two_saves();
     let mut project = Project::open(dir.path(), identity()).unwrap();
@@ -1271,13 +1301,38 @@ fn short_ids_of_many_random_ops_are_unique_and_as_short_as_possible() {
 }
 
 #[test]
-fn short_ids_are_unique_among_the_listed_entries_only() {
-    let (_dir, project) = project_with_many_ops(300);
+fn short_ids_are_unique_among_every_op_in_the_log_not_only_the_listed_ones() {
+    let (dir, project) = project_with_many_ops(300);
 
     let entries = project.activity(40).unwrap();
 
     assert_eq!(entries.len(), 40);
-    assert_short_ids_are_the_shortest_unique_prefixes(&entries);
+    let all: Vec<String> = fs::read_dir(ops_dir(dir.path()))
+        .unwrap()
+        .map(|e| {
+            let name = e.unwrap().file_name().to_string_lossy().into_owned();
+            name.trim_end_matches(".json").to_owned()
+        })
+        .collect();
+    for entry in &entries {
+        let short = &entry.short_id;
+        assert!(short.len() >= MIN_SHORT_ID && entry.id.as_str().starts_with(short.as_str()));
+        let sharing = |prefix: &str| all.iter().filter(|id| id.starts_with(prefix)).count();
+        assert_eq!(sharing(short), 1, "{short} is ambiguous in the whole log");
+        if short.len() > MIN_SHORT_ID {
+            assert!(
+                sharing(&short[..short.len() - 1]) > 1,
+                "{short} is too long"
+            );
+        }
+    }
+}
+
+#[test]
+fn short_ids_among_other_ids_grow_past_unlisted_neighbours() {
+    let listed = [op_id("abcd")];
+    let others = vec![format!("abcd1{}", "0".repeat(27))];
+    assert_eq!(short_ids_among(&listed, &others), ["abcd0"]);
 }
 
 fn op_id(prefix: &str) -> OpId {

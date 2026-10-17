@@ -5,16 +5,12 @@ mod common;
 
 use common::{Env, assert_keys, settings};
 
-/// insta settings that blank op ids (the random ones), relative times and the padding after
-/// them, so the snapshots are stable.
+/// insta settings that blank op ids (the random ones) and the padding after them (the relative
+/// times are blanked by the base `settings()`, which keeps their padding), so the snapshots are stable.
 fn activity_settings() -> insta::Settings {
     let mut settings = insta::Settings::clone_current();
     settings.add_filter(r"(?m)^[0-9a-f]{4,32} *", "[ID]  ");
     settings.add_filter(r#""(id|short_id)": "[0-9a-f]{4,32}""#, r#""$1": "[ID]""#);
-    settings.add_filter(
-        r"(just now|\d+ (?:minute|hour)s? ago|yesterday|\d{4}-\d{2}-\d{2}) *",
-        "[TIME]  ",
-    );
     settings
 }
 
@@ -279,4 +275,38 @@ fn the_repository_stays_plain_git_after_a_session_of_commands() {
         ["More", "Rewrite intro", "Add related work", "Start project"]
     );
     assert_eq!(env.git_work(&["status", "--porcelain"]).trim(), "");
+}
+
+#[test]
+fn restoring_the_whole_project_from_its_root_says_everything() {
+    let env = project();
+    env.write("sections/intro.tex", "Intro v3, not saved\n");
+
+    env.paper(&["restore", "."]).assert_code(0);
+
+    assert_eq!(descriptions(&env)[0], "restore everything from last");
+}
+
+#[test]
+fn a_multi_line_save_message_is_one_line_in_the_listing() {
+    let env = project();
+    env.write("conclusion.tex", "The end\n");
+
+    env.paper(&["save", "Add \"conclusion\"\n\nBody text"])
+        .assert_code(0);
+
+    let run = env.paper(&["activity", "-n", "2"]);
+    run.assert_code(0);
+    assert_eq!(run.stdout.lines().count(), 2, "{run:#?}");
+    assert_eq!(descriptions(&env)[0], "save \"Add \"conclusion\"\"");
+}
+
+#[test]
+fn activity_rejects_a_limit_of_zero() {
+    let env = project();
+
+    let run = env.paper(&["activity", "-n", "0"]);
+
+    assert_ne!(run.code, 0, "{run:#?}");
+    assert!(run.stdout.is_empty(), "{run:#?}");
 }

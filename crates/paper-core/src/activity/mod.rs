@@ -12,5 +12,5 @@ mod store;
 
 pub use id::{InvalidOpId, OpId};
 pub use op::{Op, OpKind};
-pub use short::{MIN_SHORT_ID, short_ids};
+pub use short::{MIN_SHORT_ID, short_ids, short_ids_among};
 pub use store::{ActivityError, ActivityLog};

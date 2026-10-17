@@ -115,8 +115,13 @@ pub enum Command {
     /// List what you and paper did to the project, newest first.
     Activity {
         /// Show at most this many entries.
-        #[arg(short = 'n', value_name = "N", default_value_t = 20)]
-        limit: usize,
+        #[arg(
+            short = 'n',
+            value_name = "N",
+            default_value_t = 20,
+            value_parser = clap::value_parser!(u64).range(1..)
+        )]
+        limit: u64,
     },
     /// Put files back the way they were at a point.
     Restore {

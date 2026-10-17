@@ -16,20 +16,35 @@ pub const MIN_SHORT_ID: usize = 4;
 /// Never.
 #[must_use]
 pub fn short_ids(ids: &[OpId]) -> Vec<String> {
+    let texts: Vec<&str> = ids.iter().map(OpId::as_str).collect();
+    short_prefixes(&texts, &[])
+}
+
+/// Like [`short_ids`], but no other id in `others` (as file-name text, never parsed) starts
+/// with the prefix either. `others` may repeat or include `ids`.
+///
+/// # Panics
+///
+/// Never.
+#[must_use]
+pub fn short_ids_among(ids: &[OpId], others: &[String]) -> Vec<String> {
+    let texts: Vec<&str> = ids.iter().map(OpId::as_str).collect();
+    let others: Vec<&str> = others.iter().map(String::as_str).collect();
+    short_prefixes(&texts, &others)
+}
+
+/// Sort everything once; an id's longest shared prefix is with one of its two neighbours.
+fn short_prefixes(ids: &[&str], others: &[&str]) -> Vec<String> {
+    let mut all: Vec<&str> = ids.iter().chain(others).copied().collect();
+    all.sort_unstable();
+    all.dedup();
     ids.iter()
-        .enumerate()
-        .map(|(index, id)| {
-            let text = id.as_str();
-            // The longest prefix shared with any other id; one more character tells them apart.
-            let shared = ids
-                .iter()
-                .enumerate()
-                .filter(|(other, _)| *other != index)
-                .map(|(_, other)| common_prefix(text, other.as_str()))
-                .max()
-                .unwrap_or(0);
-            let len = (shared + 1).max(MIN_SHORT_ID).min(text.len());
-            text[..len].to_owned()
+        .map(|id| {
+            let at = all.binary_search(id).unwrap_or_default();
+            let before = at.checked_sub(1).map_or(0, |i| common_prefix(id, all[i]));
+            let after = all.get(at + 1).map_or(0, |next| common_prefix(id, next));
+            let len = (before.max(after) + 1).max(MIN_SHORT_ID).min(id.len());
+            id[..len].to_owned()
         })
         .collect()
 }

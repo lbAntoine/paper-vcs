@@ -11,17 +11,24 @@ pub fn edited(paths: &[String]) -> String {
     format!("edited {}", path_list(&sorted))
 }
 
-/// `restore a.tex from last~1`: the point is spelled as the researcher gave it.
+/// `restore a.tex from last~1`: the point in paper's spelling; the whole project is `everything`.
 #[must_use]
 pub fn restored(paths: &[String], from: &str) -> String {
     let named: Vec<&str> = paths.iter().map(String::as_str).collect();
-    format!("restore {} from {from}", path_list(&named))
+    // The project's root is the empty path.
+    let what = if named.iter().all(|p| p.is_empty()) {
+        "everything".to_owned()
+    } else {
+        path_list(&named)
+    };
+    format!("restore {what} from {from}")
 }
 
-/// `save "Rewrite related work"`.
+/// `save "Rewrite related work"`: the first line of the message, so one entry stays one line.
 #[must_use]
 pub fn saved(message: &str) -> String {
-    format!("save \"{message}\"")
+    let subject = message.lines().next().unwrap_or_default().trim();
+    format!("save \"{subject}\"")
 }
 
 fn path_list(paths: &[&str]) -> String {
@@ -47,6 +54,20 @@ mod tests {
             edited(&paths(&["d", "c", "b", "a"])),
             "edited a, b, c and 1 more"
         );
+    }
+
+    #[test]
+    fn restoring_the_root_says_everything() {
+        assert_eq!(
+            restored(&paths(&[""]), "last"),
+            "restore everything from last"
+        );
+    }
+
+    #[test]
+    fn a_save_names_its_first_line_only() {
+        assert_eq!(saved("Fix \"it\"\n\nlong body"), "save \"Fix \"it\"\"");
+        assert_eq!(saved("  padded \r\nbody"), "save \"padded\"");
     }
 
     #[test]

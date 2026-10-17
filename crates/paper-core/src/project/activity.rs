@@ -1,13 +1,14 @@
 //! Listing the operation log for `paper activity`.
 
 use super::Project;
-use crate::activity::{ActivityError, ActivityLog, OpId, OpKind, short_ids};
+use crate::activity::{ActivityError, ActivityLog, OpId, OpKind, short_ids_among};
 
 /// One line of `paper activity`: an operation, as the researcher sees it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActivityEntry {
     pub id: OpId,
-    /// The shortest unique prefix of `id` among the listed entries, at least 4 characters.
+    /// The shortest prefix of `id` that no other op in the log starts with (listed or not),
+    /// at least 4 characters.
     pub short_id: String,
     /// RFC 3339, as stored in the op.
     pub time: String,
@@ -46,7 +47,7 @@ impl Project {
         let ids: Vec<OpId> = ops.iter().map(|op| op.id.clone()).collect();
         Ok(ops
             .into_iter()
-            .zip(short_ids(&ids))
+            .zip(short_ids_among(&ids, &log.op_file_names()?))
             .map(|(op, short_id)| ActivityEntry {
                 id: op.id,
                 short_id,
