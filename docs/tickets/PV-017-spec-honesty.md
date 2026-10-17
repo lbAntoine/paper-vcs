@@ -81,3 +81,11 @@ Versions, from `docs/specs/05-roadmap.md`:
 
 Deviation: the README "Everything is undoable" bullet also got "(from v0.2)", which the ticket's scope didn't list but fits "README states what works today".
 Follow-up: the spec's `--yes` flag and `warn` at init are also unimplemented (noted in 02-cli).
+
+### Review · reviewer · 2026-10-17
+- Verdict: CHANGES. Scope respected (no PV-019 sections, no code). Every roadmap version and every "*Today:*" claim checked against the roadmap and the built binary.
+- MAJOR: 02-cli § Escape hatches says `save` names `git log <line>` after a branch change; after `git switch` it says `git switch <line>` instead (`HeadOnAnotherBranch`).
+- MINOR: cites a "roadmap § v0.4: Interop" section that doesn't exist; v0.4 only promises importing `git checkout` and branch creation, and importing external commits has no version (co-authors' work arrives with `sync` in v0.6).
+- MINOR: README marks only undo "(from v0.2)" while neighbouring bullets (word diffs v0.3, switching v0.4, milestones v0.5) are also future.
+- NITs: a redundant "*Today (v0.1 to v0.3)*" sentence; a doubled "from v0.2" in § restore; two unwrapped lines; pre-existing: 05-roadmap's intro says `git push` sharing starts at v0.3, but it works since v0.1.
+- Coordinator decisions: fix everything in this round. README: one lead-in line before the feature bullets ("Where paper is going; see Status for what works today") instead of per-bullet versions; drop "(from v0.2)". Import wording: "importing starts in v0.4 with `git checkout` and branch creation; bringing in co-authors' work arrives with `sync` in v0.6". Fix the 05-roadmap intro sentence in this PR (one sentence; 05-roadmap joins Touches).
