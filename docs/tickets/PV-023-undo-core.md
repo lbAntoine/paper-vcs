@@ -154,4 +154,5 @@ back out of the files, and `redo` replays them. The CLI commands are PV-024.
      design (PV-022), so refs can never be equal after undo+redo. Fix: filter `refs/paper/keep` out of
      `stored()`.
   With exactly those two helper changes (applied temporarily, then reverted) all 23 tests pass.
-
+- Authorised RED-helper corrections (coordinator): `stored()` in `tests/undo.rs` now reads `.git/HEAD`
+  (detached HEAD no longer panics) and leaves `refs/paper/keep` out. No assertion changed.

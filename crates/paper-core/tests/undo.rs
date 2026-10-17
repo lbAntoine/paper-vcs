@@ -131,9 +131,15 @@ fn assert_git_consistent(dir: &Path) {
 /// Everything a refused or empty command must leave alone.
 fn stored(dir: &Path) -> (String, String, String, String, BTreeMap<String, Vec<u8>>) {
     (
-        git(dir, &["for-each-ref", "--format=%(refname) %(objectname)"]),
+        // refs/paper/keep moves with every op by design (PV-022).
+        git(dir, &["for-each-ref", "--format=%(refname) %(objectname)"])
+            .lines()
+            .filter(|line| !line.starts_with("refs/paper/keep "))
+            .map(|line| format!("{line}\n"))
+            .collect(),
         git(dir, &["ls-files", "--stage"]),
-        git(dir, &["symbolic-ref", "HEAD"]),
+        // Read the file: `symbolic-ref` fails on a detached HEAD.
+        fs::read_to_string(dir.join(".git/HEAD")).unwrap(),
         fs::read_to_string(dir.join(".git/paper/activity/head")).unwrap(),
         files(dir),
     )
