@@ -5,7 +5,13 @@
 > **Status: v0.1.0 is a pre-release walking skeleton for early testers.** It works on one
 > line of work, locally: `init`, `save`, `history`, `show`, `status`, `diff`, `restore` and
 > `config`. There is no undo, no lines or tries, no milestones, no sync and no word-level diff
-> yet. Expect rough edges. The [design specs](docs/specs/README.md) describe where it's going,
+> yet. Expect rough edges.
+>
+> **Sharing:** you can publish your saves with plain `git push`. Bringing in other people's
+> work with `git pull` isn't supported yet. After a pull, `status` shows their edits as your
+> unsaved changes, `history` doesn't show their saves, and `paper save` refuses. Importing
+> `git checkout` and branch creation starts in v0.4, and bringing in co-authors' work arrives
+> with `sync` in v0.6. The [design specs](docs/specs/README.md) describe where it's going,
 > and the [changelog](CHANGELOG.md) says what each version does.
 
 ## Install
@@ -41,7 +47,8 @@ a paragraph moved.
 
 paper keeps everything as a normal git repository, so GitHub, GitLab, the Overleaf git
 bridge and your co-authors' tools keep working. On top of that, it borrows the best ideas
-from [Jujutsu](https://github.com/jj-vcs/jj):
+from [Jujutsu](https://github.com/jj-vcs/jj). Where paper is going (see Status above for
+what works today):
 
 - **You can't lose work.** Your files are recorded automatically before every command.
 - **Everything is undoable.** `paper undo` reverts any operation, including itself.

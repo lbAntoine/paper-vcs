@@ -174,7 +174,14 @@ the local view and warns: `This was already shared; your co-authors still have i
 ## Git interop
 
 Paper treats git as a peer that may change things between runs. In step 3, it compares the
-actual repo with `exported.json`:
+actual repo with `exported.json`. The table below is the target behaviour. v0.4 brings
+the `git checkout` and branch-creation rows (roadmap § v0.4: Safe experiments, Interop);
+full coverage of every row is v0.8 (roadmap § v0.8: Hardening).
+*Today (v0.1 to v0.3):* paper does not import external changes. When the line moved under
+it, `save` refuses and writes nothing, and the error names `git log <line>`; if git is on
+another branch, it says to run `git switch <line>`. After a `git pull`, `status` shows the
+pulled edits as unsaved changes and `history` doesn't list the pulled saves. Bringing in
+co-authors' work arrives with `sync` in v0.6.
 
 | External change (via `git`) | Paper's reaction |
 |---|---|

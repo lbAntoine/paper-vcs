@@ -119,7 +119,8 @@ with `from` the commit the files were restored from.
   `git config --global user.…` ones) and writes nothing.
 - If the folder is inside a cloud-sync root (OneDrive, Dropbox, iCloud Drive, Google Drive),
   warn and ask for confirmation (`--yes` skips the prompt). See
-  [04-content](04-content.md#cloud-sync-folders).
+  [04-content](04-content.md#cloud-sync-folders). *Planned for v0.7 (roadmap § v0.7: Office
+  documents).* *Today:* `init` doesn't check for cloud-sync folders and has no `--yes` flag.
 - A `.git` in the target folder that git can't open (empty, damaged, or a file pointing at a
   missing folder) is a user error ("This folder has a damaged .git") that says to inspect it
   or move it away; nothing is written. This holds inside another repository too.
@@ -173,14 +174,18 @@ one), taken from the line diff. `paper status` snapshots first (I1);
   saved too, and the result lists them.
 - If the line changed with plain git since paper last saw it (new commits, a `git reset`, or
   a deleted branch), `save` refuses and writes nothing: saving on top of that isn't
-  supported yet, and a later version will. The error names the line and points to
-  `git log <line>` to see what changed; it never suggests a command that could drop git
+  supported yet. Paper starts importing git changes in v0.4 (`git checkout` and
+  branch creation, roadmap § v0.4: Safe experiments); every row of the interop table is
+  covered by v0.8; co-authors' work arrives with `sync` in v0.6. The error names the line
+  and points to `git log <line>` to see what changed; it never suggests a command that could drop git
   commits. If git is on another branch (or detached), it refuses too and says to run
   `git switch <line>`.
 - An empty draft means a no-op: `Nothing to save.` (exit 0).
 - It prints the short change ID and message, the files saved, and the files left in the draft.
   `--all-but` can't be combined with paths.
 - If conflict markers are still present in files being saved: warn, and require `--with-conflicts`.
+  *Planned for v0.4, when conflicts arrive with `keep` (roadmap § v0.4: Safe experiments).*
+  *Today:* there is no `--with-conflicts` flag and `save` doesn't look for conflict markers.
 - **Effect:** the draft becomes a save on the current line, the line advances, a new empty
   draft is created, and git HEAD and the index are updated to match (I6).
 
@@ -254,8 +259,8 @@ snapshots before comparing against `@`.
 
 Replaces those paths in the draft with their content at `<point>` (default `last`). Paths
 that don't exist at `<point>` are deleted. Paths follow the rule of `paper save` (a file, or
-everything under a directory), and at least one is required. Undoable. There is no "are you
-sure?", because undo exists.
+everything under a directory), and at least one is required. Undoable from v0.2
+(`paper undo`). There is no "are you sure?": undo covers it, and until v0.2 the draft snapshot below is the safety net.
 
 The draft is snapshotted before anything is overwritten, so the previous content always
 exists as a commit; the activity log that `undo` reads arrives in v0.2. A path that matches
@@ -434,7 +439,19 @@ saved like any other. `ui.editor` is not a key yet.
 
 ### Escape hatches
 
-- Every paper repo is a git repo, so `git …` always works and paper imports external
-  changes on its next run (see [03-architecture](03-architecture.md#git-interop)).
+- Every paper repo is a git repo, so `git …` always works. Paper importing external
+  changes on its next run (see [03-architecture](03-architecture.md#git-interop)) starts in
+  v0.4 with `git checkout` and branch creation (roadmap § v0.4: Safe experiments, Interop);
+  bringing in co-authors' work arrives with `sync` in v0.6. *Today (v0.1 to v0.3):* paper
+  doesn't import them. After `git commit` or `git reset`, `save` refuses and names
+  `git log <line>`; if git is on another branch, it says to run `git switch <line>`.
+- `git push` works today. `git pull` (or `git merge`) isn't supported yet: after a pull
+  brings new commits, `status` shows their edits as your unsaved changes, `history` doesn't
+  show their saves, and `paper save` refuses. Importing starts in v0.4 (see above);
+  syncing with co-authors (`paper sync`) is v0.6 (roadmap § v0.6: Collaboration).
 - `paper help concepts`, `paper help git` (the vocabulary mapping table from 01) and
-  `paper help large-files` give built-in explanations.
+  `paper help large-files` give built-in explanations. *Planned:* `help large-files` ships
+  with v0.3 (roadmap § v0.3); the roadmap gives no version for the other two (the complete
+  set of help topics is v0.8 hardening). *Today:* all three are unknown subcommands. Read
+  [01-concepts](01-concepts.md) and [04-content](04-content.md) instead, and `paper --help`
+  for the commands.
