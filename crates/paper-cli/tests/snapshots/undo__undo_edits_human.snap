@@ -1,0 +1,9 @@
+---
+source: crates/paper-cli/tests/undo.rs
+expression: env.redact(&run.stdout)
+---
+Undid: edited notes.tex, sections/intro.tex
+
+Changed 2 files:
+  deleted   notes.tex
+  modified  sections/intro.tex

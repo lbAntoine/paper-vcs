@@ -123,6 +123,14 @@ pub enum Command {
         )]
         limit: usize,
     },
+    /// Take back the last thing you or paper did, files included.
+    Undo {
+        /// Go back to the state after this activity entry (an ID from `paper activity`) instead.
+        #[arg(long, value_name = "ID")]
+        to: Option<String>,
+    },
+    /// Bring back what you just undid.
+    Redo,
     /// Put files back the way they were at a point.
     Restore {
         /// The files or folders to restore (relative to where you run paper).

@@ -1,7 +1,7 @@
 //! `--json` output for `status`, `diff` and `restore`; `show` reuses [`files`].
 //! Shapes are documented in `docs/specs/02-cli.md` (JSON output).
 
-use paper_core::project::{ChangeStat, FileDiffEntry, RestoreSkip, Restored, Status};
+use paper_core::project::{ChangeStat, FileDiffEntry, RestoreSkip, Restored, SkippedPath, Status};
 use paper_diff::{FileDiff, LineKind};
 use serde::Serialize;
 
@@ -191,28 +191,32 @@ pub fn restore(restored: &Restored) -> String {
                 kind: kind_name(change.kind),
             })
             .collect(),
-        skipped: restored
-            .skipped
-            .iter()
-            .map(|item| {
-                let (reason, bytes) = match &item.reason {
-                    RestoreSkip::SavedSymlink => ("saved_symlink", None),
-                    RestoreSkip::Symlink => ("symlink", None),
-                    RestoreSkip::SymlinkedFolder => ("symlinked_folder", None),
-                    RestoreSkip::TooLarge { bytes } => ("too_large", Some(*bytes)),
-                    RestoreSkip::NestedRepository => ("nested_repository", None),
-                    RestoreSkip::NonUtf8Path => ("non_utf8_path", None),
-                    RestoreSkip::Blocked => ("blocked", None),
-                    RestoreSkip::CaseAlias { .. } => ("case_alias", None),
-                    RestoreSkip::KeptForSwap { .. } => ("kept_for_swap", None),
-                };
-                let entry = SkippedFile::new(item.path.clone(), reason, bytes);
-                match &item.reason {
-                    RestoreSkip::CaseAlias { other } => entry.with_other(other.clone()),
-                    RestoreSkip::KeptForSwap { target } => entry.with_target(target.clone()),
-                    _ => entry,
-                }
-            })
-            .collect(),
+        skipped: restore_skipped(&restored.skipped),
     })
+}
+
+/// Paths restore (or undo) left alone, in the shape of `restore --json`'s `skipped`.
+pub(super) fn restore_skipped(skipped: &[SkippedPath]) -> Vec<SkippedFile> {
+    skipped
+        .iter()
+        .map(|item| {
+            let (reason, bytes) = match &item.reason {
+                RestoreSkip::SavedSymlink => ("saved_symlink", None),
+                RestoreSkip::Symlink => ("symlink", None),
+                RestoreSkip::SymlinkedFolder => ("symlinked_folder", None),
+                RestoreSkip::TooLarge { bytes } => ("too_large", Some(*bytes)),
+                RestoreSkip::NestedRepository => ("nested_repository", None),
+                RestoreSkip::NonUtf8Path => ("non_utf8_path", None),
+                RestoreSkip::Blocked => ("blocked", None),
+                RestoreSkip::CaseAlias { .. } => ("case_alias", None),
+                RestoreSkip::KeptForSwap { .. } => ("kept_for_swap", None),
+            };
+            let entry = SkippedFile::new(item.path.clone(), reason, bytes);
+            match &item.reason {
+                RestoreSkip::CaseAlias { other } => entry.with_other(other.clone()),
+                RestoreSkip::KeptForSwap { target } => entry.with_target(target.clone()),
+                _ => entry,
+            }
+        })
+        .collect()
 }

@@ -1,0 +1,23 @@
+---
+source: crates/paper-cli/tests/undo.rs
+expression: env.redact_json(&went_back.stdout)
+---
+{
+  "changed": [
+    {
+      "kind": "modified",
+      "path": "sections/intro.tex"
+    }
+  ],
+  "entry": {
+    "description": "save \"Add related work\"",
+    "id": "[ID]",
+    "kind": "save",
+    "short_id": "[ID]",
+    "time": "[TIME]"
+  },
+  "files_match": true,
+  "outcome": "went_back",
+  "schema": 1,
+  "skipped": []
+}

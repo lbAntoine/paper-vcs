@@ -7,6 +7,7 @@ pub mod json_diff;
 pub mod status;
 pub mod style;
 pub mod time;
+pub mod undo;
 
 /// Extra output from `-v` (`-q` is applied where output is chosen, in `commands`).
 #[derive(Debug, Clone, Copy)]

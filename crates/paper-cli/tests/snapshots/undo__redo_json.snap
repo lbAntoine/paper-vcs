@@ -1,0 +1,18 @@
+---
+source: crates/paper-cli/tests/undo.rs
+expression: env.redact_json(&redone.stdout)
+---
+{
+  "changed": [],
+  "entry": {
+    "description": "save \"Rewrite intro\"",
+    "id": "[ID]",
+    "kind": "save",
+    "short_id": "[ID]",
+    "time": "[TIME]"
+  },
+  "files_match": true,
+  "outcome": "redone",
+  "schema": 1,
+  "skipped": []
+}

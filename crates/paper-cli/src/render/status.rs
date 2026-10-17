@@ -2,7 +2,7 @@
 
 use std::fmt::Write as _;
 
-use paper_core::project::{ChangeStat, RestoreSkip, Restored, Status};
+use paper_core::project::{ChangeStat, RestoreSkip, Restored, SkippedPath, Status};
 use paper_core::snapshot::ChangeKind;
 
 use super::diff::{binary_sizes, counts};
@@ -74,27 +74,34 @@ pub fn restore(restored: &Restored) -> String {
     }
     if !restored.skipped.is_empty() {
         out.push_str("\nSkipped (left as they are):\n");
-        for item in &restored.skipped {
-            let why = match &item.reason {
-                RestoreSkip::SavedSymlink => "the saved version is a symbolic link".to_owned(),
-                RestoreSkip::Symlink => "a symbolic link".to_owned(),
-                RestoreSkip::SymlinkedFolder => "inside a symbolic link to a folder".to_owned(),
-                RestoreSkip::TooLarge { bytes } => {
-                    format!("too large to track, {}", size(*bytes))
-                }
-                RestoreSkip::NestedRepository => "inside a separate git repository".to_owned(),
-                RestoreSkip::NonUtf8Path => "its name can't be read as text".to_owned(),
-                RestoreSkip::Blocked => "a file paper doesn't track is in the way".to_owned(),
-                RestoreSkip::CaseAlias { other } => format!(
-                    "differs only in letter case from {other}; run `paper restore {} {other}`",
-                    item.path
-                ),
-                RestoreSkip::KeptForSwap { target } => {
-                    format!("kept because {target} can't be restored")
-                }
-            };
-            let _ = writeln!(out, "  {}  ({why})", item.path);
-        }
+        out.push_str(&restore_skipped_lines(&restored.skipped));
+    }
+    out
+}
+
+/// One line per path restore (or undo) left alone, with the reason in parentheses.
+pub(super) fn restore_skipped_lines(skipped: &[SkippedPath]) -> String {
+    let mut out = String::new();
+    for item in skipped {
+        let why = match &item.reason {
+            RestoreSkip::SavedSymlink => "the saved version is a symbolic link".to_owned(),
+            RestoreSkip::Symlink => "a symbolic link".to_owned(),
+            RestoreSkip::SymlinkedFolder => "inside a symbolic link to a folder".to_owned(),
+            RestoreSkip::TooLarge { bytes } => {
+                format!("too large to track, {}", size(*bytes))
+            }
+            RestoreSkip::NestedRepository => "inside a separate git repository".to_owned(),
+            RestoreSkip::NonUtf8Path => "its name can't be read as text".to_owned(),
+            RestoreSkip::Blocked => "a file paper doesn't track is in the way".to_owned(),
+            RestoreSkip::CaseAlias { other } => format!(
+                "differs only in letter case from {other}; run `paper restore {} {other}`",
+                item.path
+            ),
+            RestoreSkip::KeptForSwap { target } => {
+                format!("kept because {target} can't be restored")
+            }
+        };
+        let _ = writeln!(out, "  {}  ({why})", item.path);
     }
     out
 }
