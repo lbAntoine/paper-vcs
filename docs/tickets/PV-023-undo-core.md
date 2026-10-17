@@ -1,6 +1,6 @@
 # PV-023: undo, redo and undo --to in paper-core, with checkout
 
-- **Status:** In progress
+- **Status:** Done
 - **Issue:** #41
 - **Branch:** `feat/PV-023-undo-core`
 - **Depends on:** PV-022 (export step and keep-alive chain, merged). Runs alone.
@@ -105,6 +105,29 @@ back out of the files, and `redo` replays them. The CLI commands are PV-024.
 
 ## Summary
 
+paper-core can take back any activity entry and bring it back, working files included:
+`Project::{undo, redo, undo_to}`.
+
+- Transitions as in § Undo / redo algorithm (`redo` takes the first of the redo stack); undo and
+  redo are themselves ops (`undo`, `redo`; `--to` is `go back to …`). A new command clears redo.
+  Repeated `undo` walks back through every earlier state, including undone ones.
+- Order: refuse like `save` if plain git moved a line or HEAD (nothing written) → resolve the
+  `--to` prefix against every op file (teaching errors for empty, unknown, ambiguous) →
+  snapshot (unsaved edits become an entry first) → `checkout-pending` marker → keep → op →
+  export → checkout → stat cache → marker removed.
+- The checkout is restore's apply step, now shared (`checkout.rs`): files paper doesn't record are
+  never overwritten and are reported as skipped; `Undone::files_match` says whether the files equal
+  the new draft, so the CLI can warn that the next command records the difference as edits.
+- `NothingToUndo` / `NothingToRedo` are friendly outcomes.
+- Spec: § Undo / redo algorithm (redo correction, walk-back, skipped paths), § Command lifecycle
+  (checkout step, marker format `{"schema":1,"from","tree"}` and the exact repair rule for PV-025),
+  § On-disk layout.
+
+Deviations: two authorised RED-helper fixes (`stored()` reads `.git/HEAD`; keep filtered only in
+the round-trip test); a non-hex `--to` prefix is `UnknownEntry` (its message explains the 0-9/a-f
+ids). The acceptance check "the marker exists during the checkout" moves to PV-025 (fault
+injection).
+
 ## Handoff log
 
 ### RED · test-author · 2026-10-18
@@ -193,3 +216,7 @@ back out of the files, and `redo` replays them. The CLI commands are PV-024.
 ### GREEN (post-approval) · rust-engineer · 2026-10-18
 
 - Spec only: the checkout repair rule in 03-architecture § Command lifecycle is now the exact ordered version.
+
+### Review round 2 · reviewer · 2026-10-18
+- Verdict: APPROVE. Crash walk-through at every point (marker, keep, op, export, mid-checkout) is repairable; refused and NothingToUndo paths leave no marker; the `files_match` re-snapshot records no op and moves no ref; the ignored-file probe gives `files_match = false` with skipped files untouched.
+- Fixed after approval: the exact, ordered repair rule in § Command lifecycle, including "overwrite only if unchanged".
