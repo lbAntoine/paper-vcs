@@ -184,3 +184,26 @@ untouched, so `json_errors` has 2 failures (all other tests pass).
 tests build them). Checks run with `INSTA_UPDATE=no`, empty `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_NOSYSTEM=1`.
 
 **Snapshots (authorised by the coordinator):** `json_errors__project_error_human.snap` and `json_errors__json_error_project.snap` now say "reads format 2"; only that digit changed.
+
+### Review · reviewer · 2026-10-17
+- Verdict: CHANGES. Tests, clippy and fmt pass. Op immutability (`write_new`, no-clobber persist), head replacement (incl. Windows `MoveFileExW`), the three op-append sites and the error shapes verified; migration run against a real v0.1.0 binary's project: correct, git untouched, `view.json.v1` byte-identical.
+- MAJOR: a format-2 project without `activity/head` reports `Incomplete` ("run `paper init` again"), and `init` then refuses ("already a paper project"): a loop (reproduced with the CLI). Same for version 1 without head and without `view.json`.
+- MAJOR: `activity/` isn't fsynced after `head` is renamed (and new `activity/`/`ops/` entries aren't fsynced in their parents), while `version` is written right after; a power cut can leave version 2 without a head.
+- MINOR: the interrupted-init cleanup deletes `activity/` whenever `version` is missing; if `version` is lost some other way, `paper init` would delete a real op log.
+- MINOR: `write_new`'s no-clobber persist fails on filesystems without hard links or `RENAME_NOREPLACE` (FAT/exFAT, some network mounts).
+- MINOR: 03-architecture § Domain model's `Operation` struct contradicts the code (content-hash id, `redo_stack`, `command`, `user`).
+- MINOR: `InitError::View` and `SaveError::View` can no longer be built.
+- MINOR: `OpKind::Restore` is never written; restore appends `snapshot` ops.
+- MINOR: crash leftovers (`.tmp*` files, an orphan op) aren't documented for `activity`/`gc`.
+- NITs: document that `ActivityLog::append` needs the project lock; `reprepare` is a thin wrapper (fine); ignore EINVAL from directory fsync (FUSE, network shares).
+- Coordinator decisions: fix everything in this round.
+  - Missing head in a format-2 project (and version 1 without head or `view.json`) is a damaged-log project error, not `Incomplete`; tests assert the suggestion isn't `paper init`.
+  - `append` fsyncs `activity/` after `head`; the first append also makes `activity/` and `ops/` durable in their parents, before any `version` write.
+  - The init cleanup deletes `activity/` only when it holds no head or a head chain of exactly one `init` op with `parent: null`; otherwise it refuses with a teaching error.
+  - `write_new` falls back to a plain rename after an existence check when the no-clobber persist is unsupported (`Unsupported`, `EPERM`, `ENOTSUP`).
+  - Fix 03-architecture § Domain model to match the code (authorised; it was outside Touches).
+  - Remove the two dead variants and their tests.
+  - The post-restore op is `OpKind::Restore`.
+  - Document crash leftovers in § On-disk layout (`activity` lists only `*.json`; `gc` sweeps `.tmp*` and orphan ops).
+  - NITs: document the lock requirement; ignore EINVAL from `sync_dir`.
+  - Adding tests is authorised; don't weaken any.
