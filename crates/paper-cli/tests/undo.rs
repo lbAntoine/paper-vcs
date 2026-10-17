@@ -149,6 +149,9 @@ fn undo_with_unsaved_edits_takes_the_edits_back_first_and_lists_the_files() {
     assert!(run.stdout.contains("sections/intro.tex"), "{run:#?}");
     assert!(run.stdout.contains("notes.tex"), "{run:#?}");
     assert_eq!(env.read("sections/intro.tex"), "Intro v2\n");
+    settings().bind(|| {
+        insta::assert_snapshot!("undo_edits_human", env.redact(&run.stdout));
+    });
     assert!(!env.work.join("notes.tex").exists());
     assert_eq!(env.subjects().len(), 3, "the saves are untouched");
     assert_eq!(env.git_work(&["status", "--porcelain"]), "");
@@ -403,7 +406,29 @@ fn a_checkout_that_skips_files_prints_each_with_its_reason_and_the_warning() {
         run.stdout.contains(&format!("2 files {WARNING_TAIL}")),
         "{run:#?}"
     );
+    settings().bind(|| {
+        insta::assert_snapshot!("undo_blocked_human", env.redact(&run.stdout));
+    });
     env.fsck();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_single_skipped_file_gets_the_singular_warning() {
+    let env = project();
+    fs::remove_file(env.work.join("related.tex")).unwrap();
+    std::os::unix::fs::symlink("main.tex", env.work.join("related.tex")).unwrap();
+
+    let run = env.paper(&["undo"]);
+
+    run.assert_code(0);
+    assert!(
+        run.stdout.contains(
+            "\n1 file was left as it is (see above); your next paper command will record it as \
+             an edit, and that clears what you can redo.\n"
+        ),
+        "{run:#?}"
+    );
 }
 
 #[test]

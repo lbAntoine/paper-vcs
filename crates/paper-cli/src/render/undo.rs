@@ -52,7 +52,11 @@ fn undone_text(verb: Verb, undone: &Undone) -> String {
 }
 
 fn warning(skipped: usize) -> String {
-    if skipped == 1 {
+    if skipped == 0 {
+        "Some files were left as they are (see above); your next paper command will record \
+         them as edits, and that clears what you can redo."
+            .to_owned()
+    } else if skipped == 1 {
         "1 file was left as it is (see above); your next paper command will record it as an \
          edit, and that clears what you can redo."
             .to_owned()

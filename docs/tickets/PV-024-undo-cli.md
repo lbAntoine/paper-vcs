@@ -94,3 +94,7 @@ what didn't.
 - Tests: `tests/common/mod.rs` gained `redact_op_ids` (whole-token prefixes, at least 4 chars, of op file names in `.git/paper/activity/ops`), applied by `Env::redact`; change-id and hash handling is untouched and all existing snapshots are byte-identical. Four new snapshots accepted after review: `undo_to_unknown`, `undo_json`, `redo_json`, `undo_to_json`.
 - Spec: `02-cli.md` § undo/redo/activity only (output, JSON, walk-back in user words, edits first, activity kinds `undo`/`redo`; `go back to` entries have kind `undo`).
 - Verified with `INSTA_UPDATE=no` and an empty `GIT_CONFIG_GLOBAL`: fmt, clippy `-D warnings` and the full suite pass.
+
+### GREEN (post-approval) · rust-engineer · 2026-10-18
+
+- Removed `redact_op_ids` from `Env::redact`; added singular-warning and two human-layout snapshots; warning never says "0 files"; spec wording fixed (warning condition, `--no-snapshot`).

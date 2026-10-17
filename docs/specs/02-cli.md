@@ -304,7 +304,7 @@ inside a separate git repository, a file paper doesn't track in the way, …). I
 - `undo` takes back the last thing you or paper did. Unsaved edits go first (`Undid: edited
   sections/intro.tex`); then each `undo` steps one state further back, through every earlier
   state, including states that were themselves undone. The files follow: the command rewrites
-  or deletes the files that differ. Before undoing, it snapshots, so edits made since the last
+  or deletes the files that differ. Before undoing, it snapshots (even with `--no-snapshot`), so edits made since the last
   command are an entry of their own and can be redone.
 - `redo` brings back what you just undid (`Redid: save "Rewrite intro"`). Any other change
   that adds to the activity log, including the edits a later command records, clears what you
@@ -317,7 +317,8 @@ inside a separate git repository, a file paper doesn't track in the way, …). I
   `Went back to <id>: <description>`), then `Changed N files:` with the files the command
   rewrote (listed as `restore` lists them), then `Skipped (left as they are):` with one
   `path  (reason)` line per file paper does not record that it left alone (the reasons of
-  `restore`). If any file was skipped, a last line warns: `2 files were left as they are (see
+  `restore`). If the working files don't match the state undo went to (skipped files keep
+  different content), a last line warns: `2 files were left as they are (see
   above); your next paper command will record them as edits, and that clears what you can
   redo.` (`1 file was left as it is ... record it as an edit ...` for a single file.) When
   there is nothing to take back or bring back, the output is `Nothing to undo.` or `Nothing to
