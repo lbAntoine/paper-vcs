@@ -77,3 +77,10 @@ what didn't.
 ## Summary
 
 ## Handoff log
+
+### RED · test-author · 2026-10-18
+
+- `crates/paper-cli/tests/undo.rs`: 19 tests driving the real binary in the isolated env, cross-checked with `git log`/`status`/`fsck`, `paper status` and files on disk. Covers undo/redo after a save, walk-back, unsaved edits, `--to` (valid, unknown, empty, ambiguous with crafted op files), both "Nothing to ..." outcomes (human and exact JSON), refusals after plain `git commit` and `git switch` (compared with `save`'s error and exit code), the ignored-file skip scenario (human lines, warning, JSON), JSON key sets for all outcomes, and `activity` entries.
+- Failure mode: all 19 fail with `unrecognized subcommand 'undo'` (clap exit 1). No stubs added: tests drive the binary only. Pre-existing tests all pass.
+- Snapshots not written (ids are random): `undo_to_unknown`, `undo_json`, `redo_json`, `undo_to_json` are for GREEN to accept and review.
+- Assumptions for GREEN: the warning counts skipped paths (`2 files were left ...`); `Skipped` list format reuses `restore`'s `path  (reason)`; `changed` entries are `{path, kind}`.
