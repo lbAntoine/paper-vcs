@@ -1,6 +1,6 @@
 # PV-022: export step, export record and keep-alive chain
 
-- **Status:** In progress
+- **Status:** Done
 - **Issue:** #40
 - **Branch:** `feat/PV-022-export-keep`
 - **Depends on:** PV-021 (activity entries, merged). Runs alone.
@@ -90,6 +90,25 @@ someone else's.
 
 ## Summary
 
+One export step after every op, a record of what paper last wrote, and a keep-alive chain so
+`git gc` can never remove a commit undo needs.
+
+- `record` = keep-alive commit → op → export. Export writes each line's tip and draft refs and
+  HEAD from the view, resets the index only when the tip moved or git's HEAD isn't on the current
+  line (index first, then refs, then HEAD), and writes `exported.json` last. Commands no longer
+  write refs, HEAD or the index themselves.
+- A branch or HEAD that plain git moved since paper last wrote it is left alone (`exported.json`
+  keeps paper's value), so `save` still refuses; the format-1 migration follows the same rule.
+- `refs/paper/keep`: one empty-tree commit per op whose parents are the previous keep commit and
+  the op's new commit ids; old drafts and saves survive `gc --prune=now` after reflogs expire.
+- `check_in_sync` compares against `exported.json`, falling back to the view.
+
+Deviations: leave-alone for plain-git moves and keeping the index on adopt (beyond the ticket,
+kept after review); the activity tests' `git_state` helper excludes `refs/paper/keep`
+(authorised). The index-before-refs ordering has no test yet: it needs fault injection (PV-025).
+
+Follow-up: #52 (PV-029) so `status` says when the line moved outside paper.
+
 ## Handoff log
 
 ### RED · test-author · 2026-10-18
@@ -164,3 +183,7 @@ someone else's.
 ### GREEN (post-approval) · rust-engineer · 2026-10-18
 
 - The export rewrites the index before HEAD and the line refs; spec clauses and the rewrap done. No ordering test: it needs fault injection between the index write and the ref writes, which the project does not have yet (crash tests arrive with PV-025).
+
+### Review round 2 · reviewer · 2026-10-18
+- Verdict: APPROVE. The migration BLOCKER no longer reproduces (plain-git commit and `git switch` variants, CLI); leave-alone tested through `snapshot` and `restore`; the narrowed `git_state` loses nothing for today's fixtures; `--exclude` usage correct.
+- Fixed after approval: index written before refs and HEAD (crash-safe for line changes); two 03-architecture clauses; one rewrap.
