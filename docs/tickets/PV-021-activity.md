@@ -118,3 +118,21 @@ entry is one step `paper undo` (PV-023/024) will be able to take back.
 The JSON snapshot matches byte for byte. All other tests pass, with fmt and clippy clean.
 
 **RED test corrections, authorised by the coordinator.** (1) `activity__activity_human.snap`: only the spacing changed, to the 14-wide time padding `history__history_human.snap` shows (`[ID]  [TIME]        ...`). (2) `activity_outside_a_project_is_a_three_part_error` now expects exit 1 (a user error), not 3. Both blockers above are resolved.
+
+### Review · reviewer · 2026-10-17
+- Verdict: CHANGES. Tests, clippy and fmt pass. Entries per command match the decision in every path; `activity` takes the lock and records nothing; the edits description, JSON key set and the four spec sections agree; the two RED corrections are genuine.
+- MAJOR: `paper restore .` at the root records `restore  from last` (empty path, double space), stored for good.
+- MAJOR: a save message with a newline spreads one activity entry over two lines (the whole message is stored in the description).
+- MINOR: short ids are unique among the listed entries only; `undo --to <id>` (PV-024) must resolve against every op.
+- MINOR: `Display for Point` normalises (`last~0` → `last`) where the docs say "as typed"; no round-trip test.
+- MINOR: one damaged op fails the whole listing (acceptable; document it).
+- MINOR: `activity -n 0` prints "No activity yet.".
+- NITs: O(n²) short-id comparison; a dead `[TIME]` test filter; 02-cli doesn't say how several restored paths are listed.
+- Coordinator decisions:
+  - `restore` of the whole project is described as `restore everything from <point>`.
+  - Save descriptions use the message's first line (the subject); quotes are left as typed.
+  - Short ids are sized against every op id, from the file names in `ops/` (no parsing; a superset, so a prefix is never ambiguous), and stay at least 4 hex characters; update 02-cli § activity. PV-024 resolves `--to` against the whole chain with a teaching error on ambiguity (note on #42).
+  - Points are recorded in paper's spelling (`last~0` → `last`); add a round-trip test over every `Point` variant and change "as typed" in the docs.
+  - Document the all-or-nothing listing on a damaged op; reject `-n 0` in clap.
+  - NITs: sort-based short ids, delete the dead filter, describe several restored paths in 02-cli.
+  - Adding tests is authorised; don't weaken any.
