@@ -174,8 +174,9 @@ one), taken from the line diff. `paper status` snapshots first (I1);
   saved too, and the result lists them.
 - If the line changed with plain git since paper last saw it (new commits, a `git reset`, or
   a deleted branch), `save` refuses and writes nothing: saving on top of that isn't
-  supported yet. *Today (v0.1 to v0.3):* this is what happens. Importing such changes is
-  planned for v0.4 (roadmap § v0.4: Interop). The error names the line and points to
+  supported yet. Importing such changes starts in v0.4 with `git checkout` and branch
+  creation (roadmap § v0.4: Safe experiments, Interop); bringing in co-authors' work arrives
+  with `sync` in v0.6. The error names the line and points to
   `git log <line>` to see what changed; it never suggests a command that could drop git
   commits. If git is on another branch (or detached), it refuses too and says to run
   `git switch <line>`.
@@ -258,9 +259,8 @@ snapshots before comparing against `@`.
 
 Replaces those paths in the draft with their content at `<point>` (default `last`). Paths
 that don't exist at `<point>` are deleted. Paths follow the rule of `paper save` (a file, or
-everything under a directory), and at least one is required. Undoable from v0.2 (`paper undo`, roadmap § v0.2: Nothing is ever
-lost). There is no "are you sure?", because undo exists (from v0.2); until then the
-draft snapshot below is the safety net.
+everything under a directory), and at least one is required. Undoable from v0.2 (`paper undo`). There is no "are you sure?":
+undo covers it, and until v0.2 the draft snapshot below is the safety net.
 
 The draft is snapshotted before anything is overwritten, so the previous content always
 exists as a commit; the activity log that `undo` reads arrives in v0.2. A path that matches
@@ -440,13 +440,14 @@ saved like any other. `ui.editor` is not a key yet.
 ### Escape hatches
 
 - Every paper repo is a git repo, so `git …` always works. Paper importing external
-  changes on its next run (see [03-architecture](03-architecture.md#git-interop)) is planned
-  for v0.4 (roadmap § v0.4: Interop). *Today (v0.1 to v0.3):* paper doesn't import them.
-  After `git commit`, `git reset` or a branch change, `save` refuses and names
-  `git log <line>`.
+  changes on its next run (see [03-architecture](03-architecture.md#git-interop)) starts in
+  v0.4 with `git checkout` and branch creation (roadmap § v0.4: Safe experiments, Interop);
+  bringing in co-authors' work arrives with `sync` in v0.6. *Today (v0.1 to v0.3):* paper
+  doesn't import them. After `git commit` or `git reset`, `save` refuses and names
+  `git log <line>`; if git is on another branch, it says to run `git switch <line>`.
 - `git push` works today. `git pull` (or `git merge`) isn't supported yet: after a pull
   brings new commits, `status` shows their edits as your unsaved changes, `history` doesn't
-  show their saves, and `paper save` refuses. Importing external git changes is v0.4;
+  show their saves, and `paper save` refuses. Importing starts in v0.4 (see above);
   syncing with co-authors (`paper sync`) is v0.6 (roadmap § v0.6: Collaboration).
 - `paper help concepts`, `paper help git` (the vocabulary mapping table from 01) and
   `paper help large-files` give built-in explanations. *Planned:* `help large-files` ships

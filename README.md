@@ -10,7 +10,8 @@
 > **Sharing:** you can publish your saves with plain `git push`. Bringing in other people's
 > work with `git pull` isn't supported yet. After a pull, `status` shows their edits as your
 > unsaved changes, `history` doesn't show their saves, and `paper save` refuses. Importing
-> external git changes is planned for v0.4, and syncing with co-authors for v0.6. The [design specs](docs/specs/README.md) describe where it's going,
+> `git checkout` and branch changes starts in v0.4, and bringing in co-authors' work arrives
+> with `sync` in v0.6. The [design specs](docs/specs/README.md) describe where it's going,
 > and the [changelog](CHANGELOG.md) says what each version does.
 
 ## Install
@@ -46,10 +47,11 @@ a paragraph moved.
 
 paper keeps everything as a normal git repository, so GitHub, GitLab, the Overleaf git
 bridge and your co-authors' tools keep working. On top of that, it borrows the best ideas
-from [Jujutsu](https://github.com/jj-vcs/jj):
+from [Jujutsu](https://github.com/jj-vcs/jj). Where paper is going (see Status above for
+what works today):
 
 - **You can't lose work.** Your files are recorded automatically before every command.
-- **Everything is undoable.** `paper undo` reverts any operation, including itself (from v0.2).
+- **Everything is undoable.** `paper undo` reverts any operation, including itself.
 - **No dirty state.** There's no staging area and no stash, and switching is always safe.
 - **Diffs that read like prose.** Word-level diffs for LaTeX, Markdown and Typst, with
   readable diffs for Word and Excel files planned.

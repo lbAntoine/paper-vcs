@@ -5,7 +5,7 @@
 - **Branch:** `feat/PV-017-spec-honesty`
 - **Depends on:** none. Runs in parallel with PV-019 (lock), which edits other sections.
 - **Touches:** `docs/specs/02-cli.md` (§ `paper init`, § `paper save`, § `paper restore`,
-  § Escape hatches only), `docs/specs/03-architecture.md` (§ Git interop only), `README.md`
+  § Escape hatches only), `docs/specs/03-architecture.md` (§ Git interop only), `README.md`, `docs/specs/05-roadmap.md` (intro sentence only)
 - **Must not touch:** code; 02-cli § Global behaviour and 03-architecture § Crates, § On-disk
   layout, § Command lifecycle (PV-019).
 - **Specs:** `05-roadmap.md` (which version brings what); the v0.1 goal verification
@@ -89,3 +89,11 @@ Follow-up: the spec's `--yes` flag and `warn` at init are also unimplemented (no
 - MINOR: README marks only undo "(from v0.2)" while neighbouring bullets (word diffs v0.3, switching v0.4, milestones v0.5) are also future.
 - NITs: a redundant "*Today (v0.1 to v0.3)*" sentence; a doubled "from v0.2" in § restore; two unwrapped lines; pre-existing: 05-roadmap's intro says `git push` sharing starts at v0.3, but it works since v0.1.
 - Coordinator decisions: fix everything in this round. README: one lead-in line before the feature bullets ("Where paper is going; see Status for what works today") instead of per-bullet versions; drop "(from v0.2)". Import wording: "importing starts in v0.4 with `git checkout` and branch creation; bringing in co-authors' work arrives with `sync` in v0.6". Fix the 05-roadmap intro sentence in this PR (one sentence; 05-roadmap joins Touches).
+
+### DOCS (review round 1) · rust-engineer · 2026-10-17
+
+All five items fixed, docs only. Claims re-checked: roadmap "## v0.4: Safe experiments" has the bullet "Interop: `git checkout` and
+branch creation imported correctly"; "## v0.6: Collaboration" lists `sync`; "## v0.8: Hardening" has "Every row of the git-interop table
+covered by tests"; the intro now reads "Since v0.1, users can already share work by running `git push`" (matches the v0.1 Accept line
+"push with plain `git push`"). Binary behaviour unchanged from the earlier run (log hint after a pull; branch-change message per
+`HeadOnAnotherBranch` as the reviewer cited). README lead-in added, "(from v0.2)" removed, line 13 rewrapped; 05-roadmap added to Touches.
