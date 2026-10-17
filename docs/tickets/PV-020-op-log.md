@@ -150,3 +150,35 @@ arms as `View(_)`). Two `#[allow(dead_code)]` (field `root`, `reprepare`): drop 
 **Checks:** ran `activity` tests with `GIT_CONFIG_GLOBAL` pointing to an empty file and
 `GIT_CONFIG_NOSYSTEM=1`: same results (no dependence on a global identity). No Unix-only APIs, no
 `/tmp` paths in the new tests. fmt and clippy `-D warnings` clean. Questions: none.
+
+### GREEN · rust-engineer · 2026-10-17
+
+**Implemented.** `activity/` split into `id.rs` (`OpId`, 32 hex from `ChangeId::random`, validated
+on parse and on deserialise), `op.rs` (`Op`, `OpKind`), `store.rs` (`ActivityLog`, `ActivityError`;
+append = `write_new` (temp + fsync + `persist_noclobber`) + directory fsync, then `head` via
+`write_atomic`; `read` checks the file's id matches its name). `fs_util`: `write_new`, `sync_dir`
+(Unix only). `project/migrate.rs`: format 1 to 2 in the ticket's step order, each step repeatable
+(op only when there is no head; `version` rewritten; `view.json` renamed if present). `Project::open`
+reads the view from the head op (missing head = `Incomplete`); `Project::record` appends an op
+then swaps the in-memory view; snapshot (`snapshot` op) and `save` (`save` op) use it; restore
+gets its ops through its two snapshots. `init` appends the `init` op in `finish`, removing any
+`activity/` an interrupted earlier init left (so the first op always has parent `null`).
+`ProfilePlan::reprepare` is called under the lock in the fresh path and in `adopt`.
+`FORMAT_VERSION = 2`.
+
+**Authorised removals.** `View::save` and its unit test `save_then_load_round_trips_without_leftover_files`
+are gone; the round-trip coverage lives on as `an_op_written_and_read_back_equals_the_original`
+(store.rs) and `an_op_survives_a_round_trip_through_json_with_its_view` (op.rs). Both
+`#[allow(dead_code)]` removed.
+
+**Spec:** 03-architecture § On-disk layout (op fields, ids, head, format 2, migration,
+`view.json.v1`) and § Undo / redo algorithm (field names `redo`).
+
+**BLOCKED point.** Two existing snapshot files in paper-cli embed the format number in the
+unsupported-format message: `crates/paper-cli/tests/snapshots/json_errors__project_error_human.snap`
+and `json_errors__json_error_project.snap` say "reads format 1"; with `FORMAT_VERSION = 2` the
+message is "reads format 2". The only change needed is that digit in each snapshot; I left them
+untouched, so `json_errors` has 2 failures (all other tests pass).
+
+**Notes.** Unused `SaveError::View` / `InitError::View` variants are kept (their error.rs mapping
+tests build them). Checks run with `INSTA_UPDATE=no`, empty `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_NOSYSTEM=1`.

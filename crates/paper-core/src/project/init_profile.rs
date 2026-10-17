@@ -76,14 +76,13 @@ impl ProfilePlan {
     /// # Errors
     ///
     /// Everything [`ProfilePlan::prepare`] reports.
-    // Called from `adopt` and `init_with` once implemented (PV-020 GREEN); then drop the allow.
-    #[allow(dead_code)]
     pub(super) fn reprepare(
         self,
-        _workdir: &Path,
-        _choice: Option<&Profile>,
+        workdir: &Path,
+        choice: Option<&Profile>,
     ) -> Result<Self, InitError> {
-        todo!("PV-020: re-run prepare under the lock")
+        drop(self);
+        Self::prepare(workdir, choice)
     }
 
     /// Writes the prepared files (`.gitignore` first) and reports what was written.
