@@ -2,14 +2,124 @@
   "version": 1,
   "tasks": [
     {
+      "id": "e1a0c017",
+      "title": "PV-017: spec honesty: version-mark promises v0.1 doesn't keep (git pull, importing external changes, paper help, --with-conflicts, cloud-sync warning, undoable restore)",
+      "description": "GitHub issue #34. From the v0.1 goal verification",
+      "status": "todo",
+      "priority": "medium",
+      "sprint": "v0.2-a",
+      "created_at": "2026-10-17T08:32:47Z",
+      "updated_at": "2026-10-17T08:47:11Z"
+    },
+    {
+      "id": "e1a0c019",
+      "title": "PV-019: project lock with a 5 s wait (std File::try_lock)",
+      "description": "GitHub issue #37. Size S. Parallel with PV-017.",
+      "status": "todo",
+      "priority": "high",
+      "sprint": "v0.2-a",
+      "created_at": "2026-10-17T08:47:11Z",
+      "updated_at": "2026-10-17T08:47:11Z"
+    },
+    {
+      "id": "e1a0c020",
+      "title": "PV-020: operation log and head pointer (on-disk format 2, auto-migration from format 1)",
+      "description": "GitHub issue #38. Size M. Depends on PV-019.",
+      "status": "todo",
+      "priority": "high",
+      "sprint": "v0.2-a",
+      "created_at": "2026-10-17T08:47:11Z",
+      "updated_at": "2026-10-17T08:47:11Z"
+    },
+    {
+      "id": "e1a0c021",
+      "title": "PV-021: every command records one operation (snapshot folding); paper activity",
+      "description": "GitHub issue #39. Size M. Depends on PV-020.",
+      "status": "todo",
+      "priority": "high",
+      "sprint": "v0.2-a",
+      "created_at": "2026-10-17T08:47:11Z",
+      "updated_at": "2026-10-17T08:47:11Z"
+    },
+    {
+      "id": "e1a0c022",
+      "title": "PV-022: export record (exported.json) and keep-alive chain (refs/paper/keep)",
+      "description": "GitHub issue #40. Size M. Depends on PV-021.",
+      "status": "todo",
+      "priority": "high",
+      "sprint": "v0.2-a",
+      "created_at": "2026-10-17T08:47:11Z",
+      "updated_at": "2026-10-17T08:47:11Z"
+    },
+    {
+      "id": "e1a0c023",
+      "title": "PV-023: undo, redo and undo --to in paper-core, with checkout",
+      "description": "GitHub issue #41. Size M. Depends on PV-022.",
+      "status": "todo",
+      "priority": "high",
+      "sprint": "v0.2-a",
+      "created_at": "2026-10-17T08:47:11Z",
+      "updated_at": "2026-10-17T08:47:11Z"
+    },
+    {
+      "id": "e1a0c024",
+      "title": "PV-024: paper undo, redo and undo --to in the CLI",
+      "description": "GitHub issue #42. Size S. Depends on PV-023. Closes the v0.2-a goal.",
+      "status": "todo",
+      "priority": "high",
+      "sprint": "v0.2-a",
+      "created_at": "2026-10-17T08:47:11Z",
+      "updated_at": "2026-10-17T08:47:11Z"
+    },
+    {
+      "id": "e1a0c025",
+      "title": "PV-025: crash recovery (lifecycle step 2) and fault-injection tests",
+      "description": "GitHub issue #43. Size M. Depends on PV-024.",
+      "status": "todo",
+      "priority": "high",
+      "sprint": "v0.2-b",
+      "created_at": "2026-10-17T08:47:11Z",
+      "updated_at": "2026-10-17T08:47:11Z"
+    },
+    {
+      "id": "e1a0c026",
+      "title": "PV-026: I4 acceptance: random 200-step sessions undo and redo exactly (proptest)",
+      "description": "GitHub issue #44. Size M. Depends on PV-025.",
+      "status": "todo",
+      "priority": "high",
+      "sprint": "v0.2-b",
+      "created_at": "2026-10-17T08:47:11Z",
+      "updated_at": "2026-10-17T08:47:11Z"
+    },
+    {
+      "id": "e1a0c027",
+      "title": "PV-027: paper gc (rebuild keep-alive chain, prune old ops)",
+      "description": "GitHub issue #45. Size S. Depends on PV-022.",
+      "status": "todo",
+      "priority": "medium",
+      "sprint": "v0.2-b",
+      "created_at": "2026-10-17T08:47:11Z",
+      "updated_at": "2026-10-17T08:47:11Z"
+    },
+    {
+      "id": "e1a0c018",
+      "title": "PV-018: paper ignore / unignore (own .gitignore block, untrack saved matches, list, --local, --why)",
+      "description": "GitHub issue #36. Size M. Depends on PV-021 (records an op).",
+      "status": "todo",
+      "priority": "medium",
+      "sprint": "v0.2-b",
+      "created_at": "2026-10-17T08:47:11Z",
+      "updated_at": "2026-10-17T08:47:11Z"
+    },
+    {
       "id": "e1a0c015",
       "title": "PV-015: config set values containing CR/LF round-trip as \\r\\r\\n in CRLF files (reject control characters in text values?)",
       "description": "GitHub issue #15. Pre-existing; found in PV-014 review round 2",
       "status": "todo",
       "priority": "low",
-      "sprint": "v0.2",
+      "sprint": "v0.2-b",
       "created_at": "2026-10-16T14:21:47Z",
-      "updated_at": "2026-10-17T08:32:47Z"
+      "updated_at": "2026-10-17T08:47:11Z"
     },
     {
       "id": "e1a0c016",
@@ -17,19 +127,9 @@
       "description": "GitHub issue #33. List in docs/tickets/PV-012-restore-case-insensitive.md Summary",
       "status": "todo",
       "priority": "low",
-      "sprint": "v0.2",
+      "sprint": "v0.2-b",
       "created_at": "2026-10-16T22:04:33Z",
-      "updated_at": "2026-10-17T08:32:47Z"
-    },
-    {
-      "id": "e1a0c017",
-      "title": "PV-017: spec honesty: version-mark promises v0.1 doesn't keep (git pull, importing external changes, paper help, --with-conflicts, cloud-sync warning, undoable restore)",
-      "description": "GitHub issue #34. From the v0.1 goal verification",
-      "status": "todo",
-      "priority": "medium",
-      "sprint": "v0.2",
-      "created_at": "2026-10-17T08:32:47Z",
-      "updated_at": "2026-10-17T08:32:47Z"
+      "updated_at": "2026-10-17T08:47:11Z"
     }
   ]
 }
