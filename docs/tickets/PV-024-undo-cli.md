@@ -1,6 +1,6 @@
 # PV-024: paper undo, redo and undo --to in the CLI
 
-- **Status:** In progress
+- **Status:** Done
 - **Issue:** #42
 - **Branch:** `feat/PV-024-undo-cli`
 - **Depends on:** PV-023 (core undo, merged). Runs alone. Closes the sprint v0.2-a goal.
@@ -76,6 +76,28 @@ what didn't.
 
 ## Summary
 
+`paper undo`, `paper redo` and `paper undo --to <id>`: any earlier state of the project, files
+included, from the command line.
+
+- Output: `Undid: <entry>` / `Redid: <entry>` / `Went back to <id>: <entry>`, then the files changed
+  and the files left alone with their reasons (as `restore` lists them). When the working files
+  don't match the state undo went to, a warning says the next command will record them as edits,
+  which clears what you can redo (singular wording for one file). `Nothing to undo.` /
+  `Nothing to redo.` exit 0.
+- `--json`: a fixed key set for every outcome (`outcome`, `entry`, `changed`, `skipped`,
+  `files_match`), `changed`/`skipped` shaped like `restore --json`.
+- Errors reuse the three-part conversions: unknown, empty or ambiguous ids (exit 1), `save`'s
+  refusals after plain-git changes.
+- 02-cli § undo/redo/activity: output, JSON, walk-back in user words, unsaved edits taken back
+  first (even with `--no-snapshot`), `undo`/`redo` kinds.
+
+Deviations: singular warning for one skipped file; restore's skipped rendering moved into shared
+helpers (output unchanged). An op-id redaction pass added to the shared test helper was removed
+after review: op ids are hex, so it could rewrite ordinary snapshot text at random.
+
+Follow-up: #55 (PV-030), undo-family refusal wording and repeated `--to`. With this ticket
+sprint v0.2-a's goal is met: undo works end to end.
+
 ## Handoff log
 
 ### RED · test-author · 2026-10-18
@@ -98,3 +120,8 @@ what didn't.
 ### GREEN (post-approval) · rust-engineer · 2026-10-18
 
 - Removed `redact_op_ids` from `Env::redact`; added singular-warning and two human-layout snapshots; warning never says "0 files"; spec wording fixed (warning condition, `--no-snapshot`).
+
+### Review · reviewer · 2026-10-18
+- Verdict: APPROVE. A researcher-style session with the built binary (init, edit, save, undo, redo, restore, undo, `--to` from `activity`, plain-git commit then undo) behaves as specified; exit codes, JSON shapes and the shared restore rendering verified.
+- Fixed after approval: the suite-wide op-id redaction removed (flake risk); singular-warning test; two human layout snapshots; the 02-cli warning condition and `--no-snapshot` note; no "0 files" sentence.
+- Deferred: the refusal wording for undo and repeated `--to` (follow-up issue).
