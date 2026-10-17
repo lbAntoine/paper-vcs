@@ -103,7 +103,10 @@ the immutability-first style.
       view.json.v1              format 1's view, kept after migration (removed by `gc`)
       exported.json             git refs as paper last wrote them
       wc-state.json             stat cache for the checked-out draft (path → size,mtime,inode,blob)
-      checkout-pending          exists only while the working files are being rewritten
+      checkout-pending          exists only while the working files are being rewritten:
+                                {"schema":1,"op":"<op id>","tree":"<draft tree hash>"}, written
+                                atomically before the first working file changes (by undo, redo
+                                and undo --to; restore does not write it)
   paper.toml                    project config (committed; shared with co-authors)
   .gitignore                    profile ignores merged in
 ```
@@ -218,6 +221,15 @@ as the draft, and a second `undo` visibly undoes the edits entry. `paper activit
 step 4 and reads only the ops reachable from `head`, never the `ops/` directory listing, so
 crash leftovers there are ignored.
 
+**Checkout.** Step 8 is shared by `restore`, `undo`, `redo` and `undo --to` (`checkout.rs`),
+with `restore`'s rules: files paper doesn't record (symlinks, oversized files, nested
+repositories, ignored or untracked files in the way) are never overwritten or deleted and are
+reported as skipped; everything is decided and every blob read before the first byte changes;
+deletions come before writes. `undo`, `redo` and `undo --to` write `checkout-pending` (naming
+the op and the target draft tree) before the first working-file change, rewrite the files from
+the current draft to the new view's draft tree, refresh the stat cache, then delete the
+marker. Finishing a checkout found pending after a crash is PV-025.
+
 **Crash safety.** The source of truth is `activity/head`. Steps 7 and 8 are idempotent and
 are replayed by step 2. Losing power at any point leaves either the old state or the new
 state, never a mixture that loses data. The working files are snapshotted before any
@@ -236,10 +248,28 @@ normal op N:  parent=head, position=N, redo=[]
 undo:         P = head.position; require P.parent
               new op: view = P.parent.view, position = P.parent,
                       redo = [P] + head.redo
-redo:         R = head.redo.pop() or "nothing to redo"
+redo:         R = head.redo.first() or "nothing to redo"
               new op: view = R.view, position = R, redo = rest
 undo --to X:  new op: view = X.view, position = X, redo = []
 ```
+
+Details:
+
+- **Snapshot first (I1).** `undo`, `redo` and `undo --to` snapshot before anything else, so
+  edits made since the last command become an edits entry (a normal op). The first `undo`
+  takes those edits back, and they can be redone.
+- **Refusals.** If plain git moved a line ref or HEAD (it differs from `exported.json`), the
+  three commands refuse with `save`'s errors (`OutOfSyncWithGit`, `HeadOnAnotherBranch`)
+  before anything is written.
+- **Nothing to do.** `undo` at the first entry and `redo` with an empty stack are friendly
+  outcomes (`NothingToUndo`, `NothingToRedo`); nothing is recorded.
+- **`--to` resolution.** The prefix is matched against every op file, so X can be on the head
+  chain or only on a redo stack. No match is `UnknownEntry`; several is `AmbiguousEntry`,
+  listing each candidate's short id and description. Nothing is changed in either case.
+- **Op kinds and descriptions.** Kinds `undo` (also for `--to`) and `redo`. Descriptions:
+  `undo: <undone entry's description>`, `redo: <entry's description>`,
+  `go back to <short id>: <entry's description>`.
+- **Order.** snapshot, keep-alive, op, export, checkout (§ Command lifecycle).
 
 Undo never moves remote state. If an undone operation had pushed (`sync`), undo restores
 the local view and warns: `This was already shared; your co-authors still have it.`

@@ -132,3 +132,26 @@ back out of the files, and `redo` replays them. The CLI commands are PV-024.
   needed to observe it mid-checkout). Only its absence afterwards is asserted.
 - The symlink test is weak on purpose (symlink and target untouched); how the snapshot treats a tracked
   file replaced by a symlink decides whether a skip is reported.
+
+### GREEN · rust-engineer · 2026-10-18
+
+- Implemented `Project::{undo, redo, undo_to}` (`project/undo.rs`): refusal check (save's errors) and
+  prefix resolution first, then snapshot, then keep-alive, op, export (`record_at`), then checkout with
+  the `checkout-pending` marker. `ActivityLog::append_at` writes `position`/`redo`; `Project::record_at`
+  returns the op. Teaching errors for unknown/ambiguous entries in `error.rs`.
+- `project/checkout.rs` (new): restore's plan and apply steps factored out (`plan_checkout`,
+  `apply_checkout`, symlink and skip rules, `PendingCheckout` with a round-trip unit test). `restore.rs`
+  now calls it; restore's behaviour and tests are unchanged and it does not write the marker.
+- Marker format: `{"schema":1,"op":"<op id>","tree":"<draft tree hash>"}`, for PV-025.
+- Specs: 03-architecture § On-disk layout (`checkout-pending` line), § Command lifecycle (new
+  Checkout paragraph), § Undo / redo algorithm (details; `redo` takes `head.redo.first()`, the spec said
+  `pop()`, which contradicted `redo = [P] + head.redo`).
+- BLOCKED on two RED tests that are wrong (no assertion changed by me):
+  1. `undo_refuses_when_git_detached_head`: the `stored()` helper runs `git symbolic-ref HEAD`, which
+     fails on a detached HEAD, so the test panics in its own helper before undo's result is compared.
+     Fix: read `.git/HEAD` instead.
+  2. `undoing_all_the_way_back_...`: `stored()` includes `refs/paper/keep`, which moves with every op by
+     design (PV-022), so refs can never be equal after undo+redo. Fix: filter `refs/paper/keep` out of
+     `stored()`.
+  With exactly those two helper changes (applied temporarily, then reverted) all 23 tests pass.
+

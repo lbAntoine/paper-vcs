@@ -1,6 +1,7 @@
 //! A paper project: a git repository plus paper's own state in `.git/paper/`.
 
 mod activity;
+mod checkout;
 mod diff;
 mod export;
 mod history;
@@ -23,7 +24,7 @@ use paper_git::{
     ChangeId, CommitId, GitError, GitRepo, GitTime, Identity, NewCommit, Signature, TreeId,
 };
 
-use crate::activity::{ActivityError, ActivityLog, OpKind};
+use crate::activity::{ActivityError, ActivityLog, Op, OpId, OpKind};
 use crate::name::LineName;
 use crate::snapshot::SnapshotOptions;
 use crate::view::{View, ViewError};
@@ -172,8 +173,21 @@ impl Project {
         view: View,
         description: &str,
     ) -> Result<(), ExportError> {
+        self.record_at(kind, view, description, None).map(|_| ())
+    }
+
+    /// [`Project::record`] with the undo bookkeeping of the op (`position`, `redo`); `None`
+    /// is a normal op. Returns the op written.
+    pub(super) fn record_at(
+        &mut self,
+        kind: OpKind,
+        view: View,
+        description: &str,
+        placement: Option<(OpId, Vec<OpId>)>,
+    ) -> Result<Op, ExportError> {
         let keep = export::write_keep(&self.repo, &self.identity, Some(&self.view), &view)?;
-        ActivityLog::open(&self.paper_dir).append(kind, &view, description)?;
+        let op =
+            ActivityLog::open(&self.paper_dir).append_at(kind, &view, description, placement)?;
         let previous = std::mem::replace(&mut self.view, view);
         export::export(
             &self.repo,
@@ -184,7 +198,7 @@ impl Project {
                 previous: &previous,
             },
         )?;
-        Ok(())
+        Ok(op)
     }
 
     /// A copy of this project that applies `options` (large-file thresholds) in later snapshots.

@@ -135,16 +135,38 @@ impl ActivityLog {
         view: &View,
         description: &str,
     ) -> Result<Op, ActivityError> {
+        self.append_at(kind, view, description, None)
+    }
+
+    /// Like [`ActivityLog::append`], for undo and redo: the op's `position` is the given op
+    /// and its redo stack is the given ids. `None` makes a normal op (position = itself, no
+    /// redo).
+    ///
+    /// # Errors
+    ///
+    /// As [`ActivityLog::append`].
+    ///
+    /// # Panics
+    ///
+    /// Never in practice.
+    pub fn append_at(
+        &self,
+        kind: OpKind,
+        view: &View,
+        description: &str,
+        placement: Option<(OpId, Vec<OpId>)>,
+    ) -> Result<Op, ActivityError> {
         let parent = self.head()?;
         let id = OpId::random();
+        let (position, redo) = placement.unwrap_or_else(|| (id.clone(), Vec::new()));
         let op = Op {
-            id: id.clone(),
+            id,
             parent,
             kind,
             time: jiff::Timestamp::now().to_string(),
             view: view.clone(),
-            position: id,
-            redo: Vec::new(),
+            position,
+            redo,
             description: description.to_owned(),
         };
         let mut json = serde_json::to_vec_pretty(&op).expect("an op always serialises");

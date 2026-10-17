@@ -729,8 +729,43 @@ impl From<StatusError> for PaperError {
 }
 
 impl From<UndoError> for PaperError {
-    fn from(_error: UndoError) -> Self {
-        todo!("PV-023: teaching errors for undo")
+    fn from(error: UndoError) -> Self {
+        match error {
+            UndoError::Save(inner) => inner.into(),
+            UndoError::UnknownEntry { prefix } => Self::user(
+                format!("No entry in the activity log starts with '{prefix}'"),
+                "Nothing was undone or changed. A typo in the id is the usual cause; the \
+                 ids are the first column of the activity list.",
+                vec![Suggestion::new(
+                    "paper activity",
+                    "list the entries and their ids",
+                )],
+            ),
+            UndoError::AmbiguousEntry { prefix, candidates } => Self::user(
+                format!("'{prefix}' starts more than one entry in the activity log"),
+                format!(
+                    "Nothing was undone or changed. It matches: {}.",
+                    candidates
+                        .iter()
+                        .map(|c| format!("{} ({})", c.short_id, c.description))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+                candidates
+                    .iter()
+                    .map(|c| {
+                        Suggestion::new(
+                            format!("paper undo --to {}", c.short_id),
+                            c.description.clone(),
+                        )
+                    })
+                    .collect(),
+            ),
+            UndoError::Git(_)
+            | UndoError::Activity(_)
+            | UndoError::Export(_)
+            | UndoError::Io { .. } => Self::project("Paper could not undo or redo", &error),
+        }
     }
 }
 

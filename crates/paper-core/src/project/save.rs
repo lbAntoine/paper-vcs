@@ -267,7 +267,7 @@ impl Project {
     }
 
     /// Refuses to go on when plain git moved the line or switched branches.
-    fn check_in_sync(&self, line: &LineName) -> Result<(), SaveError> {
+    pub(super) fn check_in_sync(&self, line: &LineName) -> Result<(), SaveError> {
         let head = self.repo.head_branch()?;
         if head.as_deref() != Some(line.as_str()) {
             return Err(SaveError::HeadOnAnotherBranch {
