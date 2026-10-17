@@ -45,11 +45,11 @@
       "id": "e1a0c022",
       "title": "PV-022: export record (exported.json) and keep-alive chain (refs/paper/keep)",
       "description": "GitHub issue #40. Size M. Depends on PV-021.",
-      "status": "todo",
+      "status": "done",
       "priority": "high",
       "sprint": "v0.2-a",
       "created_at": "2026-10-17T08:47:11Z",
-      "updated_at": "2026-10-17T08:47:11Z"
+      "updated_at": "2026-10-17T22:30:02Z"
     },
     {
       "id": "e1a0c023",

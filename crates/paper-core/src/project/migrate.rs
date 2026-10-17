@@ -3,12 +3,16 @@
 //!
 //! Steps, in order: a `migrate` op from `view.json`, then `head`, then `version` = 2, then
 //! `view.json` renamed to `view.json.v1`. Each step is safe to repeat, so a crash is finished
-//! by the next open. Nothing in git changes.
+//! by the next open. The `migrate` op gets a keep-alive commit and an export, like any op;
+//! anything plain git moved since the project was last open is left alone.
 
 use std::fs;
 use std::path::Path;
 
-use super::{FORMAT_VERSION, OpenError, VERSION_FILE};
+use paper_git::{GitRepo, Identity};
+
+use super::export::{Mode, export, write_keep};
+use super::{ExportError, FORMAT_VERSION, OpenError, VERSION_FILE};
 use crate::activity::{ActivityError, ActivityLog, OpKind};
 use crate::fs_util::write_atomic;
 use crate::view::View;
@@ -17,7 +21,11 @@ const OLD_VIEW: &str = "view.json";
 const KEPT_VIEW: &str = "view.json.v1";
 
 /// Finishes (or does) the migration of a format 1 project. The caller holds the lock.
-pub(super) fn migrate_to_current(paper_dir: &Path) -> Result<(), OpenError> {
+pub(super) fn migrate_to_current(
+    repo: &GitRepo,
+    identity: &Identity,
+    paper_dir: &Path,
+) -> Result<(), OpenError> {
     let log = ActivityLog::open(paper_dir);
     if log.head()?.is_none() {
         let view = View::load(paper_dir)?.ok_or_else(|| {
@@ -25,7 +33,15 @@ pub(super) fn migrate_to_current(paper_dir: &Path) -> Result<(), OpenError> {
                 path: paper_dir.join(OLD_VIEW),
             })
         })?;
+        let keep = write_keep(repo, identity, None, &view).map_err(ExportError::from)?;
         log.append(OpKind::Migrate, &view, "upgrade to paper format 2")?;
+        export(
+            repo,
+            paper_dir,
+            &view,
+            &keep,
+            &Mode::Follow { previous: &view },
+        )?;
     }
     log.make_durable()?;
     let version_path = paper_dir.join(VERSION_FILE);

@@ -7,11 +7,9 @@ use std::path::{Path, PathBuf};
 
 use paper_git::{ChangeId, CommitId, GitError, GitRepo, Identity, NewCommit, TreeId};
 
+use super::export::{ExportError, Mode, export, write_keep};
 use super::init_profile::{ProfilePlan, ProfileReport};
-use super::{
-    FORMAT_VERSION, Project, VERSION_FILE, draft_ref, line_ref, paper_dir, signature_now,
-    write_draft,
-};
+use super::{FORMAT_VERSION, Project, VERSION_FILE, paper_dir, signature_now, write_draft};
 use super::{LockError, LockOptions, ProjectLock};
 use crate::activity::{ActivityError, ActivityLog, OpKind};
 use crate::config::ConfigError;
@@ -90,6 +88,8 @@ pub enum InitError {
     Snapshot(#[from] SnapshotError),
     #[error(transparent)]
     Activity(#[from] ActivityError),
+    #[error(transparent)]
+    Export(#[from] ExportError),
     #[error("could not write {path}")]
     Io {
         path: PathBuf,
@@ -271,7 +271,6 @@ fn adopt(
             tip_tree
         };
         let draft = write_draft(&repo, &draft_tree, &tip, &signature)?;
-        repo.set_ref(&draft_ref(&line), &draft, "paper: adopt branch")?;
         lines.push((line, Line { tip, draft }));
     }
 
@@ -289,6 +288,8 @@ fn adopt(
             view.with_line(name, line)
         });
 
+    // An adopted repository keeps the index it has (staged changes stay staged).
+    let reset_index = false;
     let initialized = Initialized {
         adopted: true,
         tracked_files: repo.tree_files(&snap.tree)?.len(),
@@ -306,8 +307,11 @@ fn adopt(
         identity,
         *options,
         held,
-        view,
-        &snap.cache,
+        First {
+            view,
+            cache: &snap.cache,
+            reset_index,
+        },
         initialized,
     )
 }
@@ -329,11 +333,8 @@ fn start_fresh(
     let save = first_save(&repo, &snap.tree, &signature)?;
     let draft = write_draft(&repo, &snap.tree, &save, &signature)?;
 
-    repo.set_ref(&line_ref(&line), &save, "paper: start project")?;
-    repo.set_ref(&draft_ref(&line), &draft, "paper: start project")?;
-    repo.set_head_branch(line.as_str(), "paper: start project")?;
-    repo.reset_index_to(&snap.tree)?;
-
+    // The first save is the whole folder, so the index is made to match it.
+    let reset_index = true;
     let initialized = Initialized {
         adopted,
         tracked_files: repo.tree_files(&snap.tree)?.len(),
@@ -352,8 +353,11 @@ fn start_fresh(
         identity,
         *options,
         held,
-        view,
-        &snap.cache,
+        First {
+            view,
+            cache: &snap.cache,
+            reset_index,
+        },
         initialized,
     )
 }
@@ -373,17 +377,30 @@ fn first_save(
     })
 }
 
+/// What the first op records, and how git is brought in line with it.
+struct First<'a> {
+    view: View,
+    cache: &'a StatCache,
+    /// Whether the index is rewritten from the first tip (not for an adopted repository, which
+    /// keeps the index it has).
+    reset_index: bool,
+}
+
 /// Records the first op and the cache, then writes the version file: the point of no return.
 fn finish(
     repo: GitRepo,
     identity: Identity,
     options: SnapshotOptions,
     held: Held,
-    view: View,
-    cache: &StatCache,
+    first: First<'_>,
     initialized: Initialized,
 ) -> Result<(Project, Initialized), InitError> {
     let Held { paper_dir, lock } = held;
+    let First {
+        view,
+        cache,
+        reset_index,
+    } = first;
     // A previous, interrupted `init` may have left its op behind (checked safe to remove by
     // `refuse_if_initialized`); this run starts the log over.
     let activity = ActivityLog::open(&paper_dir);
@@ -395,8 +412,16 @@ fn finish(
     } else {
         "start the project"
     };
+    let keep = write_keep(&repo, &identity, None, &view).map_err(ExportError::from)?;
     activity.append(OpKind::Init, &view, description)?;
     activity.make_durable()?;
+    export(
+        &repo,
+        &paper_dir,
+        &view,
+        &keep,
+        &Mode::Fresh { reset_index },
+    )?;
     cache
         .save(&paper_dir)
         .map_err(|source| io_error(&paper_dir, source))?;
