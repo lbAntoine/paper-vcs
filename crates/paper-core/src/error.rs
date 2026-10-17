@@ -62,17 +62,20 @@ impl PaperError {
 
     /// Another paper command held the project for the whole wait.
     fn busy(holder: Option<u32>) -> Self {
-        let who = holder.map_or_else(String::new, |pid| format!(" (process {pid})"));
+        let who = holder.map_or_else(
+            || "the other paper command".to_owned(),
+            |pid| format!("the other paper command (process {pid})"),
+        );
         Self {
             kind: ErrorKind::Project,
             message: "Another paper command is running in this project".to_owned(),
-            why: format!(
-                "Paper runs one command at a time in a project so the history stays consistent, \
-                 and the other command{who} was still running after 5 seconds."
-            ),
+            why: "Paper runs one command at a time in a project so the history stays \
+                  consistent, and the other command was still running when paper stopped \
+                  waiting for it."
+                .to_owned(),
             next: vec![Suggestion::new(
-                "paper status",
-                "wait for the other command to finish, then run your command again",
+                "run the same command again",
+                format!("wait for {who} to finish first"),
             )],
         }
     }

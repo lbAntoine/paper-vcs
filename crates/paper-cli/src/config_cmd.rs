@@ -4,12 +4,13 @@ use std::fmt::Write as _;
 
 use paper_core::config::{ConfigFile, Key, Scope, Settings, Value};
 use paper_core::profile::{Profile, gitignore};
+use paper_core::project::{LockError, OpenError, ProjectLock};
 use paper_core::{ErrorKind, PaperError, Suggestion};
 use paper_git::GitRepo;
 use serde_json::json;
 
 use crate::cli::{Cli, ConfigAction};
-use crate::commands::{finish, start_dir};
+use crate::commands::{finish, lock_options, start_dir};
 use crate::settings::{self, PROJECT_FILE};
 
 type Output = Result<String, PaperError>;
@@ -101,6 +102,18 @@ fn set(cli: &Cli, key: &str, text: &str, project: bool) -> Output {
             None,
         )
     };
+    // A project-level change waits for any running paper command, like a command would.
+    let _lock =
+        match &workdir {
+            Some(workdir) => ProjectLock::acquire_for_workdir(workdir, lock_options().wait)
+                .map_err(|error| match error {
+                    LockError::Busy { holder } => PaperError::from(OpenError::Busy { holder }),
+                    LockError::Io { path, source } => {
+                        PaperError::from(OpenError::Io { path, source })
+                    }
+                })?,
+            None => None,
+        };
     let updated = ConfigFile::load(&path)?
         .with(key, value.clone())
         .map_err(fail)?;

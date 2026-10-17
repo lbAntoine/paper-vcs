@@ -270,7 +270,7 @@ fn identity(cli: &Cli, settings: &Settings) -> Result<Identity, PaperError> {
 }
 
 /// The default 5 s wait; debug builds let `PAPER_DEBUG_LOCK_WAIT_MS` shorten it for tests.
-fn lock_options() -> LockOptions {
+pub(crate) fn lock_options() -> LockOptions {
     #[cfg(debug_assertions)]
     if let Some(ms) = std::env::var("PAPER_DEBUG_LOCK_WAIT_MS")
         .ok()

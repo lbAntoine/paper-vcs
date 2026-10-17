@@ -85,13 +85,7 @@ impl Project {
     /// [`OpenError::NotAPaperProject`] for a plain git repository, and the other
     /// [`OpenError`] variants if paper's state can't be read.
     pub fn open(path: &Path, identity: Identity) -> Result<Self, OpenError> {
-        Self::open_with(
-            path,
-            identity,
-            &LockOptions {
-                wait: DEFAULT_LOCK_WAIT,
-            },
-        )
+        Self::open_with(path, identity, &LockOptions::default())
     }
 
     /// Like [`Project::open`], waiting at most `lock.wait` for another paper command to finish.
@@ -101,6 +95,10 @@ impl Project {
     ///
     /// [`OpenError::Busy`] when another command still holds the project after the wait, and
     /// everything [`Project::open`] reports.
+    ///
+    /// # Panics
+    ///
+    /// Never.
     pub fn open_with(
         path: &Path,
         identity: Identity,

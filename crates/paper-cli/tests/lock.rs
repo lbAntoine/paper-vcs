@@ -89,3 +89,22 @@ fn reading_a_user_setting_does_not_take_the_lock() {
     run.assert_code(0);
     assert!(run.stdout.contains("Alex Doe"), "{run:#?}");
 }
+
+#[test]
+fn setting_a_project_value_on_a_busy_project_exits_3_and_works_after() {
+    let env = Env::new();
+    let held = env.project_with_three_saves();
+    let set = ["config", "set", "--project", "diff.default", "words"];
+
+    let run = env.paper_in(&env.work, &[WAIT_ENV], &set);
+    run.assert_code(3);
+    assert!(
+        run.stderr
+            .contains("Another paper command is running in this project"),
+        "{run:#?}"
+    );
+
+    drop(held);
+
+    env.paper_in(&env.work, &[WAIT_ENV], &set).assert_code(0);
+}

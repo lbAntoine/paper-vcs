@@ -134,3 +134,11 @@ operation log (PV-020) relies on it.
   - Project-level `config set` takes the project lock.
   - Fix the minors and NITs.
   - Adding tests is authorised; don't weaken any.
+
+### GREEN (review round 1) · rust-engineer · 2026-10-17
+
+- Windows: the pid hint moved to an unlocked sidecar `.git/paper/lock-holder` (written best-effort after locking, removed on drop, read on `Busy`; missing or stale means unknown). The `lock` file is never read, written or deleted. On Windows the sidecar is opened by std with full share modes, so reading it while another process writes or removes it is fine; not run locally.
+- Adopt: no more cleanup or unlinking. An existing `.git/paper/` is locked first (Busy before AlreadyInitialized); otherwise the head, branch and `ProfilePlan::prepare` checks run before the folder is created, then lock and re-check `version`. Tests added: lock file survives a refused init; a refused adoption creates no `.git/paper`.
+- `config set --project` takes the lock (`ProjectLock::acquire_for_workdir`, no lock when there is no `.git/paper/`), same wait and Busy error. CLI test added.
+- Busy wording: `why` no longer says "5 seconds"; `next` is "run the same command again" with the pid in its explanation. The `Busy` variants did not gain a wait field (existing tests match `Busy { holder }` without `..`).
+- fd-lock dropped from the Cargo.toml comment; `LockOptions::default()` used; `# Panics` added. Spec updated (on-disk layout, lifecycle: never-deleted invariant, config set).

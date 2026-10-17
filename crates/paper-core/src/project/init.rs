@@ -8,11 +8,11 @@ use std::path::{Path, PathBuf};
 use paper_git::{ChangeId, CommitId, GitError, GitRepo, Identity, NewCommit, TreeId};
 
 use super::init_profile::{ProfilePlan, ProfileReport};
-use super::{DEFAULT_LOCK_WAIT, LockError, LockOptions, ProjectLock};
 use super::{
     FORMAT_VERSION, Project, VERSION_FILE, draft_ref, line_ref, paper_dir, signature_now,
     write_draft,
 };
+use super::{LockError, LockOptions, ProjectLock};
 use crate::config::ConfigError;
 use crate::name::LineName;
 use crate::profile::{Profile, gitignore::GitignoreError};
@@ -139,15 +139,7 @@ impl Project {
         options: &SnapshotOptions,
         choice: Option<&Profile>,
     ) -> Result<(Self, Initialized), InitError> {
-        Self::init_with(
-            path,
-            identity,
-            options,
-            choice,
-            &LockOptions {
-                wait: DEFAULT_LOCK_WAIT,
-            },
-        )
+        Self::init_with(path, identity, options, choice, &LockOptions::default())
     }
 
     /// Like [`Project::init_with_profile`], waiting at most `lock.wait` for another paper
@@ -211,31 +203,16 @@ fn adopt(
 ) -> Result<(Project, Initialized), InitError> {
     let repo = GitRepo::open(path, &identity)?;
     let dir = paper_dir(&repo);
-    let existed = dir.exists();
-    let held = take_lock(&create_paper_dir(&repo)?, lock)?;
-    let result = adopt_locked(repo, held, path, identity, options, choice);
-    if result.is_err() && !existed {
-        // Refused before anything was written: leave no `.git/paper/` behind. The failed
-        // call has dropped its lock; `remove_dir` only succeeds on an empty folder.
-        let _ = fs::remove_file(dir.join("lock"));
-        let _ = fs::remove_dir(&dir);
-    }
-    result
-}
-
-fn adopt_locked(
-    repo: GitRepo,
-    held: Held,
-    path: &Path,
-    identity: Identity,
-    options: &SnapshotOptions,
-    choice: Option<&Profile>,
-) -> Result<(Project, Initialized), InitError> {
-    if held.paper_dir.join(VERSION_FILE).exists() {
-        return Err(InitError::AlreadyInitialized {
-            path: path.to_owned(),
-        });
-    }
+    // An existing `.git/paper/` is locked first, so a busy project reports `Busy` rather than
+    // `AlreadyInitialized`. Otherwise every read-only check runs before the folder is created:
+    // a refused adoption leaves nothing behind, and the lock file is never deleted.
+    let early = if dir.is_dir() {
+        let held = take_lock(&dir, lock)?;
+        refuse_if_initialized(&held, path)?;
+        Some(held)
+    } else {
+        None
+    };
     let current = repo.head_branch()?.ok_or(InitError::DetachedHead)?;
     let current_line: LineName = current
         .parse()
@@ -250,9 +227,18 @@ fn adopt_locked(
             name: current_line.to_string(),
         });
     }
+    let plan = ProfilePlan::prepare(path, choice)?;
+    let held = if let Some(held) = early {
+        held
+    } else {
+        let held = take_lock(&create_paper_dir(&repo)?, lock)?;
+        // Another init may have finished while this one was checking.
+        refuse_if_initialized(&held, path)?;
+        held
+    };
     // The block and `paper.toml` go to the working files before the snapshot, so they are part
     // of the draft; nothing is rewritten in history.
-    let report = ProfilePlan::prepare(path, choice)?.write(path)?;
+    let report = plan.write(path)?;
     if branches.is_empty() {
         // A repository without commits yet: start like a new project, on its current branch.
         return start_fresh(repo, identity, options, current_line, true, report, held);
@@ -413,6 +399,15 @@ fn finish(
 struct Held {
     paper_dir: PathBuf,
     lock: ProjectLock,
+}
+
+fn refuse_if_initialized(held: &Held, path: &Path) -> Result<(), InitError> {
+    if held.paper_dir.join(VERSION_FILE).exists() {
+        return Err(InitError::AlreadyInitialized {
+            path: path.to_owned(),
+        });
+    }
+    Ok(())
 }
 
 fn take_lock(paper_dir: &Path, options: &LockOptions) -> Result<Held, InitError> {

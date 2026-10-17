@@ -275,3 +275,43 @@ fn locking_leaves_the_repository_valid_for_plain_git() {
     );
     assert!(path.join(".git/paper/lock").exists());
 }
+
+#[test]
+fn the_lock_file_is_never_removed_after_a_failed_init_or_a_dropped_project() {
+    let (_dir, path) = new_project();
+    let lock_file = path.join(".git/paper/lock");
+    assert!(lock_file.exists(), "dropping a project keeps the lock file");
+
+    let again = Project::init_with(
+        &path,
+        identity(),
+        &SnapshotOptions::default(),
+        None,
+        &short(),
+    );
+
+    assert!(matches!(again, Err(InitError::AlreadyInitialized { .. })));
+    assert!(lock_file.exists(), "a refused init keeps the lock file");
+}
+
+#[test]
+fn a_refused_adoption_creates_no_paper_folder_at_all() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path();
+    git(path, &["init", "--quiet", "--initial-branch=main"]);
+    std::fs::write(path.join("a.txt"), "a").unwrap();
+    git(path, &["add", "."]);
+    git(path, &["commit", "--quiet", "-m", "a"]);
+    git(path, &["checkout", "--quiet", "--detach"]);
+
+    let result = Project::init_with(
+        path,
+        identity(),
+        &SnapshotOptions::default(),
+        None,
+        &short(),
+    );
+
+    assert!(matches!(result, Err(InitError::DetachedHead)));
+    assert!(!path.join(".git/paper").exists());
+}

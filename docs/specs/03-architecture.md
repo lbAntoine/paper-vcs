@@ -93,7 +93,9 @@ the immutability-first style.
   .git/                         normal git repo (colocated)
     paper/
       version                   on-disk format version (integer; migrations keyed on it)
-      lock                      exclusive OS file lock (std); content is the holder's pid, a hint only
+      lock                      exclusive OS file lock (std); empty, never read, never deleted
+      lock-holder               holder's pid, a hint for the busy message; never locked (the
+                                lock file is mandatory-locked on Windows), removed on release
       activity/ops/<opid>.json  one file per operation (immutable, fsynced)
       activity/head             current op id (replaced atomically via rename)
       exported.json             git refs as paper last wrote them
@@ -130,8 +132,12 @@ Every command runs this pipeline while holding the lock. The lock is an exclusiv
 until it is dropped, so one command is one `Project` is steps 1 to 9. A second command polls for
 up to 5 s, then fails with `Busy` (exit 3, naming the holder's pid when the lock file has it).
 The OS releases the lock when the holder exits or crashes, so there is never a stale lock to
-remove. Commands that don't open a project (user-level `config`, `--help`, `--version`) don't
-take it. Debug builds honour `PAPER_DEBUG_LOCK_WAIT_MS` to shorten the wait in tests.
+remove. The lock file is never deleted (deleting it would let two processes lock different
+files); a refused `init` creates `.git/paper/` only after its read-only checks pass. The pid
+lives in the separate, unlocked `lock-holder` file so every OS can read it; a missing or stale
+value means "unknown". Besides every command that opens a project, project-level
+`config set --project` takes it. Commands that touch no project (user-level `config`, `--help`,
+`--version`) don't. Debug builds honour `PAPER_DEBUG_LOCK_WAIT_MS` to shorten the wait in tests.
 
 ```
 1. lock
