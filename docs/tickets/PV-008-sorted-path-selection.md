@@ -1,6 +1,7 @@
 # PV-008: save path selection with sorted lookups
 
 - **Status:** Done
+- **Issue:** #30
 - **Branch:** `feat/PV-008-sorted-path-selection`
 - **Depends on:** PV-007 (merged). Runs in parallel with PV-012 (restore).
 - **Touches:** `crates/paper-core/src/project/save.rs` (`select` only), `crates/paper-core/tests/save.rs`

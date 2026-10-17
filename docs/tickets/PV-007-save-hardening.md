@@ -1,6 +1,7 @@
 # PV-007: save and snapshot hardening
 
 - **Status:** Done
+- **Issue:** #20
 - **Branch:** `feat/PV-007-save-hardening`
 - **Depends on:** PV-001 (merged)
 - **Touches:** `crates/paper-core/src/project/save.rs`, `crates/paper-core/tests/save.rs`,

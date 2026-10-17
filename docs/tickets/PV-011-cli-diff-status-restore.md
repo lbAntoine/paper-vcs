@@ -1,6 +1,7 @@
 # PV-011: CLI for status, diff and restore; file diffs in show; error wording
 
 - **Status:** Done
+- **Issue:** #25
 - **Branch:** `feat/PV-011-cli-diff-status-restore`
 - **Depends on:** PV-003 (CLI), PV-010 (core diff, status, restore). Both merged.
   Runs in parallel with PV-013 (test-only, owns `crates/paper-core/tests/resolve.rs`,

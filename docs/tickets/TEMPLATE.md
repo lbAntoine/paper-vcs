@@ -1,6 +1,7 @@
 # PV-NNN: <title>
 
 - **Status:** Draft | Ready | In progress | In review | Done
+- **Issue:** #NN
 - **Branch:** `feat/PV-NNN-<slug>`
 - **Depends on:** none
 - **Touches:** `crates/…/file.rs`, …

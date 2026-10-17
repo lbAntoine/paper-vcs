@@ -1,6 +1,7 @@
 # PV-010: diff, status and restore in paper-core
 
 - **Status:** Done
+- **Issue:** #23
 - **Branch:** `feat/PV-010-diff-status-restore`
 - **Depends on:** PV-002 (resolve, show), PV-009 (line diff). Both merged.
   Runs in parallel with PV-003 (CLI). PV-011 wires these commands into the CLI afterwards.

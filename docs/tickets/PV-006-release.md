@@ -1,6 +1,7 @@
 # PV-006: release pipeline (cargo-dist) and the v0.1.0 acceptance run
 
 - **Status:** Done
+- **Issue:** #32
 - **Branch:** `feat/PV-006-release`
 - **Depends on:** every other v0.1 ticket (merged). Runs alone.
 - **Touches:** root `Cargo.toml` (version, `[profile.dist]`), `Cargo.lock`, `dist-workspace.toml` (new, or

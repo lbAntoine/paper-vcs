@@ -1,6 +1,7 @@
 # PV-012: restore on case-insensitive filesystems, and all-or-nothing flips
 
 - **Status:** Done
+- **Issue:** #31
 - **Branch:** `feat/PV-012-restore-case-insensitive`
 - **Depends on:** PV-010, PV-014 (merged). Runs in parallel with PV-008 (save's path selection).
 - **Touches:** `crates/paper-core/src/project/restore.rs`, `crates/paper-core/src/project/restore_plan.rs` (new),

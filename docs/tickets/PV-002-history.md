@@ -1,6 +1,7 @@
 # PV-002: resolve points, history and show
 
 - **Status:** Done
+- **Issue:** #22
 - **Branch:** `feat/PV-002-history`
 - **Depends on:** none. Runs in parallel with PV-009 (paper-diff only, disjoint files).
 - **Touches:** `crates/paper-git/src/repo.rs`, `crates/paper-git/tests/repo.rs`,

@@ -1,6 +1,7 @@
 # PV-004: profiles: .gitignore block merge, auto-detect, paper.toml
 
 - **Status:** Done
+- **Issue:** #28
 - **Branch:** `feat/PV-004-profiles`
 - **Depends on:** PV-005 (the `profile` key in `paper.toml`), merged. Runs alone.
 - **Touches:** `crates/paper-core/profiles/*.toml` (new), `crates/paper-core/src/profile/` (new),

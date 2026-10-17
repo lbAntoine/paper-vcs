@@ -1,6 +1,7 @@
 # PV-014: review follow-ups from PV-011, PV-013, PV-005 and PV-004
 
 - **Status:** Done
+- **Issue:** #29
 - **Branch:** `feat/PV-014-review-follow-ups`
 - **Depends on:** PV-004, PV-005, PV-011, PV-013 (merged). Runs alone.
 - **Touches:** `crates/paper-cli/tests/common/mod.rs`, `crates/paper-cli/tests/*.rs` (and snapshots
