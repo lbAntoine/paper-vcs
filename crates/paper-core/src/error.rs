@@ -732,10 +732,20 @@ impl From<UndoError> for PaperError {
     fn from(error: UndoError) -> Self {
         match error {
             UndoError::Save(inner) => inner.into(),
+            UndoError::EmptyEntry => Self::user(
+                "Say which entry to go back to",
+                "`--to` needs the start of an entry id (hexadecimal, as the first column of the \
+                 activity list). Nothing was undone or changed.",
+                vec![Suggestion::new(
+                    "paper activity",
+                    "list the entries and their ids",
+                )],
+            ),
             UndoError::UnknownEntry { prefix } => Self::user(
                 format!("No entry in the activity log starts with '{prefix}'"),
-                "Nothing was undone or changed. A typo in the id is the usual cause; the \
-                 ids are the first column of the activity list.",
+                "Nothing was undone or changed. A typo in the id is the usual cause; ids are \
+                 made of the digits 0-9 and the letters a-f, and are the first column of the \
+                 activity list.",
                 vec![Suggestion::new(
                     "paper activity",
                     "list the entries and their ids",

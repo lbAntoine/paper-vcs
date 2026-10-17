@@ -175,3 +175,18 @@ back out of the files, and `redo` replays them. The CLI commands are PV-024.
   - Fix step 8's wording; add the walk-back sentence to § Undo / redo algorithm.
   - Fix the NITs.
   - The "marker exists during the checkout" check moves to PV-025 (fault injection).
+
+### GREEN (review round 1) · rust-engineer · 2026-10-18
+
+- Marker now written before the op, as `{"schema":1,"from":"<head op id>","tree":"<target draft tree>"}`; path
+  derived from `paper_dir`; round-trip test adjusted; PV-025 repair rule documented in the lifecycle.
+- `Undone::files_match` (snapshot tree after the checkout equals the target tree); tested in the ignored-file
+  scenario (false) and a plain undo (true). Spec says skipped paths are recorded by the next command.
+- `stored()` includes `refs/paper/keep` again; only the undo+redo round-trip test filters it.
+- Empty prefix: new `UndoError::EmptyEntry` with a teaching error, tested. Deviation: a non-hex prefix such as
+  `zzzz` stays `UnknownEntry` (its message now says ids are 0-9a-f), because an existing test asserts
+  `UnknownEntry` for `zzzz`.
+- Ambiguous candidates sorted newest first; an unreadable leftover is listed by id with
+  "(unreadable operation file)" and no longer turns into an activity error.
+- Specs: step 8 wording, walk-back and skipped-path notes. NITs fixed (docs, `Resolved::To(Op)`, marker path).
+

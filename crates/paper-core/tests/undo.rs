@@ -131,12 +131,7 @@ fn assert_git_consistent(dir: &Path) {
 /// Everything a refused or empty command must leave alone.
 fn stored(dir: &Path) -> (String, String, String, String, BTreeMap<String, Vec<u8>>) {
     (
-        // refs/paper/keep moves with every op by design (PV-022).
-        git(dir, &["for-each-ref", "--format=%(refname) %(objectname)"])
-            .lines()
-            .filter(|line| !line.starts_with("refs/paper/keep "))
-            .flat_map(|line| [line, "\n"])
-            .collect(),
+        git(dir, &["for-each-ref", "--format=%(refname) %(objectname)"]),
         git(dir, &["ls-files", "--stage"]),
         // Read the file: `symbolic-ref` fails on a detached HEAD.
         fs::read_to_string(dir.join(".git/HEAD")).unwrap(),
@@ -399,11 +394,18 @@ fn undoing_all_the_way_back_ends_in_nothing_to_undo_and_redoing_all_the_way_in_n
     }
 
     assert_eq!(redos, 2);
-    // Refs, index, HEAD and files are back; only the log head moved on.
+    // Refs, index, HEAD and files are back; only the log head and refs/paper/keep (which
+    // moves with every op by design, PV-022) moved on.
+    let without_keep = |refs: &str| -> String {
+        refs.lines()
+            .filter(|line| !line.starts_with("refs/paper/keep "))
+            .flat_map(|line| [line, "\n"])
+            .collect()
+    };
     let (refs, index, head_ref, _, bytes) = stored(dir.path());
     assert_eq!(
-        (refs, index, head_ref, bytes),
-        (latest.0, latest.1, latest.2, latest.4)
+        (without_keep(&refs), index, head_ref, bytes),
+        (without_keep(&latest.0), latest.1, latest.2, latest.4)
     );
 }
 
@@ -792,8 +794,37 @@ fn the_checkout_never_overwrites_an_ignored_file_and_reports_it_as_skipped() {
             ),
         ]
     );
+    assert!(!second.files_match, "a skipped path keeps its own content");
     git(dir.path(), &["fsck", "--strict", "--no-progress"]);
     assert!(!dir.path().join(".git/paper/checkout-pending").exists());
+}
+
+#[test]
+fn files_match_is_true_when_nothing_was_skipped() {
+    let (dir, mut project) = project_with(&[("a.tex", "v0\n")]);
+    write(dir.path(), "a.tex", "v1\n");
+    save_all(&mut project, "one");
+
+    let outcome = undo(&mut project);
+
+    assert!(outcome.skipped.is_empty());
+    assert!(outcome.files_match);
+}
+
+#[test]
+fn an_empty_prefix_is_a_teaching_error_and_changes_nothing() {
+    let (dir, mut project) = three_saves();
+    let before = stored(dir.path());
+    let ops = op_count(dir.path());
+
+    let err = project.undo_to("").unwrap_err();
+    assert!(matches!(err, UndoError::EmptyEntry), "{err:?}");
+    let taught = PaperError::from(err);
+    assert_eq!(taught.kind, ErrorKind::User);
+    assert!(!taught.why.is_empty() && !taught.next.is_empty());
+
+    assert_eq!(stored(dir.path()), before);
+    assert_eq!(op_count(dir.path()), ops);
 }
 
 #[cfg(unix)]

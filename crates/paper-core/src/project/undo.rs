@@ -22,6 +22,10 @@ pub struct Undone {
     pub changed: Vec<Change>,
     /// Files paper does not record that the checkout left alone, with the reason.
     pub skipped: Vec<SkippedPath>,
+    /// Whether the working files now equal the new draft. `false` when skipped paths keep
+    /// their own content: the next command records the difference as an edits entry (which
+    /// clears the redo stack).
+    pub files_match: bool,
 }
 
 /// What an undo-family command did.
@@ -29,9 +33,11 @@ pub struct Undone {
 pub enum UndoOutcome {
     /// The state changed; the working files follow it.
     Undone(Undone),
-    /// The position is the first entry. Nothing was recorded.
+    /// The position is the first entry. Nothing was recorded, besides an edits entry for
+    /// unsaved changes.
     NothingToUndo,
-    /// The redo stack is empty. Nothing was recorded.
+    /// The redo stack is empty. Nothing was recorded, besides an edits entry for unsaved
+    /// changes.
     NothingToRedo,
 }
 
@@ -40,12 +46,14 @@ pub enum UndoError {
     /// The refusals of `save`: plain git moved a line ref or HEAD.
     #[error(transparent)]
     Save(#[from] SaveError),
+    #[error("an entry id is needed after --to")]
+    EmptyEntry,
     #[error("no entry in the activity log starts with '{prefix}'")]
     UnknownEntry { prefix: String },
     #[error("'{prefix}' starts more than one entry in the activity log")]
     AmbiguousEntry {
         prefix: String,
-        /// Every entry the prefix matches, with its short id and description.
+        /// Every entry the prefix matches, newest first, with its short id and description.
         candidates: Vec<ActivityEntry>,
     },
     #[error(transparent)]
@@ -66,10 +74,17 @@ pub enum UndoError {
 }
 
 /// Where an undo-family command is going.
-enum Aim {
+enum Aim<'a> {
     Undo,
     Redo,
-    To(String),
+    To(&'a str),
+}
+
+/// An [`Aim`] with its entry looked up.
+enum Resolved {
+    Undo,
+    Redo,
+    To(Op),
 }
 
 /// A decided transition: the entry it moves to and how the new op is bookkept.
@@ -125,18 +140,19 @@ impl Project {
     ///
     /// Never.
     pub fn undo_to(&mut self, prefix: &str) -> Result<UndoOutcome, UndoError> {
-        self.go(&Aim::To(prefix.to_owned()))
+        self.go(&Aim::To(prefix))
     }
 
     /// Snapshot, then the lifecycle: keep-alive, op, export (inside `record_at`), checkout.
-    fn go(&mut self, aim: &Aim) -> Result<UndoOutcome, UndoError> {
+    fn go(&mut self, aim: &Aim<'_>) -> Result<UndoOutcome, UndoError> {
         // Refuse before anything is written, with save's errors.
         let line = self.view.current_line().clone();
         self.check_in_sync(&line)?;
         let log = ActivityLog::open(&self.paper_dir);
-        let wanted = match aim {
-            Aim::To(prefix) => Some(find_entry(&log, prefix)?),
-            Aim::Undo | Aim::Redo => None,
+        let resolved = match aim {
+            Aim::Undo => Resolved::Undo,
+            Aim::Redo => Resolved::Redo,
+            Aim::To(prefix) => Resolved::To(find_entry(&log, prefix)?),
         };
         // I1: edits made since the last command become their own entry first.
         let state = self.snapshot()?;
@@ -144,7 +160,12 @@ impl Project {
             path: log.root().join("head"),
         })?;
         let head = log.read(&head_id)?;
-        let Some(step) = decide(&log, aim, &head, wanted)? else {
+        let step = match resolved {
+            Resolved::Undo => step_undo(&log, &head)?,
+            Resolved::Redo => step_redo(&log, &head)?,
+            Resolved::To(target) => Some(step_to(&log, target)?),
+        };
+        let Some(step) = step else {
             return Ok(match aim {
                 Aim::Redo => UndoOutcome::NothingToRedo,
                 Aim::Undo | Aim::To(_) => UndoOutcome::NothingToUndo,
@@ -160,23 +181,27 @@ impl Project {
         // Decided, and every blob read, before anything is written.
         let plan = self.plan_checkout(targets, &wanted_files, &current, &state.skipped)?;
 
-        let placement = Some((step.target.id.clone(), step.redo));
-        let op = self.record_at(step.kind, view, &step.description, placement)?;
-
-        let marker_path = ".git/paper/checkout-pending";
-        PendingCheckout::new(&op.id, &tree)
+        // The marker goes first, naming the op the project is at and the tree the files must
+        // reach, so a crash anywhere below can be repaired (03-architecture.md § Command
+        // lifecycle).
+        let marker_path = PendingCheckout::path(&self.paper_dir);
+        let marker_name = marker_path.display().to_string();
+        PendingCheckout::new(&head.id, &tree)
             .write(&self.paper_dir)
-            .map_err(|source| UndoError::io("write", marker_path, source))?;
+            .map_err(|source| UndoError::io("write", &marker_name, source))?;
+        let placement = Some((step.target.id.clone(), step.redo));
+        self.record_at(step.kind, view, &step.description, placement)?;
         self.apply_checkout(&plan, "write")
             .map_err(|f| UndoError::io(f.action, &f.path, f.source))?;
-        self.refresh_stat_cache(&tree)?;
+        let files_match = self.refresh_stat_cache(&tree)?;
         PendingCheckout::clear(&self.paper_dir)
-            .map_err(|source| UndoError::io("remove", marker_path, source))?;
+            .map_err(|source| UndoError::io("remove", &marker_name, source))?;
 
         Ok(UndoOutcome::Undone(Undone {
             entry,
             changed: plan.changes,
             skipped: plan.skipped,
+            files_match,
         }))
     }
 
@@ -189,16 +214,17 @@ impl Project {
     }
 
     /// Re-reads the working files so the stat cache describes what the checkout wrote.
-    fn refresh_stat_cache(&self, tree: &paper_git::TreeId) -> Result<(), UndoError> {
+    /// Whether the files equal `tree`.
+    fn refresh_stat_cache(&self, tree: &paper_git::TreeId) -> Result<bool, UndoError> {
         let previous = StatCache::load(&self.paper_dir);
         let snap = snapshot(&self.repo, tree, &previous, &self.options).map_err(SaveError::from)?;
-        snap.cache.save(&self.paper_dir).map_err(|source| {
-            SaveError::Io {
+        snap.cache
+            .save(&self.paper_dir)
+            .map_err(|source| SaveError::Io {
                 path: self.paper_dir.clone(),
                 source,
-            }
-            .into()
-        })
+            })?;
+        Ok(snap.tree == *tree)
     }
 }
 
@@ -212,60 +238,55 @@ impl UndoError {
     }
 }
 
-/// The transitions of § Undo / redo algorithm; `None` when there is nothing to do.
-fn decide(
-    log: &ActivityLog,
-    aim: &Aim,
-    head: &Op,
-    wanted: Option<Op>,
-) -> Result<Option<Step>, UndoError> {
-    Ok(match aim {
-        Aim::Undo => {
-            let position = log.read(&head.position)?;
-            let Some(parent) = position.parent.clone() else {
-                return Ok(None);
-            };
-            let mut redo = vec![position.id.clone()];
-            redo.extend(head.redo.iter().cloned());
-            Some(Step {
-                target: log.read(&parent)?,
-                description: format!("undo: {}", position.description),
-                entry: position,
-                kind: OpKind::Undo,
-                redo,
-            })
-        }
-        Aim::Redo => {
-            let Some((first, rest)) = head.redo.split_first() else {
-                return Ok(None);
-            };
-            let target = log.read(first)?;
-            Some(Step {
-                description: format!("redo: {}", target.description),
-                entry: target.clone(),
-                target,
-                kind: OpKind::Redo,
-                redo: rest.to_vec(),
-            })
-        }
-        Aim::To(_) => match wanted {
-            None => None,
-            Some(target) => {
-                let entry = entry_of(log, &target)?;
-                Some(Step {
-                    description: format!("go back to {}: {}", entry.short_id, target.description),
-                    entry: target.clone(),
-                    target,
-                    kind: OpKind::Undo,
-                    redo: Vec::new(),
-                })
-            }
-        },
+/// `undo`: back to the parent of the position; `None` at the first entry.
+fn step_undo(log: &ActivityLog, head: &Op) -> Result<Option<Step>, UndoError> {
+    let position = log.read(&head.position)?;
+    let Some(parent) = position.parent.clone() else {
+        return Ok(None);
+    };
+    let mut redo = vec![position.id.clone()];
+    redo.extend(head.redo.iter().cloned());
+    Ok(Some(Step {
+        target: log.read(&parent)?,
+        description: format!("undo: {}", position.description),
+        entry: position,
+        kind: OpKind::Undo,
+        redo,
+    }))
+}
+
+/// `redo`: forward to the first entry of the redo stack; `None` when it is empty.
+fn step_redo(log: &ActivityLog, head: &Op) -> Result<Option<Step>, UndoError> {
+    let Some((first, rest)) = head.redo.split_first() else {
+        return Ok(None);
+    };
+    let target = log.read(first)?;
+    Ok(Some(Step {
+        description: format!("redo: {}", target.description),
+        entry: target.clone(),
+        target,
+        kind: OpKind::Redo,
+        redo: rest.to_vec(),
+    }))
+}
+
+/// `undo --to`: the state of `target`, with an empty redo stack.
+fn step_to(log: &ActivityLog, target: Op) -> Result<Step, UndoError> {
+    let entry = entry_of(log, &target)?;
+    Ok(Step {
+        description: format!("go back to {}: {}", entry.short_id, target.description),
+        entry: target.clone(),
+        target,
+        kind: OpKind::Undo,
+        redo: Vec::new(),
     })
 }
 
 /// The one op whose id starts with `prefix`, looking at every op file.
 fn find_entry(log: &ActivityLog, prefix: &str) -> Result<Op, UndoError> {
+    if prefix.is_empty() {
+        return Err(UndoError::EmptyEntry);
+    }
     let names = log.op_file_names()?;
     let matching: Vec<OpId> = names
         .iter()
@@ -279,17 +300,28 @@ fn find_entry(log: &ActivityLog, prefix: &str) -> Result<Op, UndoError> {
         [only] => Ok(log.read(only)?),
         many => {
             let shorts = short_ids_among(many, &names);
-            let mut candidates = Vec::new();
-            for (id, short_id) in many.iter().zip(shorts) {
-                let op = log.read(id)?;
-                candidates.push(ActivityEntry {
-                    id: op.id,
-                    short_id,
-                    time: op.time,
-                    kind: op.kind,
-                    description: op.description,
-                });
-            }
+            let mut candidates: Vec<ActivityEntry> = many
+                .iter()
+                .zip(shorts)
+                .map(|(id, short_id)| match log.read(id) {
+                    Ok(op) => ActivityEntry {
+                        id: op.id,
+                        short_id,
+                        time: op.time,
+                        kind: op.kind,
+                        description: op.description,
+                    },
+                    // A leftover that can't be read is listed by its id alone.
+                    Err(_) => ActivityEntry {
+                        id: id.clone(),
+                        short_id,
+                        time: String::new(),
+                        kind: OpKind::Snapshot,
+                        description: "(unreadable operation file)".to_owned(),
+                    },
+                })
+                .collect();
+            candidates.sort_by(|a, b| b.time.cmp(&a.time).then_with(|| a.id.cmp(&b.id)));
             Err(UndoError::AmbiguousEntry {
                 prefix: prefix.to_owned(),
                 candidates,

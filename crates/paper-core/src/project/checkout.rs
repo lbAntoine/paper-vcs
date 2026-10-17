@@ -8,7 +8,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use paper_git::{FileKind, GitError, TreeFile, TreeId};
 use serde::{Deserialize, Serialize};
@@ -47,31 +47,37 @@ pub(super) struct ApplyFailure {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(super) struct PendingCheckout {
     schema: u32,
-    /// The op that asked for the checkout.
-    op: String,
+    /// The op the project was at when the command started. If `head` still names it, the
+    /// command's op never committed and the marker is stale.
+    from: String,
     /// The draft tree the working files are being made to match.
     tree: String,
 }
 
 impl PendingCheckout {
-    pub(super) fn new(op: &OpId, tree: &TreeId) -> Self {
+    pub(super) fn new(from: &OpId, tree: &TreeId) -> Self {
         Self {
             schema: PENDING_SCHEMA,
-            op: op.as_str().to_owned(),
+            from: from.as_str().to_owned(),
             tree: tree.as_str().to_owned(),
         }
+    }
+
+    /// Where the marker lives.
+    pub(super) fn path(paper_dir: &Path) -> PathBuf {
+        paper_dir.join(PENDING_FILE)
     }
 
     /// Writes the marker atomically.
     pub(super) fn write(&self, paper_dir: &Path) -> io::Result<()> {
         let mut json = serde_json::to_vec_pretty(self).expect("the marker always serialises");
         json.push(b'\n');
-        write_atomic(&paper_dir.join(PENDING_FILE), &json)
+        write_atomic(&Self::path(paper_dir), &json)
     }
 
     /// Removes the marker; absent is fine.
     pub(super) fn clear(paper_dir: &Path) -> io::Result<()> {
-        match fs::remove_file(paper_dir.join(PENDING_FILE)) {
+        match fs::remove_file(Self::path(paper_dir)) {
             Err(err) if err.kind() != io::ErrorKind::NotFound => Err(err),
             _ => Ok(()),
         }
@@ -264,7 +270,7 @@ mod tests {
         assert_eq!(back, marker);
         let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(json["schema"], 1);
-        assert_eq!(json["op"], op.as_str());
+        assert_eq!(json["from"], op.as_str());
         assert_eq!(json["tree"], tree.as_str());
 
         PendingCheckout::clear(dir.path()).unwrap();
