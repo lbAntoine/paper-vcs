@@ -156,6 +156,7 @@ fn cause_chain(error: &dyn std::error::Error) -> String {
 impl From<InitError> for PaperError {
     fn from(error: InitError) -> Self {
         match error {
+            InitError::Busy { .. } => todo!("PV-019: busy error, exit 3"),
             InitError::AlreadyInitialized { path } => Self::user(
                 "This folder is already a paper project",
                 format!(
@@ -504,6 +505,7 @@ fn set_flag(origin: Option<&Origin>, scope: Scope) -> &'static str {
 impl From<OpenError> for PaperError {
     fn from(error: OpenError) -> Self {
         match error {
+            OpenError::Busy { .. } => todo!("PV-019: busy error, exit 3"),
             OpenError::NotAPaperProject { path } => Self::not_a_project(&path, true),
             OpenError::UnsupportedFormat { .. } => Self::project(
                 "This project was made by a different version of paper",

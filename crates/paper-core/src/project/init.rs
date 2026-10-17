@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use paper_git::{ChangeId, CommitId, GitError, GitRepo, Identity, NewCommit, TreeId};
 
 use super::init_profile::{ProfilePlan, ProfileReport};
+use super::{DEFAULT_LOCK_WAIT, LockOptions};
 use super::{
     FORMAT_VERSION, Project, VERSION_FILE, draft_ref, line_ref, paper_dir, signature_now,
     write_draft,
@@ -57,6 +58,11 @@ pub struct Initialized {
 
 #[derive(Debug, thiserror::Error)]
 pub enum InitError {
+    #[error("another paper command is running in this project")]
+    Busy {
+        /// The holder's process id, when known.
+        holder: Option<u32>,
+    },
     #[error("{path} is already a paper project")]
     AlreadyInitialized { path: PathBuf },
     #[error("{path} is inside the git repository at {root}")]
@@ -132,6 +138,37 @@ impl Project {
         identity: Identity,
         options: &SnapshotOptions,
         choice: Option<&Profile>,
+    ) -> Result<(Self, Initialized), InitError> {
+        Self::init_with(
+            path,
+            identity,
+            options,
+            choice,
+            &LockOptions {
+                wait: DEFAULT_LOCK_WAIT,
+            },
+        )
+    }
+
+    /// Like [`Project::init_with_profile`], waiting at most `lock.wait` for another paper
+    /// command. The lock is taken once `.git/paper/` exists, before anything else is checked
+    /// (so a busy project reports `Busy` rather than `AlreadyInitialized`), and the returned
+    /// project holds it until dropped.
+    ///
+    /// # Errors
+    ///
+    /// [`InitError::Busy`] when another command holds the project after the wait, and
+    /// everything [`Project::init_with_profile`] reports.
+    ///
+    /// # Panics
+    ///
+    /// Never.
+    pub fn init_with(
+        path: &Path,
+        identity: Identity,
+        options: &SnapshotOptions,
+        choice: Option<&Profile>,
+        _lock: &LockOptions,
     ) -> Result<(Self, Initialized), InitError> {
         fs::create_dir_all(path).map_err(|source| io_error(path, source))?;
         if has_damaged_git(path) {

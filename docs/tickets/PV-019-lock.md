@@ -89,3 +89,21 @@ operation log (PV-020) relies on it.
 ## Summary
 
 ## Handoff log
+
+### RED · test-author · 2026-10-17
+
+**Tests** (all pass nothing today; pre-existing suite fully green, also with an empty `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_NOSYSTEM=1`):
+
+- `crates/paper-core/tests/lock.rs`: 10 tests + 1 helper (`lock_holder_helper`, the child-process body, a no-op unless `PAPER_TEST_LOCK_HOLDER` is set). 10 fail: default wait is 5 s (`Default` is `todo!()`); busy-after-wait then free after drop; Busy names the holder pid; `PaperError` is kind Project, message "Another paper command is running in this project", pid in message/why/next, no "delete" advice; `init_with` on a held project is `InitError::Busy` (not `AlreadyInitialized`, so the lock is taken before that check); init's busy conversion; init's returned project keeps the lock; a waiting open succeeds after a 100 ms holder (asserts the holder released first, no timing bound); killed child process leaves no stale lock (asserts the child holds it while alive, then kill, then open succeeds); lock file exists inside `.git` and `fsck --strict`/`log`/`status` stay clean. Fail today because `open` does not lock (no `Busy`), the conversions are `todo!()`, and no lock file is created.
+- `crates/paper-cli/tests/lock.rs`: 5 tests. 3 fail (`status` human and `--json` on a busy project want exit 3 + three-part error naming the test process's pid; usable again after drop: first run must be 3); today `status` exits 0. 2 are regression guards that pass today and must stay green (`--version` and `config get user.name` do not take the lock).
+
+**Not testable here:** that `PAPER_DEBUG_LOCK_WAIT_MS` is absent from release builds (rust-engineer: use `#[cfg(debug_assertions)]`, like `PAPER_DEBUG_PANIC`).
+
+**Stubs / API added (for GREEN to fill in):**
+- `project/lock.rs`: `LockOptions { wait }` (`Default` = `todo!()`), `DEFAULT_LOCK_WAIT`, `LockError { Busy { holder }, Io }`, `ProjectLock::acquire` (`todo!()`, not called by existing code), re-exported from `paper_core::project`.
+- `Project::open_with(path, identity, &LockOptions)`; `open` delegates with `DEFAULT_LOCK_WAIT`. `Project::init_with(path, identity, &SnapshotOptions, Option<&Profile>, &LockOptions)`; `init_with_profile` delegates. Both currently ignore the lock.
+- `OpenError::Busy { holder: Option<u32> }`, `InitError::Busy { holder }`; their `PaperError` arms are `todo!()`.
+
+**Notes for GREEN:** `Env::project_with_three_saves()` returns a `Project`; once `Project` holds the lock, any existing CLI test that keeps that value alive while running `paper` will see Busy and needs the value dropped (that is a test fix, report it if it happens). `tempfile`'s `dunce` is not a core dependency, so core tests use plain temp paths.
+
+**Questions:** none.
