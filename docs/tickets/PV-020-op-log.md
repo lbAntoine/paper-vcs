@@ -182,3 +182,5 @@ untouched, so `json_errors` has 2 failures (all other tests pass).
 
 **Notes.** Unused `SaveError::View` / `InitError::View` variants are kept (their error.rs mapping
 tests build them). Checks run with `INSTA_UPDATE=no`, empty `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_NOSYSTEM=1`.
+
+**Snapshots (authorised by the coordinator):** `json_errors__project_error_human.snap` and `json_errors__json_error_project.snap` now say "reads format 2"; only that digit changed.
