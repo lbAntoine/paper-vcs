@@ -156,3 +156,22 @@ back out of the files, and `redo` replays them. The CLI commands are PV-024.
   With exactly those two helper changes (applied temporarily, then reverted) all 23 tests pass.
 - Authorised RED-helper corrections (coordinator): `stored()` in `tests/undo.rs` now reads `.git/HEAD`
   (detached HEAD no longer panics) and leaves `refs/paper/keep` out. No assertion changed.
+
+### Review · reviewer · 2026-10-18
+- Verdict: CHANGES. Tests, clippy and fmt pass. The transitions match the spec literally (every edge case probed), refusals write nothing, the checkout only touches paths in the snapshotted draft, the factored restore is faithful, and the error wording follows rule 6.
+- MAJOR: the marker is written after the op, so a crash between the op and the marker leaves head at the undo op, the files on the old draft and no marker; the next snapshot then silently records edits that reverse the undo.
+- MAJOR: when the checkout skips paths, the files no longer match the new draft; the next command records an edits entry that partly reverses the undo and clears redo, silently.
+- MINOR: the `stored()` keep filter applies to every test, so a refused command that moved keep wouldn't be caught.
+- MINOR: an empty prefix matches every op; ambiguous candidates are unsorted, and an unreadable leftover turns the teaching error into an activity error.
+- MINOR: lifecycle step 8 still lists restore among marker writers; "exists during the checkout" isn't tested.
+- NITs: NothingToUndo/Redo docs, an impossible `None` branch, a hard-coded marker path.
+- Note: repeated `undo` walks back through every state, including undone ones (`position = P.parent`), as the spec specifies.
+- Coordinator decisions:
+  - Write the marker before the op, naming the target draft tree and the head op it starts from; PV-025 finishes the checkout when the head view's draft tree equals the marker's tree, else drops the marker (spec).
+  - `Undone` gains a flag saying whether the working files match the new draft; the spec says skipped paths keep their content and the next command records them as edits.
+  - Filter keep only in the round-trip test.
+  - Reject empty and non-hex prefixes with a teaching error.
+  - Sort candidates newest first; list unreadable leftovers by id only.
+  - Fix step 8's wording; add the walk-back sentence to § Undo / redo algorithm.
+  - Fix the NITs.
+  - The "marker exists during the checkout" check moves to PV-025 (fault injection).
