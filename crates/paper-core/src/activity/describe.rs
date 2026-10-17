@@ -16,7 +16,7 @@ pub fn edited(paths: &[String]) -> String {
 pub fn restored(paths: &[String], from: &str) -> String {
     let named: Vec<&str> = paths.iter().map(String::as_str).collect();
     // The project's root is the empty path.
-    let what = if named.iter().all(|p| p.is_empty()) {
+    let what = if named.iter().any(|p| p.is_empty()) {
         "everything".to_owned()
     } else {
         path_list(&named)
@@ -60,6 +60,14 @@ mod tests {
     fn restoring_the_root_says_everything() {
         assert_eq!(
             restored(&paths(&[""]), "last"),
+            "restore everything from last"
+        );
+    }
+
+    #[test]
+    fn the_root_among_other_paths_still_says_everything() {
+        assert_eq!(
+            restored(&paths(&["", "a.tex"]), "last"),
             "restore everything from last"
         );
     }

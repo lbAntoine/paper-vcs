@@ -119,9 +119,9 @@ pub enum Command {
             short = 'n',
             value_name = "N",
             default_value_t = 20,
-            value_parser = clap::value_parser!(u64).range(1..)
+            value_parser = parse_entry_count
         )]
-        limit: u64,
+        limit: usize,
     },
     /// Put files back the way they were at a point.
     Restore {
@@ -153,4 +153,14 @@ pub enum ConfigAction {
     },
     /// Show every setting with its value and where the value comes from.
     List,
+}
+
+/// `-n <N>`: a whole number of entries, at least 1.
+fn parse_entry_count(text: &str) -> Result<usize, String> {
+    match text.parse::<usize>() {
+        Ok(count) if count >= 1 => Ok(count),
+        _ => Err(format!(
+            "-n needs a number of entries, at least 1 (you gave '{text}')"
+        )),
+    }
 }

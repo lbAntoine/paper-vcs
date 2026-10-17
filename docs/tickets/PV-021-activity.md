@@ -105,6 +105,8 @@ entry is one step `paper undo` (PV-023/024) will be able to take back.
 
 **Questions.** None blocking.
 
+Superseded by the round-1 decision: short ids are sized against every op in the log.
+
 ### GREEN · rust-engineer · 2026-10-17
 
 **Implemented.** Descriptions in `activity/describe.rs` (`edited`, `restored`, `saved`), used by `snapshot_as` (now takes `Option<&str>`; `None` describes the files that differ from the previous draft), `save`, `restore`, `init` (`start the project` / `adopt the git repository`) and the migration (`upgrade to paper format 2`). `Display for Point` (spelling as typed; `last~0` prints `last`). `short_ids`, `Project::activity` (head chain only, no snapshot), `From<ActivityError> for PaperError`, CLI `paper activity` (opens without snapshotting; human and `--json`). Edits entries needed no new recording logic: `snapshot()` already records its own op before `save`/`restore`.
@@ -144,3 +146,7 @@ The JSON snapshot matches byte for byte. All other tests pass, with fmt and clip
 - `-n 0` is rejected by clap (range 1..). Dead `[TIME]` filter removed from the CLI test settings.
 - New tests: core (root restore, multi-line save, `short_ids_among`, point round trip), CLI (`restore .`, multi-line save, `-n 0`).
 - Test change, per the coordinator's decision 3: `short_ids_are_unique_among_the_listed_entries_only` became `short_ids_are_unique_among_every_op_in_the_log_not_only_the_listed_ones` (it now checks uniqueness and minimality against all op files, since listed-only minimality contradicts the decision). No other assertion touched.
+
+### GREEN (post-approval) · rust-engineer · 2026-10-17
+
+A restore naming the root among other paths says `everything`; `-n 0` gets a researcher-worded error (exit 1) from a custom parser.

@@ -307,6 +307,11 @@ fn activity_rejects_a_limit_of_zero() {
 
     let run = env.paper(&["activity", "-n", "0"]);
 
-    assert_ne!(run.code, 0, "{run:#?}");
+    assert_eq!(run.code, 1, "{run:#?}");
     assert!(run.stdout.is_empty(), "{run:#?}");
+    assert!(
+        run.stderr
+            .contains("-n needs a number of entries, at least 1"),
+        "{run:#?}"
+    );
 }
