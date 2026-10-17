@@ -14,6 +14,9 @@ pub enum OpKind {
     Snapshot,
     Save,
     Restore,
+    /// `undo` and `undo --to`.
+    Undo,
+    Redo,
 }
 
 /// One immutable operation: the full view after it, and the undo bookkeeping.

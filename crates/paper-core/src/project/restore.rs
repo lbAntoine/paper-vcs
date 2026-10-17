@@ -1,19 +1,17 @@
 //! `paper restore`: put files back the way they were at a point (02-cli.md § paper restore).
 
 use std::collections::BTreeSet;
-use std::fs;
 use std::io;
-use std::path::Path;
 
-use paper_git::{CommitId, FileKind, GitError};
+use paper_git::{CommitId, GitError};
 
 use super::Project;
+use super::checkout::ApplyFailure;
 use super::resolve::ResolveError;
 use super::save::{SaveError, matches};
 use crate::activity::{OpKind, describe};
-use crate::fs_util::write_atomic;
 use crate::point::Point;
-use crate::snapshot::{Change, ChangeKind, SkipReason, Skipped};
+use crate::snapshot::Change;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RestoreRequest {
@@ -41,7 +39,7 @@ pub struct SkippedPath {
 }
 
 impl SkippedPath {
-    fn new(path: &str, reason: RestoreSkip) -> Self {
+    pub(super) fn new(path: &str, reason: RestoreSkip) -> Self {
         Self {
             path: path.to_owned(),
             reason,
@@ -142,158 +140,24 @@ impl Project {
             .chain(draft_files.keys())
             .filter(|file| request.paths.iter().any(|p| matches(p, file)))
             .collect();
-        let mut skipped = Vec::new();
-        let mut deletes: Vec<&String> = Vec::new();
-        let mut candidates = Vec::new();
-        for path in targets {
-            let wanted = from_files.get(path);
-            let kept = left_alone(&before.skipped, path)
-                .or_else(|| self.on_disk_symlink(path))
-                .or_else(|| {
-                    (wanted.is_some_and(|f| f.kind == FileKind::Symlink))
-                        .then_some(RestoreSkip::SavedSymlink)
-                });
-            if let Some(reason) = kept {
-                skipped.push(SkippedPath::new(path, reason));
-            } else if wanted.is_none() {
-                deletes.push(path);
-            } else if wanted != draft_files.get(path) {
-                candidates.push(path);
-            }
-        }
-        // Decide everything, and read every blob, before the first byte on disk changes.
-        let plan = self.settle(candidates, deletes, |p| draft_files.contains_key(p));
-        let deletes = plan.deletes;
-        skipped.extend(
-            plan.blocked
-                .iter()
-                .map(|(path, reason)| SkippedPath::new(path, reason.clone())),
-        );
-        skipped.sort_by(|a, b| a.path.cmp(&b.path));
-        let mut writes = Vec::new();
-        for path in plan.writes {
-            let file = &from_files[path];
-            writes.push((path, file.kind, self.repo.read_blob(&file.blob)?));
-        }
-
-        let mut changes: Vec<Change> = deletes
-            .iter()
-            .map(|path| Change {
-                path: (*path).clone(),
-                kind: ChangeKind::Deleted,
-            })
-            .chain(writes.iter().map(|(path, _, _)| Change {
-                path: (*path).clone(),
-                kind: if draft_files.contains_key(*path) {
-                    ChangeKind::Modified
-                } else {
-                    ChangeKind::Added
-                },
-            }))
-            .collect();
-        changes.sort_by(|a, b| a.path.cmp(&b.path));
-
-        // Deletions first, so a file turning into a directory (or back) finds room.
-        for path in deletes {
-            self.delete_working_file(path)?;
-        }
-        for (path, kind, bytes) in writes {
-            let io_err = |source| RestoreError::Io {
-                action: "restore",
-                path: path.clone(),
-                source,
-            };
-            let absolute = self.repo.workdir().join(path);
-            if let Some(parent) = absolute.parent() {
-                fs::create_dir_all(parent).map_err(io_err)?;
-            }
-            write_atomic(&absolute, &bytes).map_err(io_err)?;
-            set_executable(&absolute, kind == FileKind::Executable).map_err(io_err)?;
-        }
+        let plan = self.plan_checkout(targets, &from_files, &draft_files, &before.skipped)?;
+        self.apply_checkout(&plan, "restore").map_err(restore_io)?;
 
         // Record the new working files so the draft and the stat cache match them.
         let description = describe::restored(&request.paths, &from_point.to_string());
         self.snapshot_as(OpKind::Restore, Some(&description))?;
         Ok(Restored {
             from,
-            changes,
-            skipped,
+            changes: plan.changes,
+            skipped: plan.skipped,
         })
     }
+}
 
-    /// Whether the path, or any directory above it, is a symlink on disk.
-    fn on_disk_symlink(&self, path: &str) -> Option<RestoreSkip> {
-        let root = self.repo.workdir();
-        let mut prefix = String::new();
-        path.split('/').find_map(|part| {
-            if !prefix.is_empty() {
-                prefix.push('/');
-            }
-            prefix.push_str(part);
-            let linked =
-                fs::symlink_metadata(root.join(&prefix)).is_ok_and(|m| m.file_type().is_symlink());
-            linked.then(|| {
-                if prefix == path {
-                    RestoreSkip::Symlink
-                } else {
-                    RestoreSkip::SymlinkedFolder
-                }
-            })
-        })
+fn restore_io(failure: ApplyFailure) -> RestoreError {
+    RestoreError::Io {
+        action: failure.action,
+        path: failure.path,
+        source: failure.source,
     }
-
-    /// Removes a file, then the directories it leaves empty.
-    fn delete_working_file(&self, path: &str) -> Result<(), RestoreError> {
-        let root = self.repo.workdir();
-        let absolute = root.join(path);
-        match fs::remove_file(&absolute) {
-            Ok(()) => {}
-            Err(err) if err.kind() == io::ErrorKind::NotFound => {}
-            Err(source) => {
-                return Err(RestoreError::Io {
-                    action: "remove",
-                    path: path.to_owned(),
-                    source,
-                });
-            }
-        }
-        let mut dir = absolute.parent();
-        while let Some(current) = dir.filter(|d| *d != root && d.starts_with(root)) {
-            // `remove_dir` only succeeds on an empty directory.
-            if fs::remove_dir(current).is_err() {
-                break;
-            }
-            dir = current.parent();
-        }
-        Ok(())
-    }
-}
-
-/// Why the snapshot left `path` out (or something above it, like a nested repository).
-fn left_alone(skipped: &[Skipped], path: &str) -> Option<RestoreSkip> {
-    let found = skipped.iter().find(|s| {
-        path == s.path
-            || path
-                .strip_prefix(s.path.as_str())
-                .is_some_and(|r| r.starts_with('/'))
-    })?;
-    Some(match found.reason {
-        SkipReason::TooLarge { bytes } => RestoreSkip::TooLarge { bytes },
-        SkipReason::Symlink if found.path == path => RestoreSkip::Symlink,
-        SkipReason::Symlink => RestoreSkip::SymlinkedFolder,
-        SkipReason::NestedRepository => RestoreSkip::NestedRepository,
-        SkipReason::NonUtf8Path => RestoreSkip::NonUtf8Path,
-    })
-}
-
-#[cfg(unix)]
-fn set_executable(path: &Path, executable: bool) -> io::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    let mode = if executable { 0o755 } else { 0o644 };
-    fs::set_permissions(path, fs::Permissions::from_mode(mode))
-}
-
-#[cfg(not(unix))]
-fn set_executable(_path: &Path, _executable: bool) -> io::Result<()> {
-    Ok(())
 }

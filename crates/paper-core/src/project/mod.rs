@@ -1,6 +1,7 @@
 //! A paper project: a git repository plus paper's own state in `.git/paper/`.
 
 mod activity;
+mod checkout;
 mod diff;
 mod export;
 mod history;
@@ -13,6 +14,7 @@ mod restore;
 mod restore_plan;
 mod save;
 mod status;
+mod undo;
 
 use std::fs;
 use std::io;
@@ -22,7 +24,7 @@ use paper_git::{
     ChangeId, CommitId, GitError, GitRepo, GitTime, Identity, NewCommit, Signature, TreeId,
 };
 
-use crate::activity::{ActivityError, ActivityLog, OpKind};
+use crate::activity::{ActivityError, ActivityLog, Op, OpId, OpKind};
 use crate::name::LineName;
 use crate::snapshot::SnapshotOptions;
 use crate::view::{View, ViewError};
@@ -37,6 +39,7 @@ pub use resolve::{Candidate, PointKind, ResolveError, Resolved};
 pub use restore::{RestoreError, RestoreRequest, RestoreSkip, Restored, SkippedPath};
 pub use save::{DraftState, PathSelection, SaveError, SaveOutcome, SaveRequest, Saved};
 pub use status::{ChangeStat, Status, StatusEntry, StatusError, StatusOptions};
+pub use undo::{UndoError, UndoOutcome, Undone};
 
 /// Version of the on-disk format in `.git/paper/`. Migrations are keyed on it.
 pub const FORMAT_VERSION: u32 = 2;
@@ -170,8 +173,21 @@ impl Project {
         view: View,
         description: &str,
     ) -> Result<(), ExportError> {
+        self.record_at(kind, view, description, None).map(|_| ())
+    }
+
+    /// [`Project::record`] with the undo bookkeeping of the op (`position`, `redo`); `None`
+    /// is a normal op. Returns the op written.
+    pub(super) fn record_at(
+        &mut self,
+        kind: OpKind,
+        view: View,
+        description: &str,
+        placement: Option<(OpId, Vec<OpId>)>,
+    ) -> Result<Op, ExportError> {
         let keep = export::write_keep(&self.repo, &self.identity, Some(&self.view), &view)?;
-        ActivityLog::open(&self.paper_dir).append(kind, &view, description)?;
+        let op =
+            ActivityLog::open(&self.paper_dir).append_at(kind, &view, description, placement)?;
         let previous = std::mem::replace(&mut self.view, view);
         export::export(
             &self.repo,
@@ -182,7 +198,7 @@ impl Project {
                 previous: &previous,
             },
         )?;
-        Ok(())
+        Ok(op)
     }
 
     /// A copy of this project that applies `options` (large-file thresholds) in later snapshots.

@@ -297,5 +297,7 @@ fn op_kind_name(kind: OpKind) -> &'static str {
         OpKind::Snapshot => "snapshot",
         OpKind::Save => "save",
         OpKind::Restore => "restore",
+        OpKind::Undo => "undo",
+        OpKind::Redo => "redo",
     }
 }

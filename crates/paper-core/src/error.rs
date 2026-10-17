@@ -12,7 +12,7 @@ use crate::point::ParsePointError;
 use crate::profile::gitignore::GitignoreError;
 use crate::project::{
     DiffError, HistoryError, InitError, OpenError, ResolveError, RestoreError, SaveError,
-    ShowError, StatusError,
+    ShowError, StatusError, UndoError,
 };
 
 /// Who has to act, which decides the CLI exit code.
@@ -724,6 +724,57 @@ impl From<StatusError> for PaperError {
             StatusError::Save(inner) => inner.into(),
             StatusError::Resolve(inner) => inner.into(),
             StatusError::Git(_) => Self::project("Paper could not read the draft", &error),
+        }
+    }
+}
+
+impl From<UndoError> for PaperError {
+    fn from(error: UndoError) -> Self {
+        match error {
+            UndoError::Save(inner) => inner.into(),
+            UndoError::EmptyEntry => Self::user(
+                "Say which entry to go back to",
+                "`--to` needs the start of an entry id (hexadecimal, as the first column of the \
+                 activity list). Nothing was undone or changed.",
+                vec![Suggestion::new(
+                    "paper activity",
+                    "list the entries and their ids",
+                )],
+            ),
+            UndoError::UnknownEntry { prefix } => Self::user(
+                format!("No entry in the activity log starts with '{prefix}'"),
+                "Nothing was undone or changed. A typo in the id is the usual cause; ids are \
+                 made of the digits 0-9 and the letters a-f, and are the first column of the \
+                 activity list.",
+                vec![Suggestion::new(
+                    "paper activity",
+                    "list the entries and their ids",
+                )],
+            ),
+            UndoError::AmbiguousEntry { prefix, candidates } => Self::user(
+                format!("'{prefix}' starts more than one entry in the activity log"),
+                format!(
+                    "Nothing was undone or changed. It matches: {}.",
+                    candidates
+                        .iter()
+                        .map(|c| format!("{} ({})", c.short_id, c.description))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+                candidates
+                    .iter()
+                    .map(|c| {
+                        Suggestion::new(
+                            format!("paper undo --to {}", c.short_id),
+                            c.description.clone(),
+                        )
+                    })
+                    .collect(),
+            ),
+            UndoError::Git(_)
+            | UndoError::Activity(_)
+            | UndoError::Export(_)
+            | UndoError::Io { .. } => Self::project("Paper could not undo or redo", &error),
         }
     }
 }

@@ -103,7 +103,10 @@ the immutability-first style.
       view.json.v1              format 1's view, kept after migration (removed by `gc`)
       exported.json             git refs as paper last wrote them
       wc-state.json             stat cache for the checked-out draft (path → size,mtime,inode,blob)
-      checkout-pending          exists only while the working files are being rewritten
+      checkout-pending          exists only while the working files are being rewritten:
+                                {"schema":1,"from":"<head op id>","tree":"<draft tree hash>"},
+                                written atomically before the op is recorded (by undo, redo and
+                                undo --to; restore does not write it)
   paper.toml                    project config (committed; shared with co-authors)
   .gitignore                    profile ignores merged in
 ```
@@ -190,8 +193,9 @@ value means "unknown". Besides every command that opens a project, project-level
 7. export       update refs/heads/*, tags, refs/paper/*, git HEAD → current line, git index → tip tree
                 (index only when the current tip changed since the last export, or HEAD isn't on the
                 current line; never when the line or HEAD was left alone), write exported.json
-8. checkout     if the draft tree changed (undo, switch, restore, keep…): write checkout-pending,
-                update working files, refresh wc-state, delete checkout-pending
+8. checkout     if the draft tree changed (undo, switch, restore, keep…): update working files,
+                refresh wc-state, delete checkout-pending (undo, redo and undo --to write it
+                before step 6)
 9. unlock
 ```
 
@@ -218,6 +222,24 @@ as the draft, and a second `undo` visibly undoes the edits entry. `paper activit
 step 4 and reads only the ops reachable from `head`, never the `ops/` directory listing, so
 crash leftovers there are ignored.
 
+**Checkout.** Step 8 is shared by `restore`, `undo`, `redo` and `undo --to` (`checkout.rs`),
+with `restore`'s rules: files paper doesn't record (symlinks, oversized files, nested
+repositories, ignored or untracked files in the way) are never overwritten or deleted and are
+reported as skipped; everything is decided and every blob read before the first byte changes;
+deletions come before writes. `undo`, `redo` and `undo --to` write `checkout-pending` before
+step 6 (keep-alive and op), naming `from` (the head op the command started at) and `tree` (the
+target draft tree); they then record, rewrite the files from the current draft to the target
+tree, refresh the stat cache, and delete the marker. `restore` does not write it.
+
+Repair (PV-025), on open, if the marker exists, in this order: (1) head is `from`: the op never
+committed, so drop the marker; (2) otherwise, if head's parent is `from` and head's draft tree
+equals `tree`: finish the checkout, rewriting from `from`'s draft tree to `tree`; (3) otherwise
+drop the marker, because the files have been snapshotted since. When finishing, a file is
+overwritten or deleted only if its content still equals its version in one of the two trees; any
+other file is left alone and reported as skipped, so an edit made after the crash is never
+overwritten. Rules 1 and 2 can both hold when the draft didn't change; rule 1 then wins,
+harmlessly. A crash anywhere in keep, op, export or checkout is then repairable.
+
 **Crash safety.** The source of truth is `activity/head`. Steps 7 and 8 are idempotent and
 are replayed by step 2. Losing power at any point leaves either the old state or the new
 state, never a mixture that loses data. The working files are snapshotted before any
@@ -236,10 +258,34 @@ normal op N:  parent=head, position=N, redo=[]
 undo:         P = head.position; require P.parent
               new op: view = P.parent.view, position = P.parent,
                       redo = [P] + head.redo
-redo:         R = head.redo.pop() or "nothing to redo"
+redo:         R = head.redo.first() or "nothing to redo"
               new op: view = R.view, position = R, redo = rest
 undo --to X:  new op: view = X.view, position = X, redo = []
 ```
+
+Details:
+
+- **Snapshot first (I1).** `undo`, `redo` and `undo --to` snapshot before anything else, so
+  edits made since the last command become an edits entry (a normal op). The first `undo`
+  takes those edits back, and they can be redone.
+- **Refusals.** If plain git moved a line ref or HEAD (it differs from `exported.json`), the
+  three commands refuse with `save`'s errors (`OutOfSyncWithGit`, `HeadOnAnotherBranch`)
+  before anything is written.
+- **Nothing to do.** `undo` at the first entry and `redo` with an empty stack are friendly
+  outcomes (`NothingToUndo`, `NothingToRedo`); nothing is recorded.
+- **`--to` resolution.** The prefix is matched against every op file, so X can be on the head
+  chain or only on a redo stack. No match is `UnknownEntry`; several is `AmbiguousEntry`,
+  listing each candidate's short id and description. Nothing is changed in either case.
+- **Op kinds and descriptions.** Kinds `undo` (also for `--to`) and `redo`. Descriptions:
+  `undo: <undone entry's description>`, `redo: <entry's description>`,
+  `go back to <short id>: <entry's description>`.
+- **Walking back.** Repeated `undo` walks back through every earlier state, including states
+  that were themselves undone (`position = P.parent`).
+- **Skipped paths.** Files the checkout skips (symlinks, ignored or untracked files in the
+  way) keep their on-disk content, so the working files may not equal the new draft
+  (`Undone::files_match` is false). Undo does not record an entry for that; the next command's
+  snapshot records the difference as an edits entry, which clears the redo stack.
+- **Order.** snapshot, keep-alive, op, export, checkout (§ Command lifecycle).
 
 Undo never moves remote state. If an undone operation had pushed (`sync`), undo restores
 the local view and warns: `This was already shared; your co-authors still have it.`
