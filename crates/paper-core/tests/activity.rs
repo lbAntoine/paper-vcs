@@ -169,6 +169,10 @@ fn project_error(error: OpenError) -> PaperError {
 
 fn assert_clear_project_error(error: OpenError) {
     let error = project_error(error);
+    assert!(
+        error.next.iter().all(|s| !s.command.contains("paper init")),
+        "init can't repair this, so it must not be suggested: {error:?}"
+    );
     assert_eq!(error.kind, ErrorKind::Project, "{error:?}");
     assert!(!error.message.trim().is_empty(), "{error:?}");
     assert!(!error.why.trim().is_empty(), "{error:?}");
@@ -738,4 +742,93 @@ fn a_busy_project_still_reports_busy_while_migration_is_pending() {
     assert!(matches!(second, Err(OpenError::Busy { .. })));
     drop(first);
     assert_eq!(version(dir.path()), "2");
+}
+
+#[test]
+fn a_format_2_project_without_a_head_names_the_head_file_and_does_not_suggest_init() {
+    let dir = new_project_dir();
+    fs::remove_file(paper(dir.path()).join("activity/head")).unwrap();
+
+    let error = Project::open(dir.path(), identity()).unwrap_err();
+
+    assert!(error.to_string().contains("head"), "{error}");
+    assert_clear_project_error(error);
+}
+
+#[test]
+fn a_format_1_project_with_neither_head_nor_view_json_is_a_clear_error() {
+    let dir = new_project_dir();
+    make_format_1(dir.path());
+    fs::remove_file(paper(dir.path()).join("view.json")).unwrap();
+
+    let error = Project::open(dir.path(), identity()).unwrap_err();
+
+    assert!(error.to_string().contains("view.json"), "{error}");
+    assert_clear_project_error(error);
+    assert_eq!(version(dir.path()), "1");
+}
+
+#[test]
+fn init_will_not_delete_a_real_activity_log_whose_version_file_is_gone() {
+    let dir = new_project_dir();
+    let mut project = Project::open(dir.path(), identity()).unwrap();
+    write(dir.path(), "a.tex", "two\n");
+    save_all(&mut project, "two");
+    drop(project);
+    let ops = op_files(dir.path());
+    let head = head_id(dir.path());
+    fs::remove_file(paper(dir.path()).join("version")).unwrap();
+
+    let error = Project::init_with_profile(
+        dir.path(),
+        identity(),
+        &SnapshotOptions::default(),
+        Profile::builtin("generic"),
+    )
+    .unwrap_err();
+
+    assert!(
+        matches!(
+            error,
+            paper_core::project::InitError::ActivityLogInTheWay { .. }
+        ),
+        "{error:?}"
+    );
+    assert_eq!(op_files(dir.path()), ops);
+    assert_eq!(head_id(dir.path()), head);
+    let converted = PaperError::from(error);
+    assert_eq!(converted.kind, ErrorKind::User, "{converted:?}");
+}
+
+#[test]
+fn init_restarts_the_log_when_only_a_lone_init_op_was_left_behind() {
+    let dir = new_project_dir();
+    let leftover = op_files(dir.path());
+    fs::remove_file(paper(dir.path()).join("version")).unwrap();
+
+    drop(init(dir.path()));
+
+    let ops = op_files(dir.path());
+    assert_eq!(ops.len(), 1);
+    assert!(leftover.keys().all(|name| !ops.contains_key(name)));
+    assert_eq!(chain(dir.path())[0]["parent"], Value::Null);
+}
+
+#[test]
+fn restore_records_its_result_as_a_restore_op_after_a_snapshot_op() {
+    let dir = new_project_dir();
+    let mut project = Project::open(dir.path(), identity()).unwrap();
+    write(dir.path(), "a.tex", "an edit to keep\n");
+
+    project
+        .restore(&RestoreRequest {
+            paths: vec!["a.tex".to_owned()],
+            from: None,
+        })
+        .unwrap();
+
+    let ops = chain(dir.path());
+    assert_eq!(ops[0]["kind"], "restore", "{ops:?}");
+    assert_eq!(ops[1]["kind"], "snapshot", "{ops:?}");
+    assert_eq!(ops[0]["view"], view_value(&project));
 }

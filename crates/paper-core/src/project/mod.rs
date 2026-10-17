@@ -141,8 +141,10 @@ impl Project {
             _ => return Err(OpenError::UnsupportedFormat { found }),
         }
         let log = ActivityLog::open(&paper_dir);
-        let head = log.head()?.ok_or_else(|| OpenError::Incomplete {
-            path: log.root().to_owned(),
+        let head = log.head()?.ok_or_else(|| {
+            OpenError::Activity(ActivityError::MissingHead {
+                path: log.root().join("head"),
+            })
         })?;
         let view = log.read(&head)?.view;
         Ok(Self {

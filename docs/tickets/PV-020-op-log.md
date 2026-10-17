@@ -207,3 +207,15 @@ tests build them). Checks run with `INSTA_UPDATE=no`, empty `GIT_CONFIG_GLOBAL`,
   - Document crash leftovers in § On-disk layout (`activity` lists only `*.json`; `gc` sweeps `.tmp*` and orphan ops).
   - NITs: document the lock requirement; ignore EINVAL from `sync_dir`.
   - Adding tests is authorised; don't weaken any.
+
+### GREEN (review round 1) · rust-engineer · 2026-10-17
+
+1. Missing head (format 2), and format 1 without head and `view.json`: new `ActivityError::MissingHead { path }` (names `activity/head` or `view.json`) inside `OpenError::Activity`, mapped to the project error with the report-it suggestion; never `paper init`. `OpenError::Incomplete` is now unused by `open` (kept: its mapping test builds it).
+2. `append` fsyncs `activity/` after `head` and `paper_dir` (new `activity/`, `ops/` entries); both happen before any `version` write.
+3. `refuse_if_initialized` (runs under the lock, before anything is written) allows a leftover `activity/` only if it has no head or its head is a lone `init` op with parent null; otherwise new `InitError::ActivityLogInTheWay` (user error). Tests for both.
+4. `write_new` falls back to existence check + rename on `Unsupported`/`PermissionDenied`; unit test of `noclobber_unsupported`.
+5. 03-architecture § Domain model `Operation` matches the code. 8. Crash leftovers documented in § On-disk layout.
+6. `InitError::View`, `SaveError::View` and their two mapping tests removed (the `OpenError::View` stays).
+7. Restore's post-rewrite op is `OpKind::Restore` (`snapshot_as`); the pre-restore snapshot stays `snapshot`. Test added.
+9. Lock requirement documented on `append`; `sync_dir` ignores `InvalidInput` (EINVAL).
+New tests only; none weakened (`assert_clear_project_error` now also rejects a `paper init` suggestion).

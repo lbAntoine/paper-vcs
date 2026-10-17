@@ -70,14 +70,15 @@ struct Pending {
 struct Milestone { target: CommitId, description: String, venue: Option<String>, created: Timestamp }
 
 struct Operation {
-    id: OpId,                   // content hash
+    id: OpId,                   // 32 lowercase hex characters of randomness
     parent: Option<OpId>,
-    kind: OpKind,               // Save | Restore | Try | Keep | Undo{undone} | Redo{redone} | Import | Snapshot | ...
-    command: String,            // argv as typed, for `paper activity`
-    time: Timestamp, user: Identity,
+    kind: OpKind,               // Init | Migrate | Snapshot | Save | Restore today; Try | Keep | Undo{undone} | Redo{redone} | Import | ... later
+    time: Timestamp,            // RFC 3339 in the file
     view: View,
     position: OpId,             // logical "current" op for undo/redo
-    redo_stack: Vec<OpId>,
+    redo: Vec<OpId>,            // the redo stack
+    description: String,
+    // PV-021 adds `command` (argv as typed, for `paper activity`) and `user`.
 }
 ```
 
@@ -117,6 +118,12 @@ project's view is the `view` of the op `activity/head` names. An op is appended 
 file first and then moving `head`, so a crash leaves either the old head or a complete new op.
 Today every view change appends its own op (a `save` may write a `snapshot` op and then a `save`
 op); one op per command arrives with `paper activity`.
+
+**Crash leftovers.** A crash can leave a `.tmp*` file in `activity/` or `ops/`, or an op file
+that `head` never reached (an orphan). They are harmless: `paper activity` lists only `*.json`
+op files reachable from `head`, and `gc` sweeps `.tmp*` files and orphan ops. A format 2
+project whose `activity/head` is missing is reported as damaged (it names the file); it is
+not an `init` problem, so `init` is never suggested for it.
 
 **Format 2 and migration.** `version` is `2`. `init` writes an `init` op, then `version` last.
 Opening a format 1 project (v0.1, whose only state was `view.json`) migrates it under the lock:

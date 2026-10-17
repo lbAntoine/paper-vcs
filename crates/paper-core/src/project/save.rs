@@ -12,7 +12,7 @@ use crate::activity::{ActivityError, OpKind};
 use crate::name::LineName;
 use crate::snapshot::{Change, ChangeKind, Skipped, SnapshotError, StatCache, snapshot};
 use crate::tree_diff::diff_trees;
-use crate::view::{Line, ViewError};
+use crate::view::Line;
 
 /// Which of the draft's changes a save takes.
 ///
@@ -91,8 +91,6 @@ pub enum SaveError {
     #[error(transparent)]
     Snapshot(#[from] SnapshotError),
     #[error(transparent)]
-    View(#[from] ViewError),
-    #[error(transparent)]
     Activity(#[from] ActivityError),
     #[error("could not write {path}")]
     Io {
@@ -111,6 +109,15 @@ impl Project {
     ///
     /// [`SaveError`] if the working files can't be read or the repository can't be written.
     pub fn snapshot(&mut self) -> Result<DraftState, SaveError> {
+        self.snapshot_as(OpKind::Snapshot, "record the working files")
+    }
+
+    /// [`Project::snapshot`], recording the op (if the draft changed) under `kind`.
+    pub(super) fn snapshot_as(
+        &mut self,
+        kind: OpKind,
+        description: &str,
+    ) -> Result<DraftState, SaveError> {
         let line_name = self.view.current_line().clone();
         let line = self.view.current().clone();
         let draft = self.repo.read_commit(&line.draft)?;
@@ -136,7 +143,7 @@ impl Project {
                     draft: rewritten,
                 },
             );
-            self.record(OpKind::Snapshot, view, "record the working files")?;
+            self.record(kind, view, description)?;
         }
         snap.cache
             .save(&self.paper_dir)

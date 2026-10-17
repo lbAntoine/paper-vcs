@@ -23,6 +23,9 @@ pub enum ActivityError {
     /// `head` or an op file exists but is not valid.
     #[error("{path} is damaged: {reason}")]
     Corrupt { path: PathBuf, reason: String },
+    /// A project that has been set up has no `head` (or, mid-migration, no `view.json`).
+    #[error("{path} is missing, so paper cannot tell which state the project is in")]
+    MissingHead { path: PathBuf },
     /// `head` or an op's `parent` names an op file that isn't there.
     #[error("the operation file {path} is missing")]
     MissingOp { path: PathBuf },
@@ -112,7 +115,11 @@ impl ActivityLog {
     }
 
     /// Writes a new op whose parent is the current head (`None` if there is no head), then
-    /// moves `head` to it. The op file is complete on disk before `head` changes.
+    /// moves `head` to it. The op file is complete on disk before `head` changes, and the
+    /// directories are flushed so a power cut leaves the old head or a complete new op.
+    ///
+    /// The caller must hold the project lock: two unlocked appends could both read the same
+    /// head and fork the chain.
     ///
     /// # Errors
     ///
@@ -156,6 +163,12 @@ impl ActivityLog {
         let head_path = self.head_path();
         fs_util::write_atomic(&head_path, format!("{}\n", op.id).as_bytes())
             .map_err(io_err(&head_path))?;
+        // `head`'s entry, then the `activity/` and `ops/` entries themselves (new on the
+        // first append): all durable before the caller writes `version`.
+        fs_util::sync_dir(&self.root).map_err(io_err(&self.root))?;
+        if let Some(paper_dir) = self.root.parent() {
+            fs_util::sync_dir(paper_dir).map_err(io_err(paper_dir))?;
+        }
         Ok(op)
     }
 }

@@ -9,7 +9,7 @@ use std::fs;
 use std::path::Path;
 
 use super::{FORMAT_VERSION, OpenError, VERSION_FILE};
-use crate::activity::{ActivityLog, OpKind};
+use crate::activity::{ActivityError, ActivityLog, OpKind};
 use crate::fs_util::write_atomic;
 use crate::view::View;
 
@@ -20,8 +20,10 @@ const KEPT_VIEW: &str = "view.json.v1";
 pub(super) fn migrate_to_current(paper_dir: &Path) -> Result<(), OpenError> {
     let log = ActivityLog::open(paper_dir);
     if log.head()?.is_none() {
-        let view = View::load(paper_dir)?.ok_or_else(|| OpenError::Incomplete {
-            path: paper_dir.to_owned(),
+        let view = View::load(paper_dir)?.ok_or_else(|| {
+            OpenError::Activity(ActivityError::MissingHead {
+                path: paper_dir.join(OLD_VIEW),
+            })
         })?;
         log.append(OpKind::Migrate, &view, "migrate from format 1")?;
     }
