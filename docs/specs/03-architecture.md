@@ -130,7 +130,8 @@ Opening a format 1 project (v0.1, whose only state was `view.json`) migrates it 
 a `migrate` op from `view.json` (parent `null`), then `head`, then `version` = `2`, then
 `view.json` is renamed to `view.json.v1`. Each step is safe to repeat, so a crash is finished
 by the next open. The `migrate` op gets a keep-alive commit and an export like any other op
-(a ref or HEAD that plain git moved before the first open is left alone, as in any export). A format above 2 is refused.
+(a ref or HEAD that plain git moved before the first open is left alone, as in any export).
+A format above 2 is refused.
 
 Refs owned by paper live under `refs/paper/` and are never pushed:
 
@@ -187,7 +188,8 @@ value means "unknown". Besides every command that opens a project, project-level
 5. transition   pure function on View → new View + Effects
 6. commit op    write objects, the keep-alive commit, then op json (fsync), rename activity/head
 7. export       update refs/heads/*, tags, refs/paper/*, git HEAD → current line, git index → tip tree
-                (index only when the current tip changed since the last export), write exported.json
+                (index only when the current tip changed since the last export, or HEAD isn't on the
+                current line; never when the line or HEAD was left alone), write exported.json
 8. checkout     if the draft tree changed (undo, switch, restore, keep…): write checkout-pending,
                 update working files, refresh wc-state, delete checkout-pending
 9. unlock
@@ -197,7 +199,9 @@ value means "unknown". Besides every command that opens a project, project-level
 6 and 7: the keep-alive commit, the op, then the export. Commands never write refs, HEAD or the
 index themselves. The export sets, for every line in the view, `refs/heads/<line>` to the tip and
 `refs/paper/draft/<line>` to the draft; attaches HEAD to the current line; rewrites the index to
-the current tip's tree only if that tip differs from the last export (rewriting loses git's stat
+the current tip's tree (before it writes HEAD and the line refs, so a crash repeats the reset)
+only if that tip differs from the last export or git's HEAD isn't on the current line, and never
+when the line or HEAD was left alone (rewriting loses git's stat
 data, so `git status` would rehash every file); and then writes `exported.json`. A ref or HEAD that
 plain git moved since paper last wrote it (it matches neither `exported.json` nor the new value)
 is left alone, and `exported.json` keeps what paper wrote, so `save` still refuses. A crash

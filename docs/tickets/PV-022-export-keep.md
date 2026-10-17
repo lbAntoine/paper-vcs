@@ -160,3 +160,7 @@ someone else's.
 - Index: a head change counts only when git's actual HEAD differs from the current line.
 - New tests in `tests/export.rs` (7 added, 2 migration + 5 leave-alone): migration after a plain-git commit and after a `git switch`; snapshot and restore after each (ref/HEAD untouched, `exported.json` keeps paper's value, index bytes unchanged, draft ref exported, `save` refuses); switching back does not reset the index.
 - `status` follow-up is #52 (PV-029), not done here. fmt, clippy and the full suite pass (INSTA_UPDATE=no, empty GIT_CONFIG_GLOBAL).
+
+### GREEN (post-approval) · rust-engineer · 2026-10-18
+
+- The export rewrites the index before HEAD and the line refs; spec clauses and the rewrap done. No ordering test: it needs fault injection between the index write and the ref writes, which the project does not have yet (crash tests arrive with PV-025).

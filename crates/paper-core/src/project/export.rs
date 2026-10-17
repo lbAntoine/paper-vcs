@@ -121,6 +121,7 @@ pub(super) fn export(
     let mut refs = BTreeMap::new();
     let mut tip_moved = false;
     let mut line_left_alone = false;
+    let mut line_writes = Vec::new();
     for (name, line) in view.lines() {
         let draft = draft_ref(name);
         if repo.find_ref(&draft)?.as_ref() != Some(&line.draft) {
@@ -146,7 +147,7 @@ pub(super) fn export(
             continue;
         }
         if found.as_ref() != Some(&line.tip) {
-            repo.set_ref(&name_ref, &line.tip, "paper: export")?;
+            line_writes.push((name_ref.clone(), line.tip.clone()));
         }
         if name == current {
             tip_moved = last.as_deref() != Some(line.tip.as_str());
@@ -167,12 +168,10 @@ pub(super) fn export(
     let head_left_alone = last_head.is_some()
         && found_head.as_deref() != Some(current.as_str())
         && found_head != last_head;
+    let head_to_set = !head_left_alone && found_head.as_deref() != Some(current.as_str());
     let head = if head_left_alone {
         last_head.clone().unwrap_or_default()
     } else {
-        if found_head.as_deref() != Some(current.as_str()) {
-            repo.set_head_branch(current.as_str(), "paper: export")?;
-        }
         current.to_string()
     };
 
@@ -184,8 +183,16 @@ pub(super) fn export(
                 && (tip_moved || found_head.as_deref() != Some(current.as_str()))
         }
     };
+    // The index goes first: a crash after it leaves HEAD or the line ref still old, so the next
+    // export sees the same difference and resets again. The other order could lose the reset.
     if index_due {
         repo.reset_index_to(&repo.read_commit(&view.current().tip)?.tree)?;
+    }
+    for (name_ref, tip) in &line_writes {
+        repo.set_ref(name_ref, tip, "paper: export")?;
+    }
+    if head_to_set {
+        repo.set_head_branch(current.as_str(), "paper: export")?;
     }
 
     let record = Exported {
