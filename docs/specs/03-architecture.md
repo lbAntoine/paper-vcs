@@ -180,7 +180,8 @@ full coverage of every row is v0.8 (roadmap § v0.8: Hardening).
 *Today (v0.1 to v0.3):* paper does not import external changes. When the line moved under
 it, `save` refuses and writes nothing, and the error names `git log <line>`; if git is on
 another branch, it says to run `git switch <line>`. After a `git pull`, `status` shows the
-pulled edits as unsaved changes and `history` doesn't list the pulled saves. Syncing with co-authors is v0.6.
+pulled edits as unsaved changes and `history` doesn't list the pulled saves. Bringing in
+co-authors' work arrives with `sync` in v0.6.
 
 | External change (via `git`) | Paper's reaction |
 |---|---|
