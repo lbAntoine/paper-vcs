@@ -4,14 +4,14 @@
 //! Steps, in order: a `migrate` op from `view.json`, then `head`, then `version` = 2, then
 //! `view.json` renamed to `view.json.v1`. Each step is safe to repeat, so a crash is finished
 //! by the next open. The `migrate` op gets a keep-alive commit and an export, like any op;
-//! the refs already match, and the index is left alone.
+//! anything plain git moved since the project was last open is left alone.
 
 use std::fs;
 use std::path::Path;
 
 use paper_git::{GitRepo, Identity};
 
-use super::export::{KEEP_REF, Mode, export, write_keep};
+use super::export::{Mode, export, write_keep};
 use super::{ExportError, FORMAT_VERSION, OpenError, VERSION_FILE};
 use crate::activity::{ActivityError, ActivityLog, OpKind};
 use crate::fs_util::write_atomic;
@@ -33,19 +33,14 @@ pub(super) fn migrate_to_current(
                 path: paper_dir.join(OLD_VIEW),
             })
         })?;
-        // A keep ref that is already there is a previous attempt at this same migration
-        // (a crash between the keep commit and the op), which named the same commits.
-        let keep = match repo.find_ref(KEEP_REF).map_err(ExportError::from)? {
-            Some(keep) => keep,
-            None => write_keep(repo, identity, None, &view).map_err(ExportError::from)?,
-        };
+        let keep = write_keep(repo, identity, None, &view).map_err(ExportError::from)?;
         log.append(OpKind::Migrate, &view, "upgrade to paper format 2")?;
         export(
             repo,
             paper_dir,
             &view,
             &keep,
-            &Mode::Fresh { reset_index: false },
+            &Mode::Follow { previous: &view },
         )?;
     }
     log.make_durable()?;

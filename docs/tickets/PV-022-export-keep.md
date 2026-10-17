@@ -152,3 +152,11 @@ someone else's.
   - Count a head change for the index reset only when git's HEAD differs from the current line.
   - Document that `Fresh` is for `init` only; fix the spec's migration sentence.
   - The `status` follow-up becomes its own issue.
+
+### GREEN (review round 1) · rust-engineer · 2026-10-18
+
+- BLOCKER: the migration now exports with `Mode::Follow { previous: &view }`, so a plain-git commit or `git switch` made before the first open is left alone. Spec sentence fixed. `Mode::Fresh` is documented as `init`-only.
+- Migration always appends its keep commit; the keep-ref reuse is gone. In `tests/activity.rs`, the `git_state` helper now compares only `refs/heads`, `refs/tags`, `refs/paper/draft` and `log --all --exclude=refs/paper/keep` (authorised: the keep chain is added on purpose). No other assertion changed.
+- Index: a head change counts only when git's actual HEAD differs from the current line.
+- New tests in `tests/export.rs` (7 added, 2 migration + 5 leave-alone): migration after a plain-git commit and after a `git switch`; snapshot and restore after each (ref/HEAD untouched, `exported.json` keeps paper's value, index bytes unchanged, draft ref exported, `save` refuses); switching back does not reset the index.
+- `status` follow-up is #52 (PV-029), not done here. fmt, clippy and the full suite pass (INSTA_UPDATE=no, empty GIT_CONFIG_GLOBAL).

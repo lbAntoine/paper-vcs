@@ -130,7 +130,7 @@ Opening a format 1 project (v0.1, whose only state was `view.json`) migrates it 
 a `migrate` op from `view.json` (parent `null`), then `head`, then `version` = `2`, then
 `view.json` is renamed to `view.json.v1`. Each step is safe to repeat, so a crash is finished
 by the next open. The `migrate` op gets a keep-alive commit and an export like any other op
-(the refs already match, and the index is left alone). A format above 2 is refused.
+(a ref or HEAD that plain git moved before the first open is left alone, as in any export). A format above 2 is refused.
 
 Refs owned by paper live under `refs/paper/` and are never pushed:
 

@@ -63,7 +63,8 @@ pub(super) fn read_exported(paper_dir: &Path) -> Option<Exported> {
 
 /// How an export relates to what came before.
 pub(super) enum Mode<'a> {
-    /// The project is being set up (or migrated): write everything, check nothing.
+    /// `init` only: the project is being set up, so write everything and check nothing. Any
+    /// other caller must use [`Mode::Follow`], or it would overwrite what plain git did.
     Fresh {
         /// Whether to rewrite git's index from the current tip.
         reset_index: bool,
@@ -180,7 +181,7 @@ pub(super) fn export(
         Mode::Follow { .. } => {
             !head_left_alone
                 && !line_left_alone
-                && (tip_moved || last_head.as_deref() != Some(current.as_str()))
+                && (tip_moved || found_head.as_deref() != Some(current.as_str()))
         }
     };
     if index_due {

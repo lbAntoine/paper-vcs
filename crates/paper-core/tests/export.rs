@@ -644,3 +644,165 @@ fn save_compares_the_line_with_exported_json_not_with_the_view() {
     assert_exported(dir.path(), &project);
     git(dir.path(), &["fsck", "--strict", "--no-progress"]);
 }
+
+// ---- what plain git moved is left alone ----
+
+/// Rewrites a finished project as v0.1.0 left it: `view.json`, version 1, no activity.
+fn into_format_1(dir: &Path) {
+    let head = fs::read_to_string(paper(dir).join("activity/head")).unwrap();
+    let op: Value = serde_json::from_slice(
+        &fs::read(
+            paper(dir)
+                .join("activity/ops")
+                .join(format!("{}.json", head.trim())),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let mut json = serde_json::to_vec_pretty(&op["view"]).unwrap();
+    json.push(b'\n');
+    fs::write(paper(dir).join("view.json"), json).unwrap();
+    fs::remove_dir_all(paper(dir).join("activity")).unwrap();
+    fs::remove_file(exported_path(dir)).ok();
+    fs::write(paper(dir).join("version"), "1\n").unwrap();
+}
+
+fn rev(dir: &Path, name: &str) -> String {
+    git(dir, &["rev-parse", name]).trim().to_owned()
+}
+
+fn plain_git_commit(dir: &Path) -> String {
+    git(
+        dir,
+        &["commit", "--quiet", "--allow-empty", "-m", "Plain git"],
+    );
+    rev(dir, "main")
+}
+
+#[test]
+fn migrating_after_a_plain_git_commit_leaves_the_line_alone() {
+    let dir = new_project_dir();
+    let paper_tip = rev(dir.path(), "main");
+    into_format_1(dir.path());
+    let theirs = plain_git_commit(dir.path());
+    let index = index_bytes(dir.path());
+
+    let mut project = open(dir.path());
+
+    assert_eq!(rev(dir.path(), "main"), theirs);
+    assert_eq!(index_bytes(dir.path()), index);
+    assert_eq!(exported(dir.path())["refs"]["refs/heads/main"], paper_tip);
+    assert!(matches!(
+        save_error(&mut project, "Too late"),
+        SaveError::OutOfSyncWithGit { .. }
+    ));
+    assert_eq!(rev(dir.path(), "main"), theirs);
+}
+
+#[test]
+fn migrating_after_a_git_switch_leaves_head_alone() {
+    let dir = new_project_dir();
+    into_format_1(dir.path());
+    git(dir.path(), &["switch", "--quiet", "-c", "side"]);
+    let index = index_bytes(dir.path());
+
+    let mut project = open(dir.path());
+
+    assert_eq!(
+        git(dir.path(), &["symbolic-ref", "HEAD"]).trim(),
+        "refs/heads/side"
+    );
+    assert_eq!(index_bytes(dir.path()), index);
+    assert_eq!(exported(dir.path())["head"], "main");
+    assert!(matches!(
+        save_error(&mut project, "Wrong branch"),
+        SaveError::HeadOnAnotherBranch { .. }
+    ));
+}
+
+/// Runs a command that records an op after plain git moved the line.
+fn after_plain_commit(command: impl FnOnce(&mut Project, &Path)) {
+    let dir = new_project_dir();
+    let mut project = open(dir.path());
+    let paper_tip = project.view().current().tip.as_str().to_owned();
+    let theirs = plain_git_commit(dir.path());
+    let index = index_bytes(dir.path());
+
+    write(dir.path(), "a.tex", "edited\n");
+    command(&mut project, dir.path());
+
+    assert_eq!(rev(dir.path(), "main"), theirs);
+    assert_eq!(index_bytes(dir.path()), index);
+    assert_eq!(exported(dir.path())["refs"]["refs/heads/main"], paper_tip);
+    assert_eq!(
+        rev(dir.path(), "refs/paper/draft/main"),
+        project.view().current().draft.as_str()
+    );
+    assert!(matches!(
+        save_error(&mut project, "Too late"),
+        SaveError::OutOfSyncWithGit { .. }
+    ));
+}
+
+#[test]
+fn a_snapshot_after_a_plain_git_commit_leaves_the_line_alone() {
+    after_plain_commit(|project, _| {
+        project.snapshot().unwrap();
+    });
+}
+
+#[test]
+fn a_restore_after_a_plain_git_commit_leaves_the_line_alone() {
+    after_plain_commit(|project, _| restore_last(project, "a.tex"));
+}
+
+fn after_git_switch(command: impl FnOnce(&mut Project)) -> (tempfile::TempDir, Project) {
+    let dir = new_project_dir();
+    let mut project = open(dir.path());
+    git(dir.path(), &["switch", "--quiet", "-c", "side"]);
+    let index = index_bytes(dir.path());
+
+    write(dir.path(), "a.tex", "edited\n");
+    command(&mut project);
+
+    assert_eq!(
+        git(dir.path(), &["symbolic-ref", "HEAD"]).trim(),
+        "refs/heads/side"
+    );
+    assert_eq!(index_bytes(dir.path()), index);
+    assert_eq!(exported(dir.path())["head"], "main");
+    assert_eq!(
+        rev(dir.path(), "refs/paper/draft/main"),
+        project.view().current().draft.as_str()
+    );
+    assert!(matches!(
+        save_error(&mut project, "Wrong branch"),
+        SaveError::HeadOnAnotherBranch { .. }
+    ));
+    (dir, project)
+}
+
+#[test]
+fn a_snapshot_after_a_git_switch_leaves_head_alone() {
+    after_git_switch(|project| {
+        project.snapshot().unwrap();
+    });
+}
+
+#[test]
+fn a_restore_after_a_git_switch_leaves_head_alone() {
+    after_git_switch(|project| restore_last(project, "a.tex"));
+}
+
+#[test]
+fn switching_back_to_the_line_does_not_reset_the_index() {
+    let (dir, mut project) = after_git_switch(|project| {
+        project.snapshot().unwrap();
+    });
+    git(dir.path(), &["switch", "--quiet", "main"]);
+    let index = index_bytes(dir.path());
+    write(dir.path(), "a.tex", "edited again\n");
+    project.snapshot().unwrap();
+    assert_eq!(index_bytes(dir.path()), index);
+    assert_exported(dir.path(), &project);
+}

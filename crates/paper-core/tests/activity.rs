@@ -499,8 +499,26 @@ fn make_format_1(dir: &Path) -> Value {
 /// What migration must leave alone: refs, history and the working tree's status.
 fn git_state(dir: &Path) -> (String, String, String) {
     (
-        git(dir, &["for-each-ref", "--format=%(refname) %(objectname)"]),
-        git(dir, &["log", "--all", "--format=%H %s"]),
+        // The keep-alive chain is added on purpose (PV-022): leave it out of the comparison.
+        git(
+            dir,
+            &[
+                "for-each-ref",
+                "--format=%(refname) %(objectname)",
+                "refs/heads",
+                "refs/tags",
+                "refs/paper/draft",
+            ],
+        ),
+        git(
+            dir,
+            &[
+                "log",
+                "--exclude=refs/paper/keep",
+                "--all",
+                "--format=%H %s",
+            ],
+        ),
         git(dir, &["status", "--porcelain"]),
     )
 }
