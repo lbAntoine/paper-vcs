@@ -1,6 +1,6 @@
 # PV-019: project lock with a 5 s wait
 
-- **Status:** In progress
+- **Status:** Done
 - **Issue:** #37
 - **Branch:** `feat/PV-019-lock`
 - **Depends on:** none. Runs in parallel with PV-017 (docs only; it edits other sections of
@@ -88,6 +88,28 @@ operation log (PV-020) relies on it.
 
 ## Summary
 
+Every command that opens a project holds an exclusive OS lock on `.git/paper/lock` for its whole
+run (std `File::try_lock`, polled every 50 ms up to 5 s). A busy project is an exit-3 three-part
+error naming the other process.
+
+- `ProjectLock` lives as long as the `Project` (`open_with`, `init_with`); read-only commands lock
+  too; `config set --project` locks; `--version` and user-level `config` don't.
+- The pid hint goes to an unlocked sidecar, `.git/paper/lock-holder` (Windows locks are mandatory,
+  so the locked file can't be read by others); it is removed before the lock is released.
+- The lock file is never deleted (spec invariant). Adoption runs its read-only checks before
+  creating `.git/paper/`, locks first when the folder exists (Busy before AlreadyInitialized), and
+  re-checks `version` under the lock; fresh init re-checks too, so two concurrent `init`s make one
+  first save.
+- Debug builds honour `PAPER_DEBUG_LOCK_WAIT_MS`; release builds don't have it.
+
+Deviations: std file locking instead of fd-lock (maintainer); five existing core tests now drop
+the first `Project` before reopening (no assertion changed); the busy error's `command` is an
+instruction ("run the same command again") and it doesn't point at the issue tracker, both now
+in 02-cli. The fresh-init re-check has no test that reaches it (the race is hard to provoke).
+
+Follow-up (noted on #38 for PV-020): a first `init` and a concurrent `config set --project` on a
+repo that isn't a paper project yet can lose the config change.
+
 ## Handoff log
 
 ### RED · test-author · 2026-10-17
@@ -146,3 +168,8 @@ operation log (PV-020) relies on it.
 ### GREEN (post-approval) · rust-engineer · 2026-10-17
 
 Spec wording for the busy error and `lock-holder`; fresh init re-checks `version` under the lock (test added); `acquire_for_workdir` resolves the paper dir through `GitRepo`.
+
+### Review round 2 · reviewer · 2026-10-17
+- Verdict: APPROVE. The sidecar fixes the Windows pid read (drop order verified: removed while the lock is held); no unlinking anywhere; adopt checks before the folder exists; `config set --project` locks.
+- Fixed after approval: the 02-cli busy-error exception, the fresh-init `version` re-check, `acquire_for_workdir` resolving the paper dir through `GitRepo`, and one 03-architecture sentence.
+- Deferred to PV-020 (#38): the first-init / `config set --project` race.
