@@ -173,6 +173,24 @@ fn cause_chain(error: &dyn std::error::Error) -> String {
     text
 }
 
+impl PaperError {
+    fn activity_log_in_the_way(path: &Path) -> Self {
+        Self::user(
+            "This folder has paper data that init won't delete",
+            format!(
+                "{} has an activity log with more than a first `init` step, but no version \
+                 file, so it isn't a project that stopped half way through `paper init`. \
+                 Paper won't delete a history it may need.",
+                path.display()
+            ),
+            vec![Suggestion::new(
+                "https://github.com/lbAntoine/paper-vcs/issues",
+                "report it, including what you ran; keep the folder as it is",
+            )],
+        )
+    }
+}
+
 impl From<InitError> for PaperError {
     fn from(error: InitError) -> Self {
         match error {
@@ -185,6 +203,7 @@ impl From<InitError> for PaperError {
                 ),
                 vec![Suggestion::new("paper history", "see its saves")],
             ),
+            InitError::ActivityLogInTheWay { path } => Self::activity_log_in_the_way(&path),
             InitError::InsideAnotherRepository { path, root } => Self::user(
                 "This folder is inside another project",
                 format!(
@@ -261,7 +280,7 @@ impl From<InitError> for PaperError {
             InitError::Config(error) => Self::from_config(&error, Scope::Project),
             InitError::Git(_)
             | InitError::Snapshot(_)
-            | InitError::View(_)
+            | InitError::Activity(_)
             | InitError::Io { .. } => Self::project("Paper could not set up this folder", &error),
         }
     }
@@ -531,18 +550,10 @@ impl From<OpenError> for PaperError {
                 "This project was made by a different version of paper",
                 &error,
             ),
-            OpenError::Incomplete { .. } => {
-                let mut converted =
-                    Self::project("Paper's data for this project is incomplete", &error);
-                converted.next = vec![Suggestion::new(
-                    "paper init",
-                    "run it again to finish setting up (an earlier run may have been interrupted)",
-                )];
-                converted
-            }
-            OpenError::Git(_) | OpenError::View(_) | OpenError::Io { .. } => {
-                Self::project("Paper could not open this project", &error)
-            }
+            OpenError::Git(_)
+            | OpenError::View(_)
+            | OpenError::Activity(_)
+            | OpenError::Io { .. } => Self::project("Paper could not open this project", &error),
         }
     }
 }
@@ -595,7 +606,7 @@ impl From<SaveError> for PaperError {
             }
             SaveError::Git(_)
             | SaveError::Snapshot(_)
-            | SaveError::View(_)
+            | SaveError::Activity(_)
             | SaveError::Io { .. } => Self::project("Paper could not save", &error),
         }
     }
@@ -808,6 +819,7 @@ mod tests {
     fn every_init_error_converts_with_the_right_kind() {
         let user = [
             InitError::AlreadyInitialized { path: path() },
+            InitError::ActivityLogInTheWay { path: path() },
             InitError::InsideAnotherRepository {
                 path: path(),
                 root: PathBuf::from("/work"),
@@ -832,10 +844,6 @@ mod tests {
         assert_project(&PaperError::from(InitError::Snapshot(SnapshotError::Git(
             git_error(),
         ))));
-        assert_project(&PaperError::from(InitError::View(ViewError::Io {
-            path: path(),
-            source: io_error(),
-        })));
         assert_project(&PaperError::from(InitError::Io {
             path: path(),
             source: io_error(),
@@ -860,7 +868,6 @@ mod tests {
         assert_project(&PaperError::from(OpenError::UnsupportedFormat {
             found: "7".to_owned(),
         }));
-        assert_project(&PaperError::from(OpenError::Incomplete { path: path() }));
         assert_project(&PaperError::from(OpenError::View(ViewError::Io {
             path: path(),
             source: io_error(),
@@ -893,10 +900,6 @@ mod tests {
         }
         assert_project(&PaperError::from(SaveError::Git(git_error())));
         assert_project(&PaperError::from(SaveError::Snapshot(SnapshotError::Io {
-            path: path(),
-            source: io_error(),
-        })));
-        assert_project(&PaperError::from(SaveError::View(ViewError::Io {
             path: path(),
             source: io_error(),
         })));

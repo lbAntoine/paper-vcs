@@ -8,10 +8,11 @@ use std::path::PathBuf;
 use paper_git::{ChangeId, CommitId, FileKind, GitError, NewCommit, TreeEdit};
 
 use super::{Project, draft_ref, line_ref, signature_now, write_draft};
+use crate::activity::{ActivityError, OpKind};
 use crate::name::LineName;
 use crate::snapshot::{Change, ChangeKind, Skipped, SnapshotError, StatCache, snapshot};
 use crate::tree_diff::diff_trees;
-use crate::view::{Line, ViewError};
+use crate::view::Line;
 
 /// Which of the draft's changes a save takes.
 ///
@@ -90,7 +91,7 @@ pub enum SaveError {
     #[error(transparent)]
     Snapshot(#[from] SnapshotError),
     #[error(transparent)]
-    View(#[from] ViewError),
+    Activity(#[from] ActivityError),
     #[error("could not write {path}")]
     Io {
         path: PathBuf,
@@ -108,6 +109,15 @@ impl Project {
     ///
     /// [`SaveError`] if the working files can't be read or the repository can't be written.
     pub fn snapshot(&mut self) -> Result<DraftState, SaveError> {
+        self.snapshot_as(OpKind::Snapshot, "record the working files")
+    }
+
+    /// [`Project::snapshot`], recording the op (if the draft changed) under `kind`.
+    pub(super) fn snapshot_as(
+        &mut self,
+        kind: OpKind,
+        description: &str,
+    ) -> Result<DraftState, SaveError> {
         let line_name = self.view.current_line().clone();
         let line = self.view.current().clone();
         let draft = self.repo.read_commit(&line.draft)?;
@@ -133,8 +143,7 @@ impl Project {
                     draft: rewritten,
                 },
             );
-            view.save(&self.paper_dir)?;
-            self.view = view;
+            self.record(kind, view, description)?;
         }
         snap.cache
             .save(&self.paper_dir)
@@ -232,8 +241,8 @@ impl Project {
         self.repo.reset_index_to(&save_tree)?;
         self.repo
             .set_ref(&line_ref(&line_name), &save, "paper: save")?;
-        // The window between the line ref and the view is deliberate until the v0.2
-        // activity log makes the writes recoverable.
+        // The window between the line ref and the op is deliberate until PV-025 makes
+        // half-done commands recoverable.
         let view = self.view.with_line(
             line_name.clone(),
             Line {
@@ -241,8 +250,7 @@ impl Project {
                 draft: new_draft,
             },
         );
-        view.save(&self.paper_dir)?;
-        self.view = view;
+        self.record(OpKind::Save, view, "save")?;
 
         Ok(SaveOutcome::Saved(Saved {
             save,

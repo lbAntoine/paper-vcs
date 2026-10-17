@@ -5,6 +5,7 @@ mod history;
 mod init;
 mod init_profile;
 mod lock;
+mod migrate;
 mod resolve;
 mod restore;
 mod restore_plan;
@@ -19,6 +20,7 @@ use paper_git::{
     ChangeId, CommitId, GitError, GitRepo, GitTime, Identity, NewCommit, Signature, TreeId,
 };
 
+use crate::activity::{ActivityError, ActivityLog, OpKind};
 use crate::name::LineName;
 use crate::snapshot::SnapshotOptions;
 use crate::view::{View, ViewError};
@@ -33,7 +35,7 @@ pub use save::{DraftState, PathSelection, SaveError, SaveOutcome, SaveRequest, S
 pub use status::{ChangeStat, Status, StatusEntry, StatusError, StatusOptions};
 
 /// Version of the on-disk format in `.git/paper/`. Migrations are keyed on it.
-pub const FORMAT_VERSION: u32 = 1;
+pub const FORMAT_VERSION: u32 = 2;
 
 const PAPER_DIR: &str = "paper";
 const VERSION_FILE: &str = "version";
@@ -65,10 +67,10 @@ pub enum OpenError {
         /// The holder's process id, when known.
         holder: Option<u32>,
     },
-    #[error("paper's state in {path} is incomplete")]
-    Incomplete { path: PathBuf },
     #[error(transparent)]
     View(#[from] ViewError),
+    #[error(transparent)]
+    Activity(#[from] ActivityError),
     #[error("could not read {path}")]
     Io {
         path: PathBuf,
@@ -131,12 +133,18 @@ impl Project {
                 });
             }
         };
-        if found != FORMAT_VERSION.to_string() {
-            return Err(OpenError::UnsupportedFormat { found });
+        match found.as_str() {
+            "1" => migrate::migrate_to_current(&paper_dir)?,
+            "2" => migrate::retire_old_view(&paper_dir)?,
+            _ => return Err(OpenError::UnsupportedFormat { found }),
         }
-        let view = View::load(&paper_dir)?.ok_or_else(|| OpenError::Incomplete {
-            path: paper_dir.clone(),
+        let log = ActivityLog::open(&paper_dir);
+        let head = log.head()?.ok_or_else(|| {
+            OpenError::Activity(ActivityError::MissingHead {
+                path: log.root().join("head"),
+            })
         })?;
+        let view = log.read(&head)?.view;
         Ok(Self {
             repo,
             paper_dir,
@@ -145,6 +153,19 @@ impl Project {
             options: SnapshotOptions::default(),
             _lock: project_lock,
         })
+    }
+
+    /// Records `view` as a new operation, then makes it the project's view. The op file and
+    /// `head` are on disk before the in-memory view changes.
+    pub(crate) fn record(
+        &mut self,
+        kind: OpKind,
+        view: View,
+        description: &str,
+    ) -> Result<(), ActivityError> {
+        ActivityLog::open(&self.paper_dir).append(kind, &view, description)?;
+        self.view = view;
+        Ok(())
     }
 
     /// A copy of this project that applies `options` (large-file thresholds) in later snapshots.

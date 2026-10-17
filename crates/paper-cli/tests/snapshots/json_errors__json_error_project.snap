@@ -12,7 +12,7 @@ expression: env.redact_json(&run.stdout)
         "explanation": "report it, including what you ran and the message above"
       }
     ],
-    "why": "this project uses paper format '99', but this version of paper reads format 1"
+    "why": "this project uses paper format '99', but this version of paper reads format 2"
   },
   "schema": 1
 }

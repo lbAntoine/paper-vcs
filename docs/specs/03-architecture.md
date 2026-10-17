@@ -70,14 +70,15 @@ struct Pending {
 struct Milestone { target: CommitId, description: String, venue: Option<String>, created: Timestamp }
 
 struct Operation {
-    id: OpId,                   // content hash
+    id: OpId,                   // 32 lowercase hex characters of randomness
     parent: Option<OpId>,
-    kind: OpKind,               // Save | Restore | Try | Keep | Undo{undone} | Redo{redone} | Import | Snapshot | ...
-    command: String,            // argv as typed, for `paper activity`
-    time: Timestamp, user: Identity,
+    kind: OpKind,               // Init | Migrate | Snapshot | Save | Restore today; Try | Keep | Undo{undone} | Redo{redone} | Import | ... later
+    time: Timestamp,            // RFC 3339 in the file
     view: View,
     position: OpId,             // logical "current" op for undo/redo
-    redo_stack: Vec<OpId>,
+    redo: Vec<OpId>,            // the redo stack
+    description: String,
+    // PV-021 adds `command` (argv as typed, for `paper activity`) and `user`.
 }
 ```
 
@@ -96,14 +97,39 @@ the immutability-first style.
       lock                      exclusive OS file lock (std); empty, never read, never deleted
       lock-holder               holder's pid, a hint for the busy message; never locked (the
                                 lock file is mandatory-locked on Windows), removed on release
-      activity/ops/<opid>.json  one file per operation (immutable, fsynced)
+      activity/ops/<opid>.json  one file per operation (immutable: written once, fsynced, renamed
+                                into place, then the directory is fsynced)
       activity/head             current op id (replaced atomically via rename)
+      view.json.v1              format 1's view, kept after migration (removed by `gc`)
       exported.json             git refs as paper last wrote them
       wc-state.json             stat cache for the checked-out draft (path → size,mtime,inode,blob)
       checkout-pending          exists only while the working files are being rewritten
   paper.toml                    project config (committed; shared with co-authors)
   .gitignore                    profile ignores merged in
 ```
+
+**Operation files.** `<opid>` is 32 lowercase hex characters of randomness (the same source as
+change IDs), so clones never collide. An op file is JSON with these fields: `id`; `parent` (an
+op id, `null` for the first op); `kind` (`init`, `migrate`, `snapshot`, `save`, `restore`, and
+later the undo and redo kinds); `time` (RFC 3339); `view` (the full view: current line, and each
+line's tip and draft); `position` (the op whose state is current; the op itself for a normal
+op); `redo` (the redo stack, a list of op ids, empty for a normal op); `description`. The
+project's view is the `view` of the op `activity/head` names. An op is appended by writing its
+file first and then moving `head`, so a crash leaves either the old head or a complete new op.
+Today every view change appends its own op (a `save` may write a `snapshot` op and then a `save`
+op); one op per command arrives with `paper activity`.
+
+**Crash leftovers.** A crash can leave a `.tmp*` file in `activity/` or `ops/`, or an op file
+that `head` never reached (an orphan). They are harmless: `paper activity` lists only `*.json`
+op files reachable from `head`, and `gc` sweeps `.tmp*` files and orphan ops. A format 2
+project whose `activity/head` is missing is reported as damaged (it names the file); it is
+not an `init` problem, so `init` is never suggested for it.
+
+**Format 2 and migration.** `version` is `2`. `init` writes an `init` op, then `version` last.
+Opening a format 1 project (v0.1, whose only state was `view.json`) migrates it under the lock:
+a `migrate` op from `view.json` (parent `null`), then `head`, then `version` = `2`, then
+`view.json` is renamed to `view.json.v1`. Each step is safe to repeat, so a crash is finished
+by the next open. Nothing in git changes. A format above 2 is refused.
 
 Refs owned by paper live under `refs/paper/` and are never pushed:
 
@@ -170,14 +196,17 @@ checkout, so a half-finished checkout is repaired without losing anything.
 Operations are immutable, and undo and redo are themselves operations. So undo is
 undoable, and redo can be reconstructed from the log after a crash.
 
+The field names are those of the op file (§ On-disk layout): `parent`, `position`, `redo`,
+`view`.
+
 ```
-normal op N:  parent=head, position=N, redo_stack=[]
+normal op N:  parent=head, position=N, redo=[]
 undo:         P = head.position; require P.parent
               new op: view = P.parent.view, position = P.parent,
-                      redo_stack = [P] + head.redo_stack
-redo:         R = head.redo_stack.pop() or "nothing to redo"
-              new op: view = R.view, position = R, redo_stack = rest
-undo --to X:  new op: view = X.view, position = X, redo_stack = []
+                      redo = [P] + head.redo
+redo:         R = head.redo.pop() or "nothing to redo"
+              new op: view = R.view, position = R, redo = rest
+undo --to X:  new op: view = X.view, position = X, redo = []
 ```
 
 Undo never moves remote state. If an undone operation had pushed (`sync`), undo restores

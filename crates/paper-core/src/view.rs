@@ -1,6 +1,7 @@
 //! The view: every piece of state that `undo` must cover
 //!
-//! v0.1 keeps a single view in `.git/paper/view.json`. v0.2 moves it to the activity log
+//! Every operation in the activity log holds a full view. Format 1 (v0.1) kept a single view
+//! in `.git/paper/view.json`; [`View::load`] reads it only to migrate a project to format 2.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -10,7 +11,6 @@ use std::path::{Path, PathBuf};
 use paper_git::CommitId;
 use serde::{Deserialize, Serialize};
 
-use crate::fs_util;
 use crate::name::LineName;
 
 const FILE_NAME: &str = "view.json";
@@ -120,23 +120,6 @@ impl View {
             Err(source) => Err(ViewError::Io { path, source }),
         }
     }
-
-    /// Writes `view.json` atomically: to a temporary file first, then renamed into place,
-    /// so a crash never leaves a half-written view.
-    ///
-    /// # Errors
-    ///
-    /// [`ViewError::Io`] if the file can't be written
-    ///
-    /// # Panics
-    ///
-    /// Never in practice: every field of a view serialises to JSON
-    pub fn save(&self, paper_dir: &Path) -> Result<(), ViewError> {
-        let path = paper_dir.join(FILE_NAME);
-        let mut json = serde_json::to_vec_pretty(self).expect("a view always serialises");
-        json.push(b'\n');
-        fs_util::write_atomic(&path, &json).map_err(|source| ViewError::Io { path, source })
-    }
 }
 
 #[cfg(test)]
@@ -204,16 +187,6 @@ mod tests {
         );
         let err = serde_json::from_str::<View>(&json).unwrap_err();
         assert!(err.to_string().contains("ghost"), "{err}");
-    }
-
-    #[test]
-    fn save_then_load_round_trips_without_leftover_files() {
-        let dir = tempfile::tempdir().unwrap();
-        let view = View::new(LineName::main(), line('a', 'b'));
-        view.save(dir.path()).unwrap();
-        assert_eq!(View::load(dir.path()).unwrap(), Some(view));
-        let files: Vec<_> = fs::read_dir(dir.path()).unwrap().collect();
-        assert_eq!(files.len(), 1, "only view.json should remain");
     }
 
     #[test]

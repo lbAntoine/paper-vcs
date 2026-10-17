@@ -68,6 +68,23 @@ impl ProfilePlan {
         })
     }
 
+    /// Prepares the plan again from the files as they are now. `init` calls it once it holds
+    /// the project lock, so a change made to `paper.toml` or `.gitignore` between the first
+    /// `prepare` and the lock (a concurrent `paper config set --project`) is kept, not
+    /// overwritten by a stale plan.
+    ///
+    /// # Errors
+    ///
+    /// Everything [`ProfilePlan::prepare`] reports.
+    pub(super) fn reprepare(
+        self,
+        workdir: &Path,
+        choice: Option<&Profile>,
+    ) -> Result<Self, InitError> {
+        drop(self);
+        Self::prepare(workdir, choice)
+    }
+
     /// Writes the prepared files (`.gitignore` first) and reports what was written.
     pub(super) fn write(self, workdir: &Path) -> Result<ProfileReport, InitError> {
         let mut written = Vec::new();
@@ -88,5 +105,53 @@ impl ProfilePlan {
             written,
             tips: self.profile.tips.clone(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn reprepare_keeps_a_paper_toml_change_made_after_the_first_prepare() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("notes.md"), "hello\n").unwrap();
+        let first = ProfilePlan::prepare(dir.path(), None).unwrap();
+        // A concurrent `paper config set --project large_files.warn_mb 7` lands before the lock.
+        fs::write(
+            dir.path().join(PROJECT_FILE),
+            "[large_files]\nwarn_mb = 7\n",
+        )
+        .unwrap();
+
+        let plan = first.reprepare(dir.path(), None).unwrap();
+        plan.write(dir.path()).unwrap();
+
+        let config = ConfigFile::load(&dir.path().join(PROJECT_FILE)).unwrap();
+        assert_eq!(
+            config.get(Key::LargeFilesWarnMb).unwrap(),
+            Some(Value::Megabytes(7))
+        );
+        assert!(matches!(
+            config.get(Key::Profile).unwrap(),
+            Some(Value::Text(_))
+        ));
+    }
+
+    #[test]
+    fn reprepare_honours_a_profile_written_after_the_first_prepare() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("notes.md"), "hello\n").unwrap();
+        let first = ProfilePlan::prepare(dir.path(), None).unwrap();
+        fs::write(dir.path().join(PROJECT_FILE), "profile = \"latex\"\n").unwrap();
+
+        let plan = first.reprepare(dir.path(), None).unwrap();
+        let report = plan.write(dir.path()).unwrap();
+
+        assert_eq!(report.profile, "latex");
+        assert_eq!(report.profile_source, ProfileSource::PaperToml);
+        let toml = fs::read_to_string(dir.path().join(PROJECT_FILE)).unwrap();
+        assert_eq!(toml, "profile = \"latex\"\n");
     }
 }

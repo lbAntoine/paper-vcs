@@ -25,11 +25,11 @@
       "id": "e1a0c020",
       "title": "PV-020: operation log and head pointer (on-disk format 2, auto-migration from format 1)",
       "description": "GitHub issue #38. Size M. Depends on PV-019.",
-      "status": "todo",
+      "status": "done",
       "priority": "high",
       "sprint": "v0.2-a",
       "created_at": "2026-10-17T08:47:11Z",
-      "updated_at": "2026-10-17T08:47:11Z"
+      "updated_at": "2026-10-17T09:46:00Z"
     },
     {
       "id": "e1a0c021",

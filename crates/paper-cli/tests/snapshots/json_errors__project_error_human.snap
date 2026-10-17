@@ -3,5 +3,5 @@ source: crates/paper-cli/tests/json_errors.rs
 expression: env.redact(&run.stderr)
 ---
 error: This project was made by a different version of paper
-  why:  this project uses paper format '99', but this version of paper reads format 1
+  why:  this project uses paper format '99', but this version of paper reads format 2
   next: https://github.com/lbAntoine/paper-vcs/issues  # report it, including what you ran and the message above

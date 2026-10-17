@@ -13,11 +13,12 @@ use super::{
     write_draft,
 };
 use super::{LockError, LockOptions, ProjectLock};
+use crate::activity::{ActivityError, ActivityLog, OpKind};
 use crate::config::ConfigError;
 use crate::name::LineName;
 use crate::profile::{Profile, gitignore::GitignoreError};
 use crate::snapshot::{Skipped, SnapshotError, SnapshotOptions, StatCache, snapshot};
-use crate::view::{Line, View, ViewError};
+use crate::view::{Line, View};
 
 /// How `init` came to use its profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,6 +66,8 @@ pub enum InitError {
     },
     #[error("{path} is already a paper project")]
     AlreadyInitialized { path: PathBuf },
+    #[error("{path} holds an activity log but no version file")]
+    ActivityLogInTheWay { path: PathBuf },
     #[error("{path} is inside the git repository at {root}")]
     InsideAnotherRepository { path: PathBuf, root: PathBuf },
     #[error("{path} has a .git that git cannot open")]
@@ -86,7 +89,7 @@ pub enum InitError {
     #[error(transparent)]
     Snapshot(#[from] SnapshotError),
     #[error(transparent)]
-    View(#[from] ViewError),
+    Activity(#[from] ActivityError),
     #[error("could not write {path}")]
     Io {
         path: PathBuf,
@@ -176,7 +179,7 @@ impl Project {
                 let held = take_lock(&paper_dir, lock)?;
                 // Another init may have finished while this one waited for the lock.
                 refuse_if_initialized(&held, path)?;
-                let report = plan.write(path)?;
+                let report = plan.reprepare(path, choice)?.write(path)?;
                 start_fresh(
                     repo,
                     identity,
@@ -238,6 +241,8 @@ fn adopt(
         refuse_if_initialized(&held, path)?;
         held
     };
+    // A `paper config set --project` may have landed since `prepare`: plan again, now locked.
+    let plan = plan.reprepare(path, choice)?;
     // The block and `paper.toml` go to the working files before the snapshot, so they are part
     // of the draft; nothing is rewritten in history.
     let report = plan.write(path)?;
@@ -368,7 +373,7 @@ fn first_save(
     })
 }
 
-/// Persists the view and cache, then writes the version file: the point of no return.
+/// Records the first op and the cache, then writes the version file: the point of no return.
 fn finish(
     repo: GitRepo,
     identity: Identity,
@@ -379,7 +384,19 @@ fn finish(
     initialized: Initialized,
 ) -> Result<(Project, Initialized), InitError> {
     let Held { paper_dir, lock } = held;
-    view.save(&paper_dir)?;
+    // A previous, interrupted `init` may have left its op behind (checked safe to remove by
+    // `refuse_if_initialized`); this run starts the log over.
+    let activity = ActivityLog::open(&paper_dir);
+    if activity.root().exists() {
+        fs::remove_dir_all(activity.root()).map_err(|source| io_error(activity.root(), source))?;
+    }
+    let description = if initialized.adopted {
+        "adopt project"
+    } else {
+        "start project"
+    };
+    activity.append(OpKind::Init, &view, description)?;
+    activity.make_durable()?;
     cache
         .save(&paper_dir)
         .map_err(|source| io_error(&paper_dir, source))?;
@@ -403,13 +420,30 @@ struct Held {
     lock: ProjectLock,
 }
 
+/// Refuses a folder that is already a project, or whose `activity/` is more than the leftover
+/// of an interrupted `init` (no head, or a head that is a lone `init` op): that log is real
+/// history, and `init` would delete it.
 fn refuse_if_initialized(held: &Held, path: &Path) -> Result<(), InitError> {
     if held.paper_dir.join(VERSION_FILE).exists() {
         return Err(InitError::AlreadyInitialized {
             path: path.to_owned(),
         });
     }
-    Ok(())
+    let log = ActivityLog::open(&held.paper_dir);
+    let leftover = match log.head() {
+        Ok(None) => log.op_file_count() <= 1,
+        Ok(Some(tip)) => log
+            .read(&tip)
+            .is_ok_and(|op| op.kind == OpKind::Init && op.parent.is_none()),
+        Err(_) => false,
+    };
+    if leftover {
+        Ok(())
+    } else {
+        Err(InitError::ActivityLogInTheWay {
+            path: log.root().to_owned(),
+        })
+    }
 }
 
 fn take_lock(paper_dir: &Path, options: &LockOptions) -> Result<Held, InitError> {
