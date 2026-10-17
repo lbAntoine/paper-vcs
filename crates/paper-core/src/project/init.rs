@@ -174,6 +174,8 @@ impl Project {
                 let repo = GitRepo::init(path, &identity)?;
                 let paper_dir = create_paper_dir(&repo)?;
                 let held = take_lock(&paper_dir, lock)?;
+                // Another init may have finished while this one waited for the lock.
+                refuse_if_initialized(&held, path)?;
                 let report = plan.write(path)?;
                 start_fresh(
                     repo,

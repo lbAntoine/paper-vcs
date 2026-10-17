@@ -61,8 +61,9 @@ code: `{"schema":1,"error":{"kind":"user","message":…,"why":…,"next":[{"comm
 where `kind` is `user`, `needs_attention` or `project`. Argument errors under `--json` use the
 same object (exit 1); the `--json` flag is looked for only before a `--` argument. Every error
 has all three parts: errors of kind `project` suggest reporting the problem at the issue
-tracker. A suggestion's `command` is usually a command to run, but it may be a URL (the issue
-tracker), and the `explanation` then carries the prose ("report it, including what you ran and
+tracker, except the busy-project error (another paper command is running), which is not a bug.
+A suggestion's `command` is usually a command to run, but it may be a URL (the issue tracker)
+or a short instruction when no single command fits, and the `explanation` then carries the prose ("report it, including what you ran and
 the message above").
 
 **JSON output:** one object per command on stdout, with `"schema": 1`. Times are RFC 3339

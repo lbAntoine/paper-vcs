@@ -142,3 +142,7 @@ operation log (PV-020) relies on it.
 - `config set --project` takes the lock (`ProjectLock::acquire_for_workdir`, no lock when there is no `.git/paper/`), same wait and Busy error. CLI test added.
 - Busy wording: `why` no longer says "5 seconds"; `next` is "run the same command again" with the pid in its explanation. The `Busy` variants did not gain a wait field (existing tests match `Busy { holder }` without `..`).
 - fd-lock dropped from the Cargo.toml comment; `LockOptions::default()` used; `# Panics` added. Spec updated (on-disk layout, lifecycle: never-deleted invariant, config set).
+
+### GREEN (post-approval) · rust-engineer · 2026-10-17
+
+Spec wording for the busy error and `lock-holder`; fresh init re-checks `version` under the lock (test added); `acquire_for_workdir` resolves the paper dir through `GitRepo`.

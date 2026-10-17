@@ -315,3 +315,39 @@ fn a_refused_adoption_creates_no_paper_folder_at_all() {
     assert!(matches!(result, Err(InitError::DetachedHead)));
     assert!(!path.join(".git/paper").exists());
 }
+
+#[test]
+fn two_inits_on_one_new_folder_make_one_root_save() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().to_path_buf();
+    std::fs::write(path.join("notes.md"), "hello\n").unwrap();
+    let (first, _) = Project::init(&path, identity(), &SnapshotOptions::default()).unwrap();
+
+    let second = {
+        let path = path.clone();
+        thread::spawn(move || {
+            Project::init_with(
+                &path,
+                identity(),
+                &SnapshotOptions::default(),
+                None,
+                &LockOptions {
+                    wait: Duration::from_secs(2),
+                },
+            )
+            .map(|_| ())
+        })
+    };
+    thread::sleep(Duration::from_millis(200));
+    drop(first);
+
+    let result = second.join().unwrap();
+    assert!(
+        matches!(result, Err(InitError::AlreadyInitialized { .. })),
+        "{result:?}"
+    );
+    assert_eq!(
+        git(&path, &["log", "--format=%s", "main"]),
+        "Start project\n"
+    );
+}

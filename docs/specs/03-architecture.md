@@ -130,7 +130,7 @@ marked "unstable".
 Every command runs this pipeline while holding the lock. The lock is an exclusive OS lock
 (`File::lock`) on `.git/paper/lock`, taken when the `Project` is opened or initialised and held
 until it is dropped, so one command is one `Project` is steps 1 to 9. A second command polls for
-up to 5 s, then fails with `Busy` (exit 3, naming the holder's pid when the lock file has it).
+up to 5 s, then fails with `Busy` (exit 3, naming the holder's pid when `lock-holder` has it).
 The OS releases the lock when the holder exits or crashes, so there is never a stale lock to
 remove. The lock file is never deleted (deleting it would let two processes lock different
 files); a refused `init` creates `.git/paper/` only after its read-only checks pass. The pid

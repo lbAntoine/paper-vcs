@@ -132,7 +132,17 @@ impl ProjectLock {
     ///
     /// Never.
     pub fn acquire_for_workdir(workdir: &Path, wait: Duration) -> Result<Option<Self>, LockError> {
-        let paper_dir = workdir.join(".git").join("paper");
+        // Resolved like everywhere else, so linked worktrees and submodules (`.git` is a file)
+        // lock the right folder. The identity is not used for locking.
+        let identity = paper_git::Identity {
+            name: "paper".to_owned(),
+            email: "paper@localhost".to_owned(),
+        };
+        let repo = paper_git::GitRepo::open(workdir, &identity).map_err(|error| LockError::Io {
+            path: workdir.to_owned(),
+            source: std::io::Error::other(error),
+        })?;
+        let paper_dir = super::paper_dir(&repo);
         if paper_dir.is_dir() {
             Self::acquire(&paper_dir, wait).map(Some)
         } else {
