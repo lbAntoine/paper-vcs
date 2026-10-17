@@ -1,6 +1,6 @@
 # PV-020: operation log and head pointer (on-disk format 2)
 
-- **Status:** In progress
+- **Status:** Done
 - **Issue:** #38
 - **Branch:** `feat/PV-020-op-log`
 - **Depends on:** PV-019 (lock, merged). Runs alone (PV-021 to PV-024 build on it).
@@ -98,6 +98,29 @@ yet, but nothing is overwritten any more either.
 - Cross-check with git (`fsck --strict`, `log`, `status`, refs) after migration.
 
 ## Summary
+
+Every state of a project is an immutable operation in `.git/paper/activity/ops/<id>.json`, and
+`activity/head` names the current one; the project's view is the head op's view. On-disk format 2.
+
+- Ops are written once (temp, fsync, no-clobber rename, directory fsync), then `head` is replaced
+  atomically; `make_durable` flushes `ops/`, `activity/` and `.git/paper/` before any `version`
+  write. Ids are 32 random hex characters. Fields: `id`, `parent`, `kind` (`init`, `migrate`,
+  `snapshot`, `save`, `restore`), `time`, `view`, `position`, `redo`, `description`.
+- One op per view write for now (`init`, snapshot, `save`; the op after a restore's rewrite is
+  `restore`). Folding to one op per command is PV-021.
+- Format-1 projects (v0.1.0) migrate on first open, each step safe to repeat; verified against a
+  real v0.1.0 binary's project (git untouched, `view.json.v1` byte-identical).
+- A missing `head` is a damaged-log error that never suggests `paper init`; an interrupted init's
+  leftover log is deleted only if it is clearly one (no head and at most one op file, or a lone
+  `init` op), otherwise init refuses.
+- Adoption re-reads `paper.toml` under the lock (the race noted on #38).
+- `write_new` falls back to a checked rename where no-clobber rename is unsupported (FAT/exFAT,
+  some network shares; macOS ENOTSUP included).
+
+Deviations: `View::save` and its unit test removed (round-trip coverage moved to the activity
+tests); dead variants `InitError::View`, `SaveError::View`, `OpenError::Incomplete` removed; two
+CLI snapshots now say "reads format 2"; 03-architecture § Domain model corrected (outside the
+original Touches, authorised).
 
 ## Handoff log
 
@@ -222,3 +245,7 @@ New tests only; none weakened (`assert_clear_project_error` now also rejects a `
 
 ### GREEN (post-approval) · rust-engineer · 2026-10-17
 Removed `OpenError::Incomplete`; `make_durable` before every `version` write (init, migration); init cleanup with no head needs at most one `*.json` op file (test added); `write_new` fallback also accepts macOS ENOTSUP (45, `cfg(target_vendor = "apple")`).
+
+### Review round 2 · reviewer · 2026-10-17
+- Verdict: APPROVE. The missing-head loop is gone (CLI reproduction re-run); the init cleanup guard, the fsync order, the `write_new` fallback, `OpKind::Restore` and both spec sections verified.
+- Fixed after approval: `OpenError::Incomplete` removed; directories flushed before every `version` write; the cleanup guard allows at most one op file without a head; macOS ENOTSUP in the fallback.
