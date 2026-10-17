@@ -10,7 +10,7 @@
 > **Sharing:** you can publish your saves with plain `git push`. Bringing in other people's
 > work with `git pull` isn't supported yet. After a pull, `status` shows their edits as your
 > unsaved changes, `history` doesn't show their saves, and `paper save` refuses. Importing
-> `git checkout` and branch changes starts in v0.4, and bringing in co-authors' work arrives
+> `git checkout` and branch creation starts in v0.4, and bringing in co-authors' work arrives
 > with `sync` in v0.6. The [design specs](docs/specs/README.md) describe where it's going,
 > and the [changelog](CHANGELOG.md) says what each version does.
 

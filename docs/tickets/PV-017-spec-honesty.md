@@ -97,3 +97,7 @@ branch creation imported correctly"; "## v0.6: Collaboration" lists `sync`; "## 
 covered by tests"; the intro now reads "Since v0.1, users can already share work by running `git push`" (matches the v0.1 Accept line
 "push with plain `git push`"). Binary behaviour unchanged from the earlier run (log hint after a pull; branch-change message per
 `HeadOnAnotherBranch` as the reviewer cited). README lead-in added, "(from v0.2)" removed, line 13 rewrapped; 05-roadmap added to Touches.
+
+### DOCS (post-approval) · rust-engineer · 2026-10-17
+
+Final wording: save import sentence, README "branch creation", restore rewrap.

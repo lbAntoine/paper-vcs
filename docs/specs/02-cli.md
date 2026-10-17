@@ -174,10 +174,10 @@ one), taken from the line diff. `paper status` snapshots first (I1);
   saved too, and the result lists them.
 - If the line changed with plain git since paper last saw it (new commits, a `git reset`, or
   a deleted branch), `save` refuses and writes nothing: saving on top of that isn't
-  supported yet. Importing such changes starts in v0.4 with `git checkout` and branch
-  creation (roadmap § v0.4: Safe experiments, Interop); bringing in co-authors' work arrives
-  with `sync` in v0.6. The error names the line and points to
-  `git log <line>` to see what changed; it never suggests a command that could drop git
+  supported yet. Paper starts importing git changes in v0.4 (`git checkout` and
+  branch creation, roadmap § v0.4: Safe experiments); every row of the interop table is
+  covered by v0.8; co-authors' work arrives with `sync` in v0.6. The error names the line
+  and points to `git log <line>` to see what changed; it never suggests a command that could drop git
   commits. If git is on another branch (or detached), it refuses too and says to run
   `git switch <line>`.
 - An empty draft means a no-op: `Nothing to save.` (exit 0).
@@ -259,8 +259,8 @@ snapshots before comparing against `@`.
 
 Replaces those paths in the draft with their content at `<point>` (default `last`). Paths
 that don't exist at `<point>` are deleted. Paths follow the rule of `paper save` (a file, or
-everything under a directory), and at least one is required. Undoable from v0.2 (`paper undo`). There is no "are you sure?":
-undo covers it, and until v0.2 the draft snapshot below is the safety net.
+everything under a directory), and at least one is required. Undoable from v0.2
+(`paper undo`). There is no "are you sure?": undo covers it, and until v0.2 the draft snapshot below is the safety net.
 
 The draft is snapshotted before anything is overwritten, so the previous content always
 exists as a commit; the activity log that `undo` reads arrives in v0.2. A path that matches
