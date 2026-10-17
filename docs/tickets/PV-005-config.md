@@ -1,6 +1,7 @@
 # PV-005: config get/set/list and identity
 
 - **Status:** Done
+- **Issue:** #27
 - **Branch:** `feat/PV-005-config`
 - **Depends on:** PV-003, PV-011 (merged). Runs alone.
 - **Touches:** `crates/paper-core/src/config/` (new), `crates/paper-core/src/lib.rs`,

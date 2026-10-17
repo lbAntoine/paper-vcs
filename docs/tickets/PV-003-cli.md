@@ -1,6 +1,7 @@
 # PV-003: CLI: clap, human + --json rendering, 3-part errors, exit codes, insta tests
 
 - **Status:** Done
+- **Issue:** #24
 - **Branch:** `feat/PV-003-cli`
 - **Depends on:** PV-001, PV-002 (merged). Runs in parallel with PV-010 (paper-core diff,
   status, restore). PV-011 wires `status`, `diff` and `restore` into the CLI once both are in.

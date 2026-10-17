@@ -1,6 +1,7 @@
 # PV-013: make change-ID prefix tests deterministic
 
 - **Status:** Done
+- **Issue:** #26
 - **Branch:** `feat/PV-013-flaky-prefix-tests`
 - **Depends on:** none. Runs in parallel with PV-011 (CLI), which must not touch the files below.
 - **Touches:** `crates/paper-core/tests/resolve.rs`, `crates/paper-core/tests/history.rs` (only if

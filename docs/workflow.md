@@ -37,6 +37,10 @@ In the worktree, the coordinator writes `docs/tickets/PV-NNN-<slug>.md` from
 both as the branch's first commit: `docs: groom PV-NNN`. A pull request then contains the
 whole story (ticket, RED, GREEN, review fixes, close) and `main` gets no grooming commits.
 
+Every ticket has a GitHub issue (see [Tracking on GitHub](#tracking-on-github)). Grooming
+reuses the ticket's issue if one exists and creates it otherwise, and writes its number in
+the ticket's `Issue` field.
+
 - **Context is pointers, not copies:** link spec sections and existing code instead of pasting them.
 - **Conflict check:** compare the new ticket's `Touches` list and acceptance criteria with every
   open ticket branch. Two tickets touching the same file are sequenced (`Depends on`), never
@@ -54,7 +58,17 @@ compile, appends to the handoff log, and commits `test: RED tests for PV-NNN …
 
 **Coordinator check:** in the worktree, `cargo test --workspace` compiles; the new tests
 fail on `todo!()` or assertions; every pre-existing test passes. A test that fails to
-compile, or fails for an unrelated reason, goes back to the agent.
+compile, or fails for an unrelated reason, goes back to the agent. Then two more checks, which
+catch the tests that pass locally but fail on CI or catch nothing:
+
+- **The new tests fail against `main` for the stated reason.** When the stubs allow it (the
+  feature's API already exists, as for fixes), copy the new test files into a detached probe
+  worktree of `origin/main` (under the ticket worktree's `target/`), run them there, and remove
+  the probe afterwards. A new test that passes on `main` proves nothing and goes back.
+- **The suite doesn't depend on the machine.** Run the new tests once with
+  `GIT_CONFIG_GLOBAL` pointing at an empty file and `GIT_CONFIG_NOSYSTEM=1` (CI's git has no
+  identity and defaults to `master`), and grep the new tests for Unix-only APIs outside
+  `#[cfg(unix)]` and for platform-specific expected output without a `cfg!` branch.
 
 ## 4. GREEN: rust-engineer
 
@@ -85,12 +99,26 @@ The coordinator:
    `tasks.json`, and commits `chore: close PV-NNN` on the branch, so `main` gets no extra commit.
 3. Pushes and opens the pull request:
    `gh pr create --title "PV-NNN: <title>" --body <summary + acceptance checklist + ticket link>`.
+   The body says `Closes #NN` (the ticket's issue), so merging closes it.
 4. Waits for CI on Linux, macOS and Windows: `gh pr checks --watch`. A failure goes back to the
    rust-engineer (via `SendMessage` if the agent is still available) with the failing log.
 5. Merges with a merge commit, so the RED and GREEN commits stay visible as proof of TDD:
    `gh pr merge --merge --delete-branch`.
 6. Cleans up: `gh pr merge --delete-branch` also removes the local branch and its worktree.
    Then `git worktree prune` and `git pull --ff-only` in the main checkout.
+
+## Tracking on GitHub
+
+Every ticket has an issue titled `PV-NNN: <title>`, with a link to the ticket file, labels and
+a milestone. The ticket file stays the source of truth (scope, criteria, handoff log); the
+issue is the public index.
+
+- **Labels:** one `type:` (`feature`, `fix`, `perf`, `test`, `docs`, `chore`), one or more
+  `area:` (`core`, `cli`, `git`, `diff`, `release`) and one `priority:` (`high`, `medium`, `low`).
+- **Milestones:** one per roadmap version (`v0.1`, `v0.2`, …). A milestone is closed when its
+  version is released and its issues are closed; open leftovers move to the next one.
+- Review follow-ups that become a new ticket get their issue when the ticket is created in
+  `tasks.json`, even before it is groomed.
 
 ## Releasing
 

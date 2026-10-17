@@ -1,6 +1,7 @@
 # PV-001: save
 
 - **Status:** Done
+- **Issue:** #19
 - **Branch:** `feat/PV-001-save`
 - **Depends on:** none (snapshot and init are on main)
 - **Touches:** `crates/paper-core/src/project/mod.rs`, `crates/paper-core/src/project/save.rs` (new),

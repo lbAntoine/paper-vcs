@@ -1,6 +1,7 @@
 # PV-009: line diff in paper-diff
 
 - **Status:** Done
+- **Issue:** #21
 - **Branch:** `feat/PV-009-line-diff`
 - **Depends on:** none. Runs in parallel with PV-002 (paper-git/paper-core, disjoint files).
 - **Touches:** `Cargo.toml` (workspace dependency), `Cargo.lock`, `crates/paper-diff/Cargo.toml`,
