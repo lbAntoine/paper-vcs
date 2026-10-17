@@ -6,6 +6,7 @@
 use std::io;
 use std::path::Path;
 
+use crate::activity::ActivityError;
 use crate::config::{ConfigError, Conflict, Key, Origin, Scope};
 use crate::point::ParsePointError;
 use crate::profile::gitignore::GitignoreError;
@@ -672,6 +673,12 @@ impl From<ParsePointError> for PaperError {
                 "list the saves and their IDs",
             )],
         )
+    }
+}
+
+impl From<ActivityError> for PaperError {
+    fn from(error: ActivityError) -> Self {
+        Self::project("Paper could not read the activity log", &error)
     }
 }
 

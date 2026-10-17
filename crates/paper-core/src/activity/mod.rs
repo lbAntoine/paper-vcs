@@ -4,6 +4,7 @@
 //! Layout under `.git/paper/activity/`: `ops/<id>.json` (written once, never changed) and
 //! `head` (one op id, replaced atomically after the op file is on disk).
 
+pub(crate) mod describe;
 mod id;
 mod op;
 mod short;

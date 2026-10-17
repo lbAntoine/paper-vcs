@@ -104,3 +104,15 @@ entry is one step `paper undo` (PV-023/024) will be able to take back.
 - `short_ids` returns prefixes in input order, grows a prefix until no other id shares it.
 
 **Questions.** None blocking.
+
+### GREEN · rust-engineer · 2026-10-17
+
+**Implemented.** Descriptions in `activity/describe.rs` (`edited`, `restored`, `saved`), used by `snapshot_as` (now takes `Option<&str>`; `None` describes the files that differ from the previous draft), `save`, `restore`, `init` (`start the project` / `adopt the git repository`) and the migration (`upgrade to paper format 2`). `Display for Point` (spelling as typed; `last~0` prints `last`). `short_ids`, `Project::activity` (head chain only, no snapshot), `From<ActivityError> for PaperError`, CLI `paper activity` (opens without snapshotting; human and `--json`). Edits entries needed no new recording logic: `snapshot()` already records its own op before `save`/`restore`.
+
+**Specs.** 01-concepts I4; 02-cli `activity`; 03-architecture "Snapshot and op folding" replaced by "Edits entries", and the Domain model note.
+
+**BLOCKED (two RED tests, assertions not changed).**
+1. `activity_lists_what_was_done_newest_first`: the hand-written `activity__activity_human.snap` has `[ID]  [TIME]  save ...`. The base `settings()` filter from `common` replaces the time text with `[TIME]` before the test's own `[TIME] *` filter runs, so the 14-wide padding survives, exactly as in `history__history_human.snap` (`[ID]  [TIME]        Rewrite intro`). Actual: `[ID]  [TIME]        save "Rewrite intro"`. The ticket decision (time padded to 14, like `history`) and the snapshot disagree; the snapshot should be updated, or the filter order fixed.
+2. `activity_outside_a_project_is_a_three_part_error` expects exit 3; not-a-project is a `User` error (exit 1) everywhere else (`basics` snapshots, `PaperError::not_a_project`). Test should say 1.
+
+The JSON snapshot matches byte for byte. All other tests pass, with fmt and clippy clean.

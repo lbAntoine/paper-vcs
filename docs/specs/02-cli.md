@@ -307,13 +307,25 @@ inside a separate git repository, a file paper doesn't track in the way, …). I
 - `redo` re-applies the most recently undone entry. A new state-changing command clears
   the redo stack.
 - `paper undo --to <activity-id>` restores the state right after that entry.
-- `activity`:
+- `activity [-n <N>] [--json]` lists the entries from the current head back, newest first
+  (default 20). It doesn't snapshot first, so listing the log never adds to it, but it takes
+  the lock like every command. Each line is `<id>  <time>  <description>`: the shortest
+  unique prefix of the entry's id among the listed entries (at least 4 hex characters), the
+  time in the same relative style as `history` (padded to 14 characters), and the description.
 
 ```
-a41c  just now      save "Rewrite related work"
-9e02  10 min ago    restore sections/intro.tex from last~1
-77d1  1 hour ago    try restructure-intro
+a41c  just now        save "Rewrite related work"
+b7e0  9 minutes ago   edited sections/intro.tex, main.tex
+9e02  10 minutes ago  restore sections/intro.tex from last~1
+77d1  1 hour ago      start the project
 ```
+
+  Descriptions: `edited a.tex, b.tex, c.tex and 2 more` (sorted, at most three paths),
+  `save "<message>"`, `restore <path> from <point as typed, or last>`, `start the project`,
+  `adopt the git repository`, `upgrade to paper format 2`.
+  `--json`: `{"schema":1,"entries":[{"id","short_id","time","kind","description"}]}`, every key
+  always present; `time` is RFC 3339, `kind` is `init`, `migrate`, `snapshot`, `save` or
+  `restore`.
 
 ### Lines: `paper try`, `keep`, `drop`, `switch`, `lines` (since v0.4)
 

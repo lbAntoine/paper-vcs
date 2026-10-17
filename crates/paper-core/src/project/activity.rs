@@ -1,7 +1,7 @@
 //! Listing the operation log for `paper activity`.
 
 use super::Project;
-use crate::activity::{ActivityError, OpId, OpKind};
+use crate::activity::{ActivityError, ActivityLog, OpId, OpKind, short_ids};
 
 /// One line of `paper activity`: an operation, as the researcher sees it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,7 +28,32 @@ impl Project {
     /// # Panics
     ///
     /// Never.
-    pub fn activity(&self, _limit: usize) -> Result<Vec<ActivityEntry>, ActivityError> {
-        todo!("PV-021: list the head chain")
+    pub fn activity(&self, limit: usize) -> Result<Vec<ActivityEntry>, ActivityError> {
+        let log = ActivityLog::open(&self.paper_dir);
+        let mut next = log.head()?.ok_or_else(|| ActivityError::MissingHead {
+            path: log.root().join("head"),
+        })?;
+        let mut ops = Vec::new();
+        while ops.len() < limit {
+            let op = log.read(&next)?;
+            let parent = op.parent.clone();
+            ops.push(op);
+            match parent {
+                Some(parent) => next = parent,
+                None => break,
+            }
+        }
+        let ids: Vec<OpId> = ops.iter().map(|op| op.id.clone()).collect();
+        Ok(ops
+            .into_iter()
+            .zip(short_ids(&ids))
+            .map(|(op, short_id)| ActivityEntry {
+                id: op.id,
+                short_id,
+                time: op.time,
+                kind: op.kind,
+                description: op.description,
+            })
+            .collect())
     }
 }

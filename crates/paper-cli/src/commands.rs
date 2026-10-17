@@ -53,7 +53,7 @@ pub fn execute(cli: &Cli, style: Style) -> Output {
             ..
         } => inspect::diff(cli, args, paths, *words, *stat, since.as_deref(), style),
         Command::Config { action } => config_cmd::run(cli, action),
-        Command::Activity { limit: _ } => todo!("PV-021: paper activity"),
+        Command::Activity { limit } => activity(cli, *limit, style),
         Command::Restore { paths, from } => inspect::restore(cli, paths, from.as_deref()),
     }
 }
@@ -220,6 +220,17 @@ fn history(
         cli,
         || human::history(&entries, now(), verbosity, style, &scope),
         || json::history(&entries),
+    ))
+}
+
+/// `paper activity`: the log, newest first. Opens without snapshotting, so listing adds nothing.
+fn activity(cli: &Cli, limit: usize, style: Style) -> Output {
+    let (project, _) = open(cli)?;
+    let entries = project.activity(limit)?;
+    Ok(finish(
+        cli,
+        || human::activity(&entries, now(), style),
+        || json::activity(&entries),
     ))
 }
 

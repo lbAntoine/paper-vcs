@@ -45,8 +45,10 @@ These are the promises the implementation must keep. Tests assert them (see [03-
    or the two merge parents while a keep is in progress.
 3. **I3: switching is always safe.** Switching lines stores the current draft and restores the
    target line's draft. No prompts and no "please commit first".
-4. **I4: everything is undoable.** Every command that changes state records exactly one activity
-   entry, and `undo` restores the state before it, including the working files.
+4. **I4: everything is undoable.** Every command that changes state records at most two
+   activity entries: an `edits` entry for working-file changes it found first (only if there
+   were any), then one entry for the command itself. `undo` steps back one entry at a time and
+   restores the state before it, including the working files.
 5. **I5: only saves leave the machine.** Drafts, activity and `refs/paper/*` are never pushed.
 6. **I6: it is always git.** After any paper command, the repo is a valid git repo. `git log`
    shows the saves, `git status` shows the draft as unstaged changes, and the checked-out

@@ -56,6 +56,19 @@ impl std::fmt::Display for DateSpec {
     }
 }
 
+impl std::fmt::Display for Point {
+    /// The spelling a researcher types, so messages can echo a point back.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Draft => f.write_str("@"),
+            Self::Last { back: 0 } => f.write_str("last"),
+            Self::Last { back } => write!(f, "last~{back}"),
+            Self::Date(spec) => write!(f, "date:{spec}"),
+            Self::Name(name) => f.write_str(name),
+        }
+    }
+}
+
 impl DateSpec {
     /// The Last instant the spec covers (inclusive). `date:2026-09-01` covers the whole day
     pub fn inclusive_end(self) -> DateTime {

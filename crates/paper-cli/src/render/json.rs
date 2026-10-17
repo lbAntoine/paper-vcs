@@ -1,8 +1,10 @@
 //! `--json` output: CLI-owned DTOs, so `paper-core` carries no serde derives. Every object has
 //! `"schema": 1`; the shapes are part of the CLI's contract.
 
+use paper_core::activity::OpKind;
 use paper_core::project::{
-    FileDiffEntry, HistoryEntry, Initialized, ProfileSource, SaveOutcome, Saved, Shown,
+    ActivityEntry, FileDiffEntry, HistoryEntry, Initialized, ProfileSource, SaveOutcome, Saved,
+    Shown,
 };
 use paper_core::snapshot::{Change, ChangeKind, SkipReason, Skipped};
 use serde::Serialize;
@@ -254,4 +256,46 @@ pub fn show(shown: &Shown, diffs: &[FileDiffEntry]) -> String {
         changes: changes(&shown.changes),
         files: super::json_diff::files(diffs),
     })
+}
+
+#[derive(Serialize)]
+struct ActivityInfo {
+    id: String,
+    short_id: String,
+    /// RFC 3339.
+    time: String,
+    kind: &'static str,
+    description: String,
+}
+
+#[derive(Serialize)]
+struct ActivityOut {
+    schema: u32,
+    entries: Vec<ActivityInfo>,
+}
+
+pub fn activity(entries: &[ActivityEntry]) -> String {
+    line(&ActivityOut {
+        schema: SCHEMA,
+        entries: entries
+            .iter()
+            .map(|e| ActivityInfo {
+                id: e.id.to_string(),
+                short_id: e.short_id.clone(),
+                time: e.time.clone(),
+                kind: op_kind_name(e.kind),
+                description: e.description.clone(),
+            })
+            .collect(),
+    })
+}
+
+fn op_kind_name(kind: OpKind) -> &'static str {
+    match kind {
+        OpKind::Init => "init",
+        OpKind::Migrate => "migrate",
+        OpKind::Snapshot => "snapshot",
+        OpKind::Save => "save",
+        OpKind::Restore => "restore",
+    }
 }
