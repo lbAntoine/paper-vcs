@@ -107,3 +107,15 @@ operation log (PV-020) relies on it.
 **Notes for GREEN:** `Env::project_with_three_saves()` returns a `Project`; once `Project` holds the lock, any existing CLI test that keeps that value alive while running `paper` will see Busy and needs the value dropped (that is a test fix, report it if it happens). `tempfile`'s `dunce` is not a core dependency, so core tests use plain temp paths.
 
 **Questions:** none.
+
+### GREEN · rust-engineer · 2026-10-17
+
+**Implemented.** `ProjectLock::acquire` (std `File::try_lock` polled every 50 ms up to the wait; pid written after locking; pid read back for `Busy`). `Project` holds the lock in a last-declared field. `open_with` takes it once `.git/paper/` exists (a plain git repo with no `.git/paper/` is `NotAPaperProject` without creating a lock file). `init_with` takes it right after creating `.git/paper/`, before the `AlreadyInitialized` check. `PaperError::busy` (kind Project, exit 3, no "delete" advice). CLI: `lock_options()` in `commands.rs`, with `PAPER_DEBUG_LOCK_WAIT_MS` under `#[cfg(debug_assertions)]`.
+
+**Deviation to note.** Adopting a repo creates `.git/paper/` before it can lock; when adopt then fails before writing anything (e.g. conflicting profile), the lock file and the empty folder are removed again, because `adopting_with_a_conflicting_profile_is_a_user_error_and_writes_nothing` asserts `.git/paper` is absent. A process queued on that lock file in that failure window could end up holding an unlinked file; very narrow, noted for the op-log work.
+
+**Specs.** 03-architecture: paper-core row (fd-lock dropped), on-disk `lock` line, Command lifecycle intro. 02-cli: exit code 3 row. No other sections.
+
+**Pre-existing tests touched** (all only drop the first `Project` before a second `Project::open`, assertions unchanged; comparisons use a cloned `View` taken before the drop): `paper-core/tests/init.rs::open_reads_back_the_project_init_created`, `tests/restore.rs::restore_never_touches_symlinks_and_reports_symlinks_in_the_from_tree`, `tests/save.rs::{snapshot_persists_the_new_draft_in_the_ref_and_the_view, opening_the_project_after_a_save_sees_the_new_tip_and_draft, a_reopened_project_can_save_again}`. No CLI test or helper needed changes. The `fd-lock` mention in the workspace `Cargo.toml` comment is left (not a dependency).
+
+**Checks.** fmt, clippy `-D warnings`, full suite green with `INSTA_UPDATE=no`; the new lock tests also pass with `GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1`.

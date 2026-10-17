@@ -28,7 +28,7 @@ A single Cargo workspace in one repo (`paper-vcs`). Edition 2024, pinned via `ru
 
 | Crate | Responsibility | Key deps |
 |---|---|---|
-| `paper-core` | Public API used by every front-end. `Project::open/init`, one method per command, each returning a serialisable `Outcome`. Owns the invariants from [01-concepts](01-concepts.md#invariants) | `serde`, `thiserror`, `fd-lock`, `toml`, `tracing` |
+| `paper-core` | Public API used by every front-end. `Project::open/init`, one method per command, each returning a serialisable `Outcome`. Owns the invariants from [01-concepts](01-concepts.md#invariants) | `serde`, `thiserror`, `toml`, `tracing` |
 | `paper-git` | `GitRepo`, the gix-backed repository handle: objects, trees, refs, merge, checkout, status. Network ops (`fetch`, `push`, `clone`) shell out to the `git` binary | `gix`, `std::process` |
 | `paper-diff` | Tokenise text (generic, LaTeX, Markdown, CJK-aware), word and line diffs, table diffs, binary detection. The `office` module extracts text and cells from Office files, and checks they're complete zips for snapshot | `similar` (patience algorithm), `unicode-segmentation`, `csv`, `zip`, `quick-xml`, `calamine` |
 | `paper-cli` | Argument parsing, prompts, human and `--json` rendering, exit codes | `clap`, `anstream`, `insta` (tests) |
@@ -93,7 +93,7 @@ the immutability-first style.
   .git/                         normal git repo (colocated)
     paper/
       version                   on-disk format version (integer; migrations keyed on it)
-      lock                      advisory lock (fd-lock)
+      lock                      exclusive OS file lock (std); content is the holder's pid, a hint only
       activity/ops/<opid>.json  one file per operation (immutable, fsynced)
       activity/head             current op id (replaced atomically via rename)
       exported.json             git refs as paper last wrote them
@@ -125,7 +125,13 @@ marked "unstable".
 
 ## Command lifecycle
 
-Every command runs this pipeline while holding the lock. The lock waits up to 5 s, then fails with exit 3.
+Every command runs this pipeline while holding the lock. The lock is an exclusive OS lock
+(`File::lock`) on `.git/paper/lock`, taken when the `Project` is opened or initialised and held
+until it is dropped, so one command is one `Project` is steps 1 to 9. A second command polls for
+up to 5 s, then fails with `Busy` (exit 3, naming the holder's pid when the lock file has it).
+The OS releases the lock when the holder exits or crashes, so there is never a stale lock to
+remove. Commands that don't open a project (user-level `config`, `--help`, `--version`) don't
+take it. Debug builds honour `PAPER_DEBUG_LOCK_WAIT_MS` to shorten the wait in tests.
 
 ```
 1. lock

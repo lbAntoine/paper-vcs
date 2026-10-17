@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use paper_git::{ChangeId, CommitId, GitError, GitRepo, Identity, NewCommit, TreeId};
 
 use super::init_profile::{ProfilePlan, ProfileReport};
-use super::{DEFAULT_LOCK_WAIT, LockOptions};
+use super::{DEFAULT_LOCK_WAIT, LockError, LockOptions, ProjectLock};
 use super::{
     FORMAT_VERSION, Project, VERSION_FILE, draft_ref, line_ref, paper_dir, signature_now,
     write_draft,
@@ -168,7 +168,7 @@ impl Project {
         identity: Identity,
         options: &SnapshotOptions,
         choice: Option<&Profile>,
-        _lock: &LockOptions,
+        lock: &LockOptions,
     ) -> Result<(Self, Initialized), InitError> {
         fs::create_dir_all(path).map_err(|source| io_error(path, source))?;
         if has_damaged_git(path) {
@@ -180,10 +180,20 @@ impl Project {
             None => {
                 let plan = ProfilePlan::prepare(path, choice)?;
                 let repo = GitRepo::init(path, &identity)?;
+                let paper_dir = create_paper_dir(&repo)?;
+                let held = take_lock(&paper_dir, lock)?;
                 let report = plan.write(path)?;
-                start_fresh(repo, identity, options, LineName::main(), false, report)
+                start_fresh(
+                    repo,
+                    identity,
+                    options,
+                    LineName::main(),
+                    false,
+                    report,
+                    held,
+                )
             }
-            Some(root) if same_dir(&root, path) => adopt(path, identity, options, choice),
+            Some(root) if same_dir(&root, path) => adopt(path, identity, options, choice, lock),
             Some(root) => Err(InitError::InsideAnotherRepository {
                 path: path.to_owned(),
                 root,
@@ -197,9 +207,31 @@ fn adopt(
     identity: Identity,
     options: &SnapshotOptions,
     choice: Option<&Profile>,
+    lock: &LockOptions,
 ) -> Result<(Project, Initialized), InitError> {
     let repo = GitRepo::open(path, &identity)?;
-    if paper_dir(&repo).join(VERSION_FILE).exists() {
+    let dir = paper_dir(&repo);
+    let existed = dir.exists();
+    let held = take_lock(&create_paper_dir(&repo)?, lock)?;
+    let result = adopt_locked(repo, held, path, identity, options, choice);
+    if result.is_err() && !existed {
+        // Refused before anything was written: leave no `.git/paper/` behind. The failed
+        // call has dropped its lock; `remove_dir` only succeeds on an empty folder.
+        let _ = fs::remove_file(dir.join("lock"));
+        let _ = fs::remove_dir(&dir);
+    }
+    result
+}
+
+fn adopt_locked(
+    repo: GitRepo,
+    held: Held,
+    path: &Path,
+    identity: Identity,
+    options: &SnapshotOptions,
+    choice: Option<&Profile>,
+) -> Result<(Project, Initialized), InitError> {
+    if held.paper_dir.join(VERSION_FILE).exists() {
         return Err(InitError::AlreadyInitialized {
             path: path.to_owned(),
         });
@@ -223,10 +255,9 @@ fn adopt(
     let report = ProfilePlan::prepare(path, choice)?.write(path)?;
     if branches.is_empty() {
         // A repository without commits yet: start like a new project, on its current branch.
-        return start_fresh(repo, identity, options, current_line, true, report);
+        return start_fresh(repo, identity, options, current_line, true, report, held);
     }
 
-    let paper_dir = create_paper_dir(&repo)?;
     let signature = signature_now(&identity);
     let mut lines = Vec::new();
     let mut skipped_branches = Vec::new();
@@ -281,7 +312,7 @@ fn adopt(
         repo,
         identity,
         *options,
-        paper_dir,
+        held,
         view,
         &snap.cache,
         initialized,
@@ -297,8 +328,8 @@ fn start_fresh(
     line: LineName,
     adopted: bool,
     report: ProfileReport,
+    held: Held,
 ) -> Result<(Project, Initialized), InitError> {
-    let paper_dir = create_paper_dir(&repo)?;
     let empty = repo.empty_tree()?;
     let snap = snapshot(&repo, &empty, &StatCache::default(), options)?;
     let signature = signature_now(&identity);
@@ -327,7 +358,7 @@ fn start_fresh(
         repo,
         identity,
         *options,
-        paper_dir,
+        held,
         view,
         &snap.cache,
         initialized,
@@ -354,11 +385,12 @@ fn finish(
     repo: GitRepo,
     identity: Identity,
     options: SnapshotOptions,
-    paper_dir: PathBuf,
+    held: Held,
     view: View,
     cache: &StatCache,
     initialized: Initialized,
 ) -> Result<(Project, Initialized), InitError> {
+    let Held { paper_dir, lock } = held;
     view.save(&paper_dir)?;
     cache
         .save(&paper_dir)
@@ -372,8 +404,26 @@ fn finish(
         view,
         identity,
         options,
+        _lock: lock,
     };
     Ok((project, initialized))
+}
+
+/// `.git/paper/` together with the lock taken on it.
+struct Held {
+    paper_dir: PathBuf,
+    lock: ProjectLock,
+}
+
+fn take_lock(paper_dir: &Path, options: &LockOptions) -> Result<Held, InitError> {
+    let lock = ProjectLock::acquire(paper_dir, options.wait).map_err(|error| match error {
+        LockError::Busy { holder } => InitError::Busy { holder },
+        LockError::Io { path, source } => InitError::Io { path, source },
+    })?;
+    Ok(Held {
+        paper_dir: paper_dir.to_owned(),
+        lock,
+    })
 }
 
 fn create_paper_dir(repo: &GitRepo) -> Result<PathBuf, InitError> {

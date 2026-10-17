@@ -46,6 +46,8 @@ pub struct Project {
     view: View,
     identity: Identity,
     options: SnapshotOptions,
+    /// Held until the project is dropped (declared last, so it is released last).
+    _lock: ProjectLock,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -102,10 +104,20 @@ impl Project {
     pub fn open_with(
         path: &Path,
         identity: Identity,
-        _lock: &LockOptions,
+        lock: &LockOptions,
     ) -> Result<Self, OpenError> {
         let repo = GitRepo::open(path, &identity)?;
         let paper_dir = paper_dir(&repo);
+        if !paper_dir.is_dir() {
+            return Err(OpenError::NotAPaperProject {
+                path: path.to_owned(),
+            });
+        }
+        let project_lock =
+            ProjectLock::acquire(&paper_dir, lock.wait).map_err(|error| match error {
+                LockError::Busy { holder } => OpenError::Busy { holder },
+                LockError::Io { path, source } => OpenError::Io { path, source },
+            })?;
         let version_path = paper_dir.join(VERSION_FILE);
         let found = match fs::read_to_string(&version_path) {
             Ok(content) => content.trim().to_owned(),
@@ -133,6 +145,7 @@ impl Project {
             view,
             identity,
             options: SnapshotOptions::default(),
+            _lock: project_lock,
         })
     }
 

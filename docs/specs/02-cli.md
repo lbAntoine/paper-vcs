@@ -40,7 +40,7 @@ and continues. Without a terminal it fails with `paper config set user.name …`
 | 0 | Success, including a friendly no-op such as "nothing to save" |
 | 1 | User error: bad arguments (including unknown flags and missing arguments, where clap would exit with 2), unknown point, etc. |
 | 2 | Needs attention: unresolved conflicts, or a remote that has diverged and needs sync |
-| 3 | Project error: corrupted state, lock held too long, git binary missing for network ops |
+| 3 | Project error: corrupted state, another paper command held the project for the whole 5 s wait ("Another paper command is running in this project"), git binary missing for network ops |
 | 101 | Bug (panic). Prints the issue-tracker URL and a report file path |
 
 A panic writes `crash-<timestamp>.txt` to the user cache folder (`$XDG_CACHE_HOME/paper` or
