@@ -221,8 +221,10 @@ fn adopting_with_a_detached_head_is_refused() {
 fn open_reads_back_the_project_init_created() {
     let dir = tempfile::tempdir().unwrap();
     let (created, _) = init(dir.path()).unwrap();
+    let created_view = created.view().clone();
+    drop(created); // a project holds the project lock until it is dropped
     let opened = Project::open(dir.path(), identity()).unwrap();
-    assert_eq!(opened.view(), created.view());
+    assert_eq!(opened.view(), &created_view);
 }
 
 #[test]

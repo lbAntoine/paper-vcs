@@ -200,8 +200,10 @@ fn snapshot_persists_the_new_draft_in_the_ref_and_the_view() {
         git(dir.path(), &["rev-parse", "refs/paper/draft/main"]).trim(),
         draft.as_str()
     );
+    let view = project.view().clone();
+    drop(project); // a project holds the project lock until it is dropped
     let reopened = Project::open(dir.path(), identity()).unwrap();
-    assert_eq!(reopened.view(), project.view());
+    assert_eq!(reopened.view(), &view);
     fsck(dir.path());
 }
 
@@ -697,9 +699,11 @@ fn opening_the_project_after_a_save_sees_the_new_tip_and_draft() {
     write(dir.path(), "a.tex", "a2");
     let result = save_all(&mut project, "Edit");
 
+    let view = project.view().clone();
+    drop(project); // a project holds the project lock until it is dropped
     let reopened = Project::open(dir.path(), identity()).unwrap();
 
-    assert_eq!(reopened.view(), project.view());
+    assert_eq!(reopened.view(), &view);
     assert_eq!(reopened.view().current().tip, result.save);
     let draft = reopened
         .repo()
@@ -714,6 +718,7 @@ fn a_reopened_project_can_save_again() {
     let (dir, mut project) = project_with(&[("a.tex", "a")]);
     write(dir.path(), "a.tex", "a2");
     save_all(&mut project, "First");
+    drop(project); // a project holds the project lock until it is dropped
     let mut reopened = Project::open(dir.path(), identity()).unwrap();
     write(dir.path(), "a.tex", "a3");
 

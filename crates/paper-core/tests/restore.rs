@@ -301,6 +301,7 @@ fn restore_never_touches_symlinks_and_reports_symlinks_in_the_from_tree() {
     let view = fs::read_to_string(&view_path).unwrap();
     assert!(view.contains(&old_tip));
     fs::write(&view_path, view.replace(&old_tip, link_save.trim())).unwrap();
+    drop(project); // a project holds the project lock until it is dropped
     let mut project = Project::open(dir.path(), identity()).unwrap();
     fs::remove_file(dir.path().join("link")).unwrap();
     write(dir.path(), "link", "plain file now\n");

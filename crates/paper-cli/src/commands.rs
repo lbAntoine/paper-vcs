@@ -7,7 +7,8 @@ use std::path::{Path, PathBuf};
 use paper_core::config::Settings;
 use paper_core::profile::Profile;
 use paper_core::project::{
-    HistoryRequest, InitError, PathSelection, Project, SaveOutcome, SaveRequest, has_damaged_git,
+    HistoryRequest, InitError, LockOptions, PathSelection, Project, SaveOutcome, SaveRequest,
+    has_damaged_git,
 };
 use paper_core::{ErrorKind, PaperError, Suggestion};
 use paper_git::{GitRepo, Identity};
@@ -82,8 +83,13 @@ fn init(cli: &Cli, path: Option<&Path>, profile: Option<&str>) -> Output {
     let identity = identity(cli, &settings)?;
     // clap only lets the six built-in names through.
     let choice = profile.and_then(Profile::builtin);
-    let (_project, initialized) =
-        Project::init_with_profile(&target, identity, &settings.snapshot_options(), choice)?;
+    let (_project, initialized) = Project::init_with(
+        &target,
+        identity,
+        &settings.snapshot_options(),
+        choice,
+        &lock_options(),
+    )?;
     Ok(finish(
         cli,
         || human::init(&initialized),
@@ -263,6 +269,20 @@ fn identity(cli: &Cli, settings: &Settings) -> Result<Identity, PaperError> {
     Err(PaperError::no_identity())
 }
 
+/// The default 5 s wait; debug builds let `PAPER_DEBUG_LOCK_WAIT_MS` shorten it for tests.
+pub(crate) fn lock_options() -> LockOptions {
+    #[cfg(debug_assertions)]
+    if let Some(ms) = std::env::var("PAPER_DEBUG_LOCK_WAIT_MS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+    {
+        return LockOptions {
+            wait: std::time::Duration::from_millis(ms),
+        };
+    }
+    LockOptions::default()
+}
+
 /// Finds the project that contains the working folder (walking up) and opens it.
 pub(crate) fn open(cli: &Cli) -> Result<(Project, Paths), PaperError> {
     let start = start_dir(cli)?;
@@ -272,7 +292,8 @@ pub(crate) fn open(cli: &Cli) -> Result<(Project, Paths), PaperError> {
     let settings = settings::resolve(Some(&workdir), &workdir)?;
     let identity = identity(cli, &settings)?;
     let paths = Paths::new(&start, &workdir);
-    let project = Project::open(&workdir, identity)?.with_options(settings.snapshot_options());
+    let project = Project::open_with(&workdir, identity, &lock_options())?
+        .with_options(settings.snapshot_options());
     Ok((project, paths))
 }
 

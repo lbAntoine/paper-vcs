@@ -4,6 +4,7 @@ mod diff;
 mod history;
 mod init;
 mod init_profile;
+mod lock;
 mod resolve;
 mod restore;
 mod restore_plan;
@@ -25,6 +26,7 @@ use crate::view::{View, ViewError};
 pub use diff::{DiffError, DiffRequest, FileDiffEntry};
 pub use history::{HistoryEntry, HistoryError, HistoryRequest, ShowError, Shown};
 pub use init::{InitError, Initialized, ProfileSource, has_damaged_git};
+pub use lock::{DEFAULT_LOCK_WAIT, LockError, LockOptions, ProjectLock};
 pub use resolve::{Candidate, PointKind, ResolveError, Resolved};
 pub use restore::{RestoreError, RestoreRequest, RestoreSkip, Restored, SkippedPath};
 pub use save::{DraftState, PathSelection, SaveError, SaveOutcome, SaveRequest, Saved};
@@ -44,6 +46,8 @@ pub struct Project {
     view: View,
     identity: Identity,
     options: SnapshotOptions,
+    /// Held until the project is dropped (declared last, so it is released last).
+    _lock: ProjectLock,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -56,6 +60,11 @@ pub enum OpenError {
         "this project uses paper format '{found}', but this version of paper reads format {FORMAT_VERSION}"
     )]
     UnsupportedFormat { found: String },
+    #[error("another paper command is running in this project")]
+    Busy {
+        /// The holder's process id, when known.
+        holder: Option<u32>,
+    },
     #[error("paper's state in {path} is incomplete")]
     Incomplete { path: PathBuf },
     #[error(transparent)]
@@ -76,8 +85,37 @@ impl Project {
     /// [`OpenError::NotAPaperProject`] for a plain git repository, and the other
     /// [`OpenError`] variants if paper's state can't be read.
     pub fn open(path: &Path, identity: Identity) -> Result<Self, OpenError> {
+        Self::open_with(path, identity, &LockOptions::default())
+    }
+
+    /// Like [`Project::open`], waiting at most `lock.wait` for another paper command to finish.
+    /// The returned project holds the project lock until it is dropped.
+    ///
+    /// # Errors
+    ///
+    /// [`OpenError::Busy`] when another command still holds the project after the wait, and
+    /// everything [`Project::open`] reports.
+    ///
+    /// # Panics
+    ///
+    /// Never.
+    pub fn open_with(
+        path: &Path,
+        identity: Identity,
+        lock: &LockOptions,
+    ) -> Result<Self, OpenError> {
         let repo = GitRepo::open(path, &identity)?;
         let paper_dir = paper_dir(&repo);
+        if !paper_dir.is_dir() {
+            return Err(OpenError::NotAPaperProject {
+                path: path.to_owned(),
+            });
+        }
+        let project_lock =
+            ProjectLock::acquire(&paper_dir, lock.wait).map_err(|error| match error {
+                LockError::Busy { holder } => OpenError::Busy { holder },
+                LockError::Io { path, source } => OpenError::Io { path, source },
+            })?;
         let version_path = paper_dir.join(VERSION_FILE);
         let found = match fs::read_to_string(&version_path) {
             Ok(content) => content.trim().to_owned(),
@@ -105,6 +143,7 @@ impl Project {
             view,
             identity,
             options: SnapshotOptions::default(),
+            _lock: project_lock,
         })
     }
 

@@ -12,6 +12,7 @@ use super::{
     FORMAT_VERSION, Project, VERSION_FILE, draft_ref, line_ref, paper_dir, signature_now,
     write_draft,
 };
+use super::{LockError, LockOptions, ProjectLock};
 use crate::config::ConfigError;
 use crate::name::LineName;
 use crate::profile::{Profile, gitignore::GitignoreError};
@@ -57,6 +58,11 @@ pub struct Initialized {
 
 #[derive(Debug, thiserror::Error)]
 pub enum InitError {
+    #[error("another paper command is running in this project")]
+    Busy {
+        /// The holder's process id, when known.
+        holder: Option<u32>,
+    },
     #[error("{path} is already a paper project")]
     AlreadyInitialized { path: PathBuf },
     #[error("{path} is inside the git repository at {root}")]
@@ -133,6 +139,29 @@ impl Project {
         options: &SnapshotOptions,
         choice: Option<&Profile>,
     ) -> Result<(Self, Initialized), InitError> {
+        Self::init_with(path, identity, options, choice, &LockOptions::default())
+    }
+
+    /// Like [`Project::init_with_profile`], waiting at most `lock.wait` for another paper
+    /// command. The lock is taken once `.git/paper/` exists, before anything else is checked
+    /// (so a busy project reports `Busy` rather than `AlreadyInitialized`), and the returned
+    /// project holds it until dropped.
+    ///
+    /// # Errors
+    ///
+    /// [`InitError::Busy`] when another command holds the project after the wait, and
+    /// everything [`Project::init_with_profile`] reports.
+    ///
+    /// # Panics
+    ///
+    /// Never.
+    pub fn init_with(
+        path: &Path,
+        identity: Identity,
+        options: &SnapshotOptions,
+        choice: Option<&Profile>,
+        lock: &LockOptions,
+    ) -> Result<(Self, Initialized), InitError> {
         fs::create_dir_all(path).map_err(|source| io_error(path, source))?;
         if has_damaged_git(path) {
             return Err(InitError::DamagedGit {
@@ -143,10 +172,22 @@ impl Project {
             None => {
                 let plan = ProfilePlan::prepare(path, choice)?;
                 let repo = GitRepo::init(path, &identity)?;
+                let paper_dir = create_paper_dir(&repo)?;
+                let held = take_lock(&paper_dir, lock)?;
+                // Another init may have finished while this one waited for the lock.
+                refuse_if_initialized(&held, path)?;
                 let report = plan.write(path)?;
-                start_fresh(repo, identity, options, LineName::main(), false, report)
+                start_fresh(
+                    repo,
+                    identity,
+                    options,
+                    LineName::main(),
+                    false,
+                    report,
+                    held,
+                )
             }
-            Some(root) if same_dir(&root, path) => adopt(path, identity, options, choice),
+            Some(root) if same_dir(&root, path) => adopt(path, identity, options, choice, lock),
             Some(root) => Err(InitError::InsideAnotherRepository {
                 path: path.to_owned(),
                 root,
@@ -160,13 +201,20 @@ fn adopt(
     identity: Identity,
     options: &SnapshotOptions,
     choice: Option<&Profile>,
+    lock: &LockOptions,
 ) -> Result<(Project, Initialized), InitError> {
     let repo = GitRepo::open(path, &identity)?;
-    if paper_dir(&repo).join(VERSION_FILE).exists() {
-        return Err(InitError::AlreadyInitialized {
-            path: path.to_owned(),
-        });
-    }
+    let dir = paper_dir(&repo);
+    // An existing `.git/paper/` is locked first, so a busy project reports `Busy` rather than
+    // `AlreadyInitialized`. Otherwise every read-only check runs before the folder is created:
+    // a refused adoption leaves nothing behind, and the lock file is never deleted.
+    let early = if dir.is_dir() {
+        let held = take_lock(&dir, lock)?;
+        refuse_if_initialized(&held, path)?;
+        Some(held)
+    } else {
+        None
+    };
     let current = repo.head_branch()?.ok_or(InitError::DetachedHead)?;
     let current_line: LineName = current
         .parse()
@@ -181,15 +229,23 @@ fn adopt(
             name: current_line.to_string(),
         });
     }
+    let plan = ProfilePlan::prepare(path, choice)?;
+    let held = if let Some(held) = early {
+        held
+    } else {
+        let held = take_lock(&create_paper_dir(&repo)?, lock)?;
+        // Another init may have finished while this one was checking.
+        refuse_if_initialized(&held, path)?;
+        held
+    };
     // The block and `paper.toml` go to the working files before the snapshot, so they are part
     // of the draft; nothing is rewritten in history.
-    let report = ProfilePlan::prepare(path, choice)?.write(path)?;
+    let report = plan.write(path)?;
     if branches.is_empty() {
         // A repository without commits yet: start like a new project, on its current branch.
-        return start_fresh(repo, identity, options, current_line, true, report);
+        return start_fresh(repo, identity, options, current_line, true, report, held);
     }
 
-    let paper_dir = create_paper_dir(&repo)?;
     let signature = signature_now(&identity);
     let mut lines = Vec::new();
     let mut skipped_branches = Vec::new();
@@ -244,7 +300,7 @@ fn adopt(
         repo,
         identity,
         *options,
-        paper_dir,
+        held,
         view,
         &snap.cache,
         initialized,
@@ -260,8 +316,8 @@ fn start_fresh(
     line: LineName,
     adopted: bool,
     report: ProfileReport,
+    held: Held,
 ) -> Result<(Project, Initialized), InitError> {
-    let paper_dir = create_paper_dir(&repo)?;
     let empty = repo.empty_tree()?;
     let snap = snapshot(&repo, &empty, &StatCache::default(), options)?;
     let signature = signature_now(&identity);
@@ -290,7 +346,7 @@ fn start_fresh(
         repo,
         identity,
         *options,
-        paper_dir,
+        held,
         view,
         &snap.cache,
         initialized,
@@ -317,11 +373,12 @@ fn finish(
     repo: GitRepo,
     identity: Identity,
     options: SnapshotOptions,
-    paper_dir: PathBuf,
+    held: Held,
     view: View,
     cache: &StatCache,
     initialized: Initialized,
 ) -> Result<(Project, Initialized), InitError> {
+    let Held { paper_dir, lock } = held;
     view.save(&paper_dir)?;
     cache
         .save(&paper_dir)
@@ -335,8 +392,35 @@ fn finish(
         view,
         identity,
         options,
+        _lock: lock,
     };
     Ok((project, initialized))
+}
+
+/// `.git/paper/` together with the lock taken on it.
+struct Held {
+    paper_dir: PathBuf,
+    lock: ProjectLock,
+}
+
+fn refuse_if_initialized(held: &Held, path: &Path) -> Result<(), InitError> {
+    if held.paper_dir.join(VERSION_FILE).exists() {
+        return Err(InitError::AlreadyInitialized {
+            path: path.to_owned(),
+        });
+    }
+    Ok(())
+}
+
+fn take_lock(paper_dir: &Path, options: &LockOptions) -> Result<Held, InitError> {
+    let lock = ProjectLock::acquire(paper_dir, options.wait).map_err(|error| match error {
+        LockError::Busy { holder } => InitError::Busy { holder },
+        LockError::Io { path, source } => InitError::Io { path, source },
+    })?;
+    Ok(Held {
+        paper_dir: paper_dir.to_owned(),
+        lock,
+    })
 }
 
 fn create_paper_dir(repo: &GitRepo) -> Result<PathBuf, InitError> {
