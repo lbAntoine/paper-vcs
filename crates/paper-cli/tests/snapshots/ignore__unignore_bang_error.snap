@@ -1,0 +1,7 @@
+---
+source: crates/paper-cli/tests/ignore.rs
+expression: env.redact(&bang.stderr)
+---
+error: '!data/raw' starts with '!'
+  why:  `paper unignore` already takes a rule off the list, or adds the exception for you, so the name is written without the '!'. Nothing was changed.
+  next: paper unignore data/raw  # name the file or folder without the '!'

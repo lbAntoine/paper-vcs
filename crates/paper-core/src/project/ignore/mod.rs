@@ -5,6 +5,7 @@ mod args;
 mod layers;
 mod listing;
 mod plan;
+mod store;
 mod unignore;
 mod why;
 

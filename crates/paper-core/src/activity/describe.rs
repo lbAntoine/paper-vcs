@@ -38,6 +38,23 @@ pub fn ignored(rules: &[String]) -> String {
     format!("ignore {}", path_list(&named))
 }
 
+/// `unignore /data/raw/, *.aux`: the rules the command named, in the order given.
+#[must_use]
+pub fn unignored(rules: &[String]) -> String {
+    let named: Vec<&str> = rules.iter().map(String::as_str).collect();
+    format!("unignore {}", path_list(&named))
+}
+
+/// What an `ignore` or `unignore` description ends with when its rules live in
+/// `.git/info/exclude` (`--local`).
+pub const LOCAL_SUFFIX: &str = " (in .git/info/exclude)";
+
+/// `description`, marked as a `--local` entry.
+#[must_use]
+pub fn local(description: &str) -> String {
+    format!("{description}{LOCAL_SUFFIX}")
+}
+
 fn path_list(paths: &[&str]) -> String {
     let named = paths[..paths.len().min(NAMED_PATHS)].join(", ");
     match paths.len().checked_sub(NAMED_PATHS) {
@@ -52,6 +69,15 @@ mod tests {
 
     fn paths(names: &[&str]) -> Vec<String> {
         names.iter().map(|n| (*n).to_owned()).collect()
+    }
+
+    #[test]
+    fn unignored_names_the_rules_and_local_entries_say_where() {
+        assert_eq!(unignored(&paths(&["/b/", "*.aux"])), "unignore /b/, *.aux");
+        assert_eq!(
+            local(&ignored(&paths(&["/b/"]))),
+            "ignore /b/ (in .git/info/exclude)"
+        );
     }
 
     #[test]

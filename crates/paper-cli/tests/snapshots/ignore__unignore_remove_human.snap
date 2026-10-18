@@ -1,0 +1,12 @@
+---
+source: crates/paper-cli/tests/ignore.rs
+expression: env.redact(&removed.stdout)
+---
+No longer ignoring:
+  /data/raw/
+
+Now tracking 2 files:
+  data/raw/a.csv
+  data/raw/b.csv
+Your next save records them.
+`paper undo` takes this back.

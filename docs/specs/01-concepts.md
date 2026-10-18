@@ -48,14 +48,17 @@ These are the promises the implementation must keep. Tests assert them (see [03-
 4. **I4: everything is undoable.** Every command that changes state records at most two
    activity entries: an `edits` entry for working-file changes it found first (only if there
    were any), then one entry for the command itself. `undo` steps back one entry at a time and
-   restores the state before it, including the working files.
+   restores the state before it, including the working files. Rules written with `--local`
+   (`paper ignore --local`) live in `.git/info/exclude`, outside history, like git config: undo
+   changes what is tracked, not that file.
 5. **I5: only saves leave the machine.** Drafts, activity and `refs/paper/*` are never pushed.
 6. **I6: it is always git.** After any paper command, the repo is a valid git repo. `git log`
    shows the saves, `git status` shows the draft as unstaged changes, and the checked-out
    git branch is the current line.
 7. **I7: new files are tracked automatically** unless ignored. `paper ignore` adds the
    rule, and also stops tracking matching files that are already saved (earlier saves keep
-   them). There are three exceptions,
+   them); `paper unignore` takes the rule back (or adds an exception) and tracks the files
+   again, and `paper ignore --why <path>` says which rule keeps a path out. There are three exceptions,
    all reported in `status`:
    - oversized files are skipped (see [04-content](04-content.md#large-files));
    - `.theirs` copies made for a conflict are never tracked (see [04-content](04-content.md#merging));

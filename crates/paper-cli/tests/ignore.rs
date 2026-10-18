@@ -1316,3 +1316,144 @@ fn redo_after_undoing_an_ignore_leaves_the_files_on_disk() {
     assert_eq!(env.read("data/raw/b.csv"), "3,4\n");
     env.fsck();
 }
+
+// ---- PV-032 snapshots (read and accepted by hand) ----
+
+#[test]
+fn snapshot_unignore_remove_negate_and_refuse() {
+    let env = project();
+    env.paper(&["ignore", "data/raw"]).assert_code(0);
+    let removed = env.paper(&["unignore", "data/raw"]);
+    removed.assert_code(0);
+    let removed_env = project();
+    removed_env.paper(&["ignore", "data/raw"]).assert_code(0);
+    let removed_json = removed_env.paper(&["unignore", "data/raw", "--json"]);
+    removed_json.assert_code(0);
+
+    let negate_env = log_project();
+    let negated = negate_env.paper(&["unignore", "notes/keep.log"]);
+    negated.assert_code(0);
+
+    let refuse_env = project_with_gitignore("/archive/\n");
+    refuse_env.write("archive/old.txt", "old\n");
+    let refused = refuse_env.paper(&["unignore", "archive/old.txt"]);
+    refused.assert_three_part_error(1);
+
+    let nested_env = Env::new();
+    nested_env.write("main.tex", "m\n");
+    nested_env.write("docs/.gitignore", "*.tmp\n");
+    Project::init(&nested_env.work, identity(), &SnapshotOptions::default()).unwrap();
+    nested_env.write("docs/x.tmp", "x\n");
+    let nested = nested_env.paper(&["unignore", "docs/x.tmp"]);
+    nested.assert_three_part_error(1);
+
+    let nothing = env.paper(&["unignore", "data/keep.csv"]);
+    nothing.assert_code(0);
+
+    let bang = env.paper(&["unignore", "!data/raw"]);
+    bang.assert_three_part_error(1);
+
+    snapshot_settings().bind(|| {
+        insta::assert_snapshot!("unignore_remove_human", env.redact(&removed.stdout));
+        insta::assert_snapshot!(
+            "unignore_remove_json",
+            removed_env.redact_json(&removed_json.stdout)
+        );
+        insta::assert_snapshot!("unignore_negate_human", negate_env.redact(&negated.stdout));
+        insta::assert_snapshot!(
+            "unignore_refused_folder_error",
+            refuse_env.redact(&refused.stderr)
+        );
+        insta::assert_snapshot!(
+            "unignore_refused_nested_error",
+            nested_env.redact(&nested.stderr)
+        );
+        insta::assert_snapshot!("unignore_nothing_human", env.redact(&nothing.stdout));
+        insta::assert_snapshot!("unignore_bang_error", env.redact(&bang.stderr));
+    });
+}
+
+#[test]
+fn snapshot_local_rules() {
+    let env = project();
+    let ignored = env.paper(&["ignore", "--local", "data/raw"]);
+    ignored.assert_code(0);
+    let activity = env.paper(&["activity", "-n", "1"]);
+    activity.assert_code(0);
+    assert!(
+        activity
+            .stdout
+            .contains("ignore /data/raw/ (in .git/info/exclude)"),
+        "{activity:#?}"
+    );
+    let unignored = env.paper(&["unignore", "--local", "data/raw"]);
+    unignored.assert_code(0);
+    let json_env = project();
+    json_env
+        .paper(&["ignore", "--local", "data/raw"])
+        .assert_code(0);
+    let unignored_json = json_env.paper(&["unignore", "--local", "data/raw", "--json"]);
+    unignored_json.assert_code(0);
+    let shared = log_project();
+    let refused = shared.paper(&["unignore", "--local", "notes/keep.log"]);
+    refused.assert_three_part_error(1);
+
+    snapshot_settings().bind(|| {
+        insta::assert_snapshot!("ignore_local_human", env.redact(&ignored.stdout));
+        insta::assert_snapshot!("unignore_local_human", env.redact(&unignored.stdout));
+        insta::assert_snapshot!(
+            "unignore_local_json",
+            json_env.redact_json(&unignored_json.stdout)
+        );
+        insta::assert_snapshot!(
+            "unignore_local_refused_error",
+            shared.redact(&refused.stderr)
+        );
+    });
+}
+
+#[test]
+fn snapshot_why() {
+    let paper_env = project();
+    paper_env.paper(&["ignore", "data/raw"]).assert_code(0);
+    let ignored = paper_env.paper(&["ignore", "--why", "data/raw/a.csv"]);
+    let ignored_json = paper_env.paper(&["ignore", "--why", "data/raw/a.csv", "--json"]);
+    let free = paper_env.paper(&["ignore", "--why", "main.tex"]);
+    let free_json = paper_env.paper(&["ignore", "--why", "main.tex", "--json"]);
+    let env = log_project();
+    let ignored_by_yours = env.paper(&["ignore", "--why", "notes/keep.log"]);
+    env.paper(&["unignore", "notes/keep.log"]).assert_code(0);
+    let negated = env.paper(&["ignore", "--why", "notes/keep.log"]);
+    let negated_json = env.paper(&["ignore", "--why", "notes/keep.log", "--json"]);
+    let tracked_env = project();
+    let mut gitignore = tracked_env.read(".gitignore");
+    gitignore.push_str("*.csv\n");
+    tracked_env.write(".gitignore", &gitignore);
+    let tracked = tracked_env.paper(&["ignore", "--why", "data/keep.csv"]);
+    for run in [
+        &ignored,
+        &ignored_json,
+        &free,
+        &free_json,
+        &ignored_by_yours,
+        &negated,
+        &negated_json,
+        &tracked,
+    ] {
+        run.assert_code(0);
+    }
+
+    snapshot_settings().bind(|| {
+        insta::assert_snapshot!("why_ignored_human", paper_env.redact(&ignored.stdout));
+        insta::assert_snapshot!(
+            "why_ignored_json",
+            paper_env.redact_json(&ignored_json.stdout)
+        );
+        insta::assert_snapshot!("why_free_human", paper_env.redact(&free.stdout));
+        insta::assert_snapshot!("why_free_json", paper_env.redact_json(&free_json.stdout));
+        insta::assert_snapshot!("why_yours_human", env.redact(&ignored_by_yours.stdout));
+        insta::assert_snapshot!("why_negated_human", env.redact(&negated.stdout));
+        insta::assert_snapshot!("why_negated_json", env.redact_json(&negated_json.stdout));
+        insta::assert_snapshot!("why_tracked_human", tracked_env.redact(&tracked.stdout));
+    });
+}

@@ -1,0 +1,7 @@
+---
+source: crates/paper-cli/tests/ignore.rs
+expression: refuse_env.redact(&refused.stderr)
+---
+error: archive/old.txt would still be ignored
+  why:  `/archive/` (.gitignore line 1) keeps it ignored, and an exception written by paper can't override that. Nothing was changed.
+  next: paper unignore archive  # stop ignoring the folder archive first; its files can then be tracked

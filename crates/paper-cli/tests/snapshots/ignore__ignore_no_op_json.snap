@@ -8,6 +8,7 @@ expression: env.redact_json(&json.stdout)
     "/data/raw/"
   ],
   "entry": null,
+  "local": false,
   "schema": 1,
   "untracked": []
 }

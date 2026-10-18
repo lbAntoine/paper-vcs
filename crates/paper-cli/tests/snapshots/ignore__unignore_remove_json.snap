@@ -1,0 +1,23 @@
+---
+source: crates/paper-cli/tests/ignore.rs
+expression: removed_env.redact_json(&removed_json.stdout)
+---
+{
+  "entry": {
+    "description": "unignore /data/raw/",
+    "id": "[ID]",
+    "kind": "unignore",
+    "short_id": "[ID]",
+    "time": "[TIME]"
+  },
+  "local": false,
+  "negated": [],
+  "removed": [
+    "/data/raw/"
+  ],
+  "schema": 1,
+  "tracked": [
+    "data/raw/a.csv",
+    "data/raw/b.csv"
+  ]
+}

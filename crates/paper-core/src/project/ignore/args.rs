@@ -155,6 +155,25 @@ fn on_disk_spelling(workdir: &Path, parts: &[String]) -> Vec<String> {
     out
 }
 
+/// The path and kind (folder or not) a rule written by [`path_rule`] stands for, undoing its
+/// escapes. `None` for anything else: a pattern, or a bare name that matches at any depth.
+pub(super) fn rule_target(rule: &str) -> Option<(String, bool)> {
+    let body = rule.strip_prefix('/')?;
+    let (body, folder) = body.strip_suffix('/').map_or((body, false), |b| (b, true));
+    let mut out = String::with_capacity(body.len());
+    let mut chars = body.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            out.push(chars.next()?);
+        } else if matches!(c, '*' | '?' | '[') {
+            return None;
+        } else {
+            out.push(c);
+        }
+    }
+    (!out.is_empty()).then_some((out, folder))
+}
+
 /// `/a/b/` for a folder, `/a/b` for a file, with metacharacters escaped.
 fn path_rule(parts: &[String], folder: bool) -> String {
     let joined = parts
@@ -208,7 +227,7 @@ fn exists(
 }
 
 /// `arg` typed in `from`, as components relative to the project folder.
-fn resolve(arg: &str, from: &str, workdir: &Path) -> Result<Vec<String>, IgnoreError> {
+pub(super) fn resolve(arg: &str, from: &str, workdir: &Path) -> Result<Vec<String>, IgnoreError> {
     let outside = || IgnoreError::Outside {
         arg: arg.to_owned(),
     };
@@ -254,6 +273,20 @@ mod tests {
         assert_eq!(escape(r"back\slash"), r"back\\slash");
         assert_eq!(escape("plain.txt"), "plain.txt");
         assert_eq!(escape("end  "), r"end\ \ ");
+    }
+
+    #[test]
+    fn a_path_rule_gives_its_target_back() {
+        assert_eq!(rule_target("/a/b/"), Some(("a/b".to_owned(), true)));
+        assert_eq!(rule_target("/a/b.txt"), Some(("a/b.txt".to_owned(), false)));
+        assert_eq!(
+            rule_target(r"/a\[1\].log"),
+            Some(("a[1].log".to_owned(), false))
+        );
+        assert_eq!(rule_target("*.aux"), None);
+        assert_eq!(rule_target("draft.tmp"), None);
+        assert_eq!(rule_target("/data/*.csv"), None);
+        assert_eq!(rule_target("/"), None);
     }
 
     #[test]

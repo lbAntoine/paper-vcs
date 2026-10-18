@@ -158,7 +158,7 @@ pub enum Command {
         #[arg(long)]
         local: bool,
         /// Show which rule, file and line ignore this path, and change nothing.
-        #[arg(long, value_name = "PATH")]
+        #[arg(long, value_name = "PATH", conflicts_with_all = ["paths", "yes", "local"])]
         why: Option<String>,
     },
     /// Track files or folders again: remove their ignore rule, or add an exception.

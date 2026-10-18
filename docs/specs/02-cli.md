@@ -317,11 +317,12 @@ inside a separate git repository, a file paper doesn't track in the way, …). I
 `non_utf8_path`, `blocked`, `case_alias` (plus `other`, the draft's spelling) and
 `kept_for_swap` (plus `target`, the path that couldn't be restored).
 
-### `paper ignore [<path|pattern>…] [--yes]` (since v0.2)
+### `paper ignore [<path|pattern>…] [--yes] [--local]`, `paper ignore --why <path>` and `paper unignore <path|pattern>… [--local]` (since v0.2)
 
 Stops tracking files and folders, including ones already saved, without learning gitignore
 syntax. Hand-editing `.gitignore` stays fully supported. With no arguments it lists the ignore
-rules instead (below). `unignore`, `--local` and `--why` are planned (v0.2, PV-032).
+rules instead (below). `paper unignore` takes a rule back, `--local` keeps rules private to your
+copy, and `--why` explains why a path is not tracked (all below).
 
 **Rules.** Paper keeps what it adds in its own block of the root `.gitignore`:
 
@@ -353,15 +354,17 @@ marker without its end, or two blocks) is a user error, and nothing is written.
 
 Refused with a user error, writing nothing (one refused argument stops the whole command): an
 empty argument; a leading `!` unless it names an existing file (taking a file back off the
-list is `paper unignore`, coming in
-v0.2; until then edit `.gitignore`); `.gitignore` and `paper.toml` themselves; anything under
+list is `paper unignore`); `.gitignore` and `paper.toml` themselves; anything under
 `.git`; the whole project folder; a path outside the project; a pattern that starts above the
 project (`../*.aux`) or inside `.git`, which could never match. A name is written with the
 spelling found on disk, so `DATA/raw` on a filesystem that ignores case gives `/data/raw/`. A
 bare name starting with `#` is written `\#name`, so it isn't a comment.
 
 A rule already in paper's block is not added again: it is reported as already ignored, and its
-matches are still untracked.
+matches are still untracked. If paper's block holds the negation of a rule being added
+(`!/notes/keep.log`, written by `paper unignore`), the negation is removed instead of both
+staying in the block; the rule itself is added only if removing the negation does not already
+make the path ignored again.
 
 **Untracking.** Every file in the draft (after the snapshot of invariant I1) that git would
 ignore *because of one of the rules this command names* stops being tracked. The deciding rule
@@ -385,7 +388,7 @@ paper's draft, never the line, so it works after plain git moved the line.
 
 **Activity and undo.** The entry is described `ignore /data/raw/, *.aux` (at most three rules,
 then `and N more`) and is undoable like any other: `undo` writes the old `.gitignore` back and
-tracks the files again.
+tracks the files again. Its activity kind is `ignore`; `paper unignore` records kind `unignore`.
 
 **Output.** `Now ignoring:` and `Already ignored:` list the rules (a pattern is marked `(a
 pattern: applies to the whole project)`); then `Stopped tracking N files; they are still on
@@ -394,9 +397,91 @@ removal while earlier saves keep their versions. When no rule is added and nothi
 untracked, the output is `Nothing to do: already ignored.`, no entry is recorded, and the exit
 code is 0.
 
-`--json`: `{"schema":1,"added","already","untracked","entry"}`, every key always present.
-`entry` is an activity entry (`{"id","short_id","time","kind","description"}`) or `null` for the
-no-op.
+`--json`: `{"schema":1,"added","already","untracked","entry","local"}`, every key always
+present. `entry` is an activity entry (`{"id","short_id","time","kind","description"}`) or `null`
+for the no-op; `local` is `true` with `--local`.
+
+#### `paper unignore <path|pattern>… [--local]`
+
+Takes a rule back and tracks the files again. Arguments are classified like `ignore`'s, with the
+same refusals (an empty argument, `.git/...`, a path outside the project, `.gitignore`,
+`paper.toml`); a leading `!` is also refused, because `unignore !x` is meaningless (paper adds
+the exception itself).
+
+For each argument:
+
+1. If paper's block has that exact rule, the rule is removed.
+2. Otherwise, if the path or pattern is still ignored by another rule (the profile block, your
+   own lines, a nested `.gitignore`, `.git/info/exclude`, git's global excludes), paper adds a
+   negation to its block: `!/notes/keep.log`, or `!<pattern>` for a pattern. The negation goes
+   last in the block, so it wins over everything above it in the same file.
+3. Otherwise the argument is not ignored and is skipped.
+
+Then paper **simulates** the result over the whole rule set. If any named path would still be
+ignored, the command is a user error, nothing is written, and the error names the rule, its
+file and line (the `--why` answer) and what to do: unignore the folder that excludes the path
+(git can't re-include a file whose folder is excluded), or edit that file (a nested
+`.gitignore`, or a rule on a later line of your own). When nothing named is ignored, the output
+is `Nothing to do: not ignored.`, no entry is recorded, and the exit code is 0.
+
+A rule and its negation never both stay in paper's block. Unignoring a rule that paper's block
+holds removes it; `paper ignore` after `paper unignore` removes the negation (see above).
+
+**Order.** Arguments are checked; the snapshot records unsaved edits (I1); everything is decided
+and simulated; the rules file is written atomically; then a second snapshot picks up the files
+that are no longer ignored. The new `.gitignore` and those files are recorded together as
+**one** `unignore` entry, described `unignore /notes/keep.log` (the rules named, without the
+`!`). `undo` restores the old `.gitignore` and removes the files from the draft again; they
+stay on disk.
+
+**Output.** `No longer ignoring:` lists removed rules, `Exceptions added to the ignore rules:`
+lists negations, then `Now tracking N files:` lists the files (at most 20, then `and N more`)
+and says the next save records them. `--json`:
+`{"schema":1,"removed","negated","tracked","entry","local"}`, every key always present, with
+`entry` as above (`null` for the no-op).
+
+#### `--local` (for `ignore` and `unignore`)
+
+Rules go to a paper block in `.git/info/exclude`, with the same markers as paper's block in
+`.gitignore`, so they are not shared with co-authors. The file and the folder `.git/info` are
+created if missing, and lines you wrote there stay byte-identical. Untracking and tracking work
+exactly as without `--local`, and one entry is recorded.
+
+**Local rules are outside history**, like git config. Undo and redo of a `--local` entry take
+back or bring back the tracking change only; `.git/info/exclude` is left as it is. Such an
+entry's description ends with ` (in .git/info/exclude)`, for example
+`ignore /data/raw/ (in .git/info/exclude)`, which is how `paper activity` shows where the rule
+lives. `paper undo`, `redo` and `undo --to` tell the researcher so in one extra line: ``The rule
+in .git/info/exclude is unchanged; change it with `paper ignore --local` or `paper unignore
+--local`.`` (`paper-core` exposes this as `Undone::local_rules()`, true when the kind is
+`ignore` or `unignore` and the description ends with that suffix.)
+
+Git gives `.git/info/exclude` a lower precedence than `.gitignore` files, so an exception there
+can't override a `.gitignore` rule. `paper unignore --local` of a path that `.gitignore`
+ignores is refused by the simulation, with the hint to run it without `--local`.
+
+#### `paper ignore --why <path>`
+
+Read-only: it records nothing (not even unsaved edits) and exits 0 whether or not the path is
+ignored. It takes exactly one path and can't be combined with other arguments, `--yes` or
+`--local` (a usage error, `error:` and exit 1). The path is resolved like any other, with the
+same refusals as `ignore` for an empty path, `.git/...` and a path outside the project; a folder
+given as itself is judged as a folder. The rules are read from disk, as
+`git check-ignore -v` reads them, through the same layers as the snapshot walker (nested
+`.gitignore` files, the root one, `.git/info/exclude`, git's global excludes); the repo-local
+`core.excludesFile` gap is PV-034.
+
+- Ignored: ``data/raw/a.csv is ignored by `/data/raw/` (paper's block, .gitignore line 12).``
+  The place reads `paper's block, <file> line N`, `the profile block, <file> line N` or
+  `<file> line N`. If the draft holds the path anyway: `It is still tracked, because it was saved
+  before the rule; paper ignore <path> stops tracking it.`
+- Not ignored: `data/raw/a.csv is not ignored.` If a negation decides it: ``... is not ignored:
+  `!/notes/keep.log` (paper's block, .gitignore line 14) brings it back.``
+
+`--json`: `{"schema":1,"path","ignored","tracked","rule"}` with `rule` either `null` or
+`{"rule","source","file","line","negated"}` (`source` as in the listing below; `tracked` means
+the current draft holds the path). Every key is always present, and `path` is relative to the
+project folder with `/` separators.
 
 **Listing.** `paper ignore` with no arguments lists every ignore rule that applies, grouped by
 source, each with its file and line. It doesn't snapshot or record anything. Comments, blank

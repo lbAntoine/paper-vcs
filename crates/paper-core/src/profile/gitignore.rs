@@ -184,6 +184,68 @@ pub fn add_rules(
     Ok(Some(out))
 }
 
+/// Takes the rules in `remove` out of paper's own block (matching whole lines), then adds the
+/// rules in `add` at the end of the block, so a negation added here wins over every rule above
+/// it. Rules already in the block are not repeated. A block left without rules is removed
+/// together with the blank line paper put before it; an empty block is never written. Returns
+/// `Ok(None)` when the text would not change.
+///
+/// # Errors
+///
+/// [`GitignoreError::UnterminatedBlock`] or [`GitignoreError::DuplicateBlock`].
+///
+/// # Panics
+///
+/// Never.
+pub fn edit_rules(
+    existing: Option<&str>,
+    remove: &[String],
+    add: &[String],
+) -> Result<Option<String>, GitignoreError> {
+    let text = existing.unwrap_or_default();
+    let Some(span) = find_block(text, Kind::Paper)? else {
+        return add_rules(existing, add);
+    };
+    let eol = eol_of(text);
+    let block = &text[span.start..span.end];
+    let lines: Vec<&str> = block.split_inclusive('\n').collect();
+    let (start_line, rest) = lines.split_first().unwrap_or((&"", &[]));
+    let (end_line, inner) = rest.split_last().unwrap_or((&"", &[]));
+    let mut kept: Vec<String> = inner
+        .iter()
+        .filter(|line| {
+            let rule = line.trim_end_matches(['\r', '\n']);
+            !(is_rule(rule) && remove.iter().any(|gone| gone == rule))
+        })
+        .map(|line| (*line).to_owned())
+        .collect();
+    let mut present = rules_in(&format!("{start_line}{}{end_line}", kept.concat()));
+    for rule in add {
+        if !present.contains(rule) {
+            kept.push(format!("{rule}{eol}"));
+            present.push(rule.clone());
+        }
+    }
+    let result = if present.is_empty() {
+        let before = &text[..span.start];
+        let blank = format!("{eol}{eol}");
+        let before = if text[span.end..].is_empty() && before.ends_with(&blank) {
+            &before[..before.len() - eol.len()]
+        } else {
+            before
+        };
+        format!("{before}{}", &text[span.end..])
+    } else {
+        format!(
+            "{}{start_line}{}{end_line}{}",
+            &text[..span.start],
+            kept.concat(),
+            &text[span.end..]
+        )
+    };
+    Ok((result != text).then_some(result))
+}
+
 /// Which block a rule line sits in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BlockKind {
@@ -360,7 +422,20 @@ fn render_block(profile: &Profile, eol: &str, terminated: bool) -> String {
 ///
 /// Never.
 pub fn read(workdir: &Path) -> Result<Option<String>, GitignoreError> {
-    let path = workdir.join(".gitignore");
+    read_path(&workdir.join(".gitignore"))
+}
+
+/// [`read`] for any rules file, such as `.git/info/exclude`.
+///
+/// # Errors
+///
+/// [`GitignoreError::NotUtf8`] or [`GitignoreError::Read`].
+///
+/// # Panics
+///
+/// Never.
+pub fn read_path(path: &Path) -> Result<Option<String>, GitignoreError> {
+    let path = path.to_owned();
     match fs::read(&path) {
         Ok(bytes) => String::from_utf8(bytes)
             .map(Some)
