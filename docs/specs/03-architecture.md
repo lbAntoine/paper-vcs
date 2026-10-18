@@ -256,6 +256,19 @@ step 6 (keep-alive and op), naming `from` (the head op the command started at) a
 target draft tree); they then record, rewrite the files from the current draft to the target
 tree, refresh the stat cache, and delete the marker. `restore` does not write it.
 
+**Files the target's `.gitignore` ignores.** `undo`, `redo`, `undo --to` and the recovery of an
+interrupted checkout set the draft to the target state directly, so they plan with
+`plan_checkout_to_draft`: a file that the target draft doesn't track and that the target's
+ignore rules ignore is left on disk, neither deleted nor listed as skipped. This is what
+`paper ignore` leaves behind (saved files taken out of the draft, still on disk), and redoing
+the `ignore` entry must not delete them. The rules are the target tree's own `.gitignore`
+files (root and nested, read from the tree's blobs), plus `.git/info/exclude` and git's global
+excludes as they are on disk, the layers the snapshot walker uses. `restore` does not use this
+rule: it snapshots the disk against the current draft afterwards, so a file it keeps would
+stay tracked; it plans as before. In every checkout, a path that is not in the draft but whose
+bytes and executable bit on disk already equal the wanted file counts as matching: nothing is
+written and nothing is reported as in the way.
+
 Repair, in `Project::open_with` under the lock (`project/recover.rs`), if the marker exists, in
 this order: (1) head is `from`: the op never committed, so drop the marker; (2) otherwise, if
 head's parent is `from` and head's draft tree equals `tree`: finish the checkout, rewriting from

@@ -91,6 +91,7 @@ impl GitRepo {
             .map(PathBuf::from)
             .or_else(|| {
                 std::env::var_os("HOME")
+                    .or_else(|| std::env::var_os("USERPROFILE").filter(|_| cfg!(windows)))
                     .filter(|dir| !dir.is_empty())
                     .map(|home| PathBuf::from(home).join(".config"))
             })?;

@@ -212,7 +212,7 @@ impl Project {
             .as_deref()
             .or(existing.as_deref())
             .unwrap_or_default();
-        let layers = Layers::build(&self.repo, rules_text);
+        let layers = Layers::from_tree(&self.repo, &draft_files, Some(rules_text))?;
         let wanted: BTreeSet<&str> = named.iter().map(|(rule, _)| rule.as_str()).collect();
         let mut memo = HashMap::new();
         let untracked: Vec<String> = draft_files
@@ -313,11 +313,7 @@ impl Project {
         if gone.is_empty() {
             return Ok(BTreeSet::new());
         }
-        let text = match wanted.get(GITIGNORE) {
-            Some(file) => String::from_utf8_lossy(&self.repo.read_blob(&file.blob)?).into_owned(),
-            None => String::new(),
-        };
-        let layers = Layers::build(&self.repo, &text);
+        let layers = Layers::from_tree(&self.repo, wanted, None)?;
         let mut memo = HashMap::new();
         Ok(gone
             .into_iter()
@@ -472,15 +468,35 @@ impl Arg {
         if arg.is_empty() {
             return Err(IgnoreError::Empty);
         }
-        if arg.starts_with('!') {
+        let parts = resolve(arg, from, workdir);
+        // A leading '!' would unignore, unless it is just the first character of a file name.
+        if arg.starts_with('!')
+            && !parts.as_ref().is_ok_and(|parts| {
+                !parts.is_empty() && fs::symlink_metadata(workdir.join(parts.join("/"))).is_ok()
+            })
+        {
             return Err(IgnoreError::Unignore {
                 arg: arg.to_owned(),
             });
         }
-        let parts = resolve(arg, from, workdir);
         if arg.contains(GLOB_CHARS) {
+            // A pattern written as typed must not be dead on arrival: above the project, or
+            // inside .git (gitignore-style `/data/*.csv` is not a path, so it is left alone).
+            let parts = match parts {
+                Err(error) if !Path::new(arg).is_absolute() => return Err(error),
+                other => other.ok(),
+            };
+            if parts
+                .as_ref()
+                .and_then(|p| p.first())
+                .is_some_and(|first| first.eq_ignore_ascii_case(".git"))
+            {
+                return Err(IgnoreError::InsideGit {
+                    arg: arg.to_owned(),
+                });
+            }
             return Ok(Self::Maybe {
-                parts: parts.ok(),
+                parts,
                 typed: arg.to_owned(),
             });
         }
@@ -518,12 +534,18 @@ impl Arg {
             } => {
                 let mut bare = false;
                 let rule = match exists(workdir, parts, draft) {
-                    Some(is_dir) => path_rule(parts, is_dir),
+                    Some(is_dir) => path_rule(&on_disk_spelling(workdir, parts), is_dir),
                     // Not there yet: a bare name matches at any depth, as it does in
                     // .gitignore; with a slash in it, it is anchored.
                     None if parts.len() == 1 && !*typed_slash && !typed.contains('/') => {
                         bare = true;
-                        escape(&parts[0])
+                        // A leading '#' would start a comment.
+                        let name = escape(&parts[0]);
+                        if name.starts_with('#') {
+                            format!("\\{name}")
+                        } else {
+                            name
+                        }
                     }
                     None => path_rule(parts, *typed_slash),
                 };
@@ -533,12 +555,37 @@ impl Arg {
                 if let Some(parts) = parts.as_ref().filter(|p| !p.is_empty())
                     && let Some(is_dir) = exists(workdir, parts, draft)
                 {
-                    return (path_rule(parts, is_dir), false);
+                    return (path_rule(&on_disk_spelling(workdir, parts), is_dir), false);
                 }
                 (typed.clone(), true)
             }
         }
     }
+}
+
+/// `parts` spelled as the folders list them: on a filesystem that ignores case, `DATA/raw`
+/// finds `data/raw`, and the rule must use the real spelling to match anything. A part that is
+/// not found keeps the spelling typed.
+fn on_disk_spelling(workdir: &Path, parts: &[String]) -> Vec<String> {
+    let mut dir = workdir.to_owned();
+    let mut out = Vec::with_capacity(parts.len());
+    for part in parts {
+        let found = fs::read_dir(&dir).ok().and_then(|entries| {
+            let names: Vec<String> = entries
+                .flatten()
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .collect();
+            names.iter().find(|n| *n == part).cloned().or_else(|| {
+                names
+                    .into_iter()
+                    .find(|n| n.to_lowercase() == part.to_lowercase())
+            })
+        });
+        let name = found.unwrap_or_else(|| part.clone());
+        dir.push(&name);
+        out.push(name);
+    }
+    out
 }
 
 /// `/a/b/` for a folder, `/a/b` for a file, with metacharacters escaped.
@@ -670,40 +717,46 @@ struct Layers {
     nested: BTreeMap<String, Gitignore>,
     root: Gitignore,
     exclude: Gitignore,
-    global: Option<Gitignore>,
+    global: Gitignore,
 }
 
 impl Layers {
-    /// `root_text` is the root `.gitignore` as it will be after the command.
-    fn build(repo: &paper_git::GitRepo, root_text: &str) -> Self {
+    /// The matchers for the `.gitignore` files in `files` (a tree's files), with the root one
+    /// replaced by `root_text` when given, plus `.git/info/exclude` and git's global excludes
+    /// as they are on disk (the same layers the snapshot walker uses).
+    fn from_tree(
+        repo: &paper_git::GitRepo,
+        files: &BTreeMap<String, paper_git::TreeFile>,
+        root_text: Option<&str>,
+    ) -> Result<Self, GitError> {
         let workdir = repo.workdir().to_owned();
-        let mut root = GitignoreBuilder::new(&workdir);
-        for line in root_text.split('\n') {
-            // An unparsable line is skipped, as git skips it.
-            let _ = root.add_line(None, line.trim_end_matches('\r'));
-        }
-        let from_file = |base: &Path, file: &Path| {
+        let from_text = |base: &Path, text: &str| {
             let mut builder = GitignoreBuilder::new(base);
-            let _ = builder.add(file);
+            for line in text.split('\n') {
+                // An unparsable line is skipped, as git skips it.
+                let _ = builder.add_line(None, line.trim_end_matches('\r'));
+            }
             builder.build().unwrap_or_else(|_| Gitignore::empty())
         };
-        let nested = nested_gitignore_dirs(&workdir)
-            .into_iter()
-            .map(|dir| {
-                let base = workdir.join(&dir);
-                let matcher = from_file(&base, &base.join(GITIGNORE));
-                (dir, matcher)
-            })
-            .collect();
-        Self {
-            nested,
-            root: root.build().unwrap_or_else(|_| Gitignore::empty()),
-            exclude: from_file(&workdir, &repo.git_dir().join("info").join("exclude")),
-            global: repo
-                .global_excludes_file()
-                .map(|file| from_file(&workdir, &file)),
-            workdir,
+        let mut nested = BTreeMap::new();
+        let mut root_from_tree = String::new();
+        for (path, file) in files {
+            if path == GITIGNORE {
+                root_from_tree = String::from_utf8_lossy(&repo.read_blob(&file.blob)?).into_owned();
+            } else if let Some(dir) = path.strip_suffix("/.gitignore") {
+                let text = String::from_utf8_lossy(&repo.read_blob(&file.blob)?).into_owned();
+                nested.insert(dir.to_owned(), from_text(&workdir.join(dir), &text));
+            }
         }
+        let mut exclude = GitignoreBuilder::new(&workdir);
+        let _ = exclude.add(repo.git_dir().join("info").join("exclude"));
+        Ok(Self {
+            nested,
+            root: from_text(&workdir, root_text.unwrap_or(&root_from_tree)),
+            exclude: exclude.build().unwrap_or_else(|_| Gitignore::empty()),
+            global: Gitignore::global().0,
+            workdir,
+        })
     }
 
     /// The text of the rule that makes `rel` ignored (itself, or a folder above it), or `None`.
@@ -743,16 +796,14 @@ impl Layers {
                 }
             }
         }
-        for matcher in [Some(&self.root), Some(&self.exclude), self.global.as_ref()]
-            .into_iter()
-            .flatten()
-        {
+        for matcher in [&self.root, &self.exclude] {
             let found = matcher.matched(&absolute, is_dir);
             if !found.is_none() {
                 return found;
             }
         }
-        Match::None
+        // The global matcher is rooted at "": it takes the path relative to the project.
+        self.global.matched(rel, is_dir)
     }
 }
 

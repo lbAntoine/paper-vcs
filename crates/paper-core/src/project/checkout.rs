@@ -112,12 +112,39 @@ impl Project {
         current: &BTreeMap<String, TreeFile>,
         snapshot_skipped: &[Skipped],
     ) -> Result<CheckoutPlan, GitError> {
+        self.plan(targets, wanted, current, snapshot_skipped, false)
+    }
+
+    /// [`Project::plan_checkout`] for the commands that set the draft to `wanted` directly
+    /// (undo, redo, `undo --to`, and finishing an interrupted checkout). A file that `wanted`
+    /// doesn't track and whose `.gitignore` files ignore is left on disk, not deleted: that
+    /// is what `paper ignore` leaves behind. It isn't listed as skipped either.
+    pub(super) fn plan_checkout_to_draft(
+        &self,
+        targets: BTreeSet<&String>,
+        wanted: &BTreeMap<String, TreeFile>,
+        current: &BTreeMap<String, TreeFile>,
+        snapshot_skipped: &[Skipped],
+    ) -> Result<CheckoutPlan, GitError> {
+        self.plan(targets, wanted, current, snapshot_skipped, true)
+    }
+
+    fn plan(
+        &self,
+        targets: BTreeSet<&String>,
+        wanted: &BTreeMap<String, TreeFile>,
+        current: &BTreeMap<String, TreeFile>,
+        snapshot_skipped: &[Skipped],
+        leave_ignored: bool,
+    ) -> Result<CheckoutPlan, GitError> {
         let mut skipped = Vec::new();
         let mut deletes: Vec<&String> = Vec::new();
         let mut candidates = Vec::new();
-        // Untracked in the wanted state because its .gitignore ignores them (`paper ignore`):
-        // such files stay on disk. They are not "skipped": they are correctly untracked there.
-        let ignored = self.ignored_in(current, wanted)?;
+        let ignored = if leave_ignored {
+            self.ignored_in(current, wanted)?
+        } else {
+            BTreeSet::new()
+        };
         for path in targets {
             if ignored.contains(path) {
                 continue;
@@ -134,7 +161,13 @@ impl Project {
             } else if want.is_none() {
                 deletes.push(path);
             } else if want != current.get(path) {
-                candidates.push(path);
+                // Not recorded in the draft, but already on disk exactly as wanted (an
+                // ignored file that becomes tracked again): nothing to write, nothing in the way.
+                let already_there = !current.contains_key(path)
+                    && want.is_some_and(|file| self.on_disk_equals(path, file));
+                if !already_there {
+                    candidates.push(path);
+                }
             }
         }
         let plan = self.settle(candidates, deletes, |p| current.contains_key(p));
@@ -208,6 +241,28 @@ impl Project {
     }
 
     /// Whether the path, or any directory above it, is a symlink on disk.
+    /// Whether the regular file at `path` has the bytes, and the executable bit, of `file`.
+    fn on_disk_equals(&self, path: &str, file: &TreeFile) -> bool {
+        let absolute = self.repo.workdir().join(path);
+        let Ok(meta) = fs::symlink_metadata(&absolute) else {
+            return false;
+        };
+        if !meta.is_file() || file.kind == FileKind::Symlink {
+            return false;
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if (meta.permissions().mode() & 0o111 != 0) != (file.kind == FileKind::Executable) {
+                return false;
+            }
+        }
+        match (fs::read(&absolute), self.repo.read_blob(&file.blob)) {
+            (Ok(on_disk), Ok(saved)) => on_disk == saved,
+            _ => false,
+        }
+    }
+
     fn on_disk_symlink(&self, path: &str) -> Option<RestoreSkip> {
         let root = self.repo.workdir();
         let mut prefix = String::new();

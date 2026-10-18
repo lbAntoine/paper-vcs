@@ -63,7 +63,7 @@ impl Project {
                 targets.insert(path);
             }
         }
-        let plan = self.plan_checkout(targets, &wanted, &current, &[])?;
+        let plan = self.plan_checkout_to_draft(targets, &wanted, &current, &[])?;
         self.apply_checkout(&plan, "write")
             .map_err(|f| OpenError::Io {
                 path: self.repo.workdir().join(f.path),

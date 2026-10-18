@@ -365,6 +365,11 @@ fn undo_restores_the_old_gitignore_and_tracks_the_files_again() {
     };
 
     assert_eq!(undone.entry.description, "ignore /data/raw/");
+    assert!(
+        undone.skipped.is_empty(),
+        "the files are identical, so none is in the way: {:?}",
+        undone.skipped
+    );
     assert_eq!(
         fs::read(dir.path().join(".gitignore")).unwrap(),
         gitignore_before
@@ -1074,4 +1079,127 @@ fn listing_changes_nothing() {
     let _ = project.ignore_rules();
 
     assert_eq!(stored(dir.path()), before);
+}
+
+// ---- review round 1 ----
+
+fn entry_with(project: &Project, description_start: &str) -> String {
+    project
+        .activity(100)
+        .unwrap()
+        .into_iter()
+        .find(|e| e.description.starts_with(description_start))
+        .unwrap_or_else(|| panic!("no entry starting {description_start:?}"))
+        .short_id
+}
+
+/// A project whose newest save dropped a hand-written `*.log` line and added `x.log`.
+fn project_that_stopped_ignoring_logs() -> (tempfile::TempDir, Project) {
+    let (dir, mut project) = project_with(&[("main.tex", "m\n")]);
+    append(dir.path(), ".gitignore", "*.log\n");
+    save_all(&mut project, "Ignore logs by hand");
+    let without = text(dir.path(), ".gitignore").replace("*.log\n", "");
+    write(dir.path(), ".gitignore", &without);
+    write(dir.path(), "x.log", "log\n");
+    save_all(&mut project, "Track logs");
+    (dir, project)
+}
+
+#[test]
+fn restore_of_a_file_the_older_save_did_not_have_still_removes_it_even_if_ignored_there() {
+    for paths in [vec!["x.log"], vec![""]] {
+        let (dir, mut project) = project_that_stopped_ignoring_logs();
+        assert!(draft_files(dir.path()).contains(&"x.log".to_owned()));
+
+        let restored = project
+            .restore(&RestoreRequest {
+                paths: paths.iter().map(|p| (*p).to_owned()).collect(),
+                from: Some("last~1".parse().unwrap()),
+            })
+            .unwrap();
+
+        assert!(
+            restored.changes.iter().any(|c| c.path == "x.log"),
+            "{paths:?}: {restored:?}"
+        );
+        assert!(!dir.path().join("x.log").exists(), "{paths:?}");
+        assert!(
+            !draft_files(dir.path()).contains(&"x.log".to_owned()),
+            "{paths:?}"
+        );
+        git(dir.path(), &["fsck", "--strict", "--no-progress"]);
+    }
+}
+
+#[test]
+fn undo_to_a_state_whose_nested_gitignore_ignores_a_file_keeps_it_on_disk() {
+    let (dir, mut project) = project_with(&[("main.tex", "m\n")]);
+    write(dir.path(), "docs/.gitignore", "*.pdf\n");
+    write(dir.path(), "docs/a.pdf", "pdf\n");
+    save_all(&mut project, "Nested ignore");
+    write(dir.path(), "docs/.gitignore", "\n");
+    save_all(&mut project, "Track the pdf");
+    assert!(draft_files(dir.path()).contains(&"docs/a.pdf".to_owned()));
+    let target = entry_with(&project, "save \"Nested ignore\"");
+
+    project.undo_to(&target).unwrap();
+
+    assert_eq!(text(dir.path(), "docs/a.pdf"), "pdf\n");
+    assert!(!draft_files(dir.path()).contains(&"docs/a.pdf".to_owned()));
+    assert_eq!(text(dir.path(), "docs/.gitignore"), "*.pdf\n");
+    git(dir.path(), &["fsck", "--strict", "--no-progress"]);
+}
+
+#[test]
+fn a_bare_name_starting_with_hash_is_escaped_so_it_is_not_a_comment() {
+    let (dir, mut project) = project_with(&[("main.tex", "m\n")]);
+
+    let outcome = ignore(&mut project, &["#later"]);
+
+    assert_eq!(outcome.added, [r"\#later"]);
+    assert_eq!(outcome.patterns, [r"\#later"]);
+    assert!(check_ignore(dir.path(), "#later").is_some());
+    assert!(check_ignore(dir.path(), "sub/#later").is_some());
+}
+
+#[test]
+fn patterns_that_could_never_match_are_refused() {
+    let (dir, mut project) = raw_data_project();
+    let before = stored(dir.path());
+
+    for (from, arg) in [
+        ("", "../*.aux"),
+        ("data", "../../*.aux"),
+        ("", ".git/*.lock"),
+        ("", "./.git/h[o]oks"),
+    ] {
+        let error = project.ignore(&request(from, &[arg], false)).unwrap_err();
+        assert_three_part(error);
+        assert_eq!(stored(dir.path()), before, "after refusing {arg:?}");
+    }
+}
+
+#[test]
+fn an_existing_file_starting_with_a_bang_is_ignored_not_refused() {
+    let (dir, mut project) = project_with(&[("!bang", "b\n"), ("bang", "c\n")]);
+
+    let outcome = ignore(&mut project, &["!bang"]);
+
+    assert_eq!(outcome.untracked, ["!bang"]);
+    assert!(check_ignore(dir.path(), "!bang").is_some());
+    assert!(check_ignore(dir.path(), "bang").is_none());
+}
+
+#[test]
+fn a_folder_typed_in_another_case_gets_the_spelling_on_disk() {
+    let (dir, mut project) = raw_data_project();
+    // Only a filesystem that ignores case (the default on macOS and Windows) finds it.
+    if !dir.path().join("DATA/raw").exists() {
+        return;
+    }
+
+    let outcome = ignore(&mut project, &["DATA/RAW"]);
+
+    assert_eq!(outcome.added, ["/data/raw/"]);
+    assert_eq!(outcome.untracked, ["data/raw/a.csv", "data/raw/sub/b.csv"]);
 }

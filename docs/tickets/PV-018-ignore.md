@@ -321,3 +321,15 @@ In `project/ignore.rs`, inside `impl Project` (uses the private `Layers`):
 - Bare names that don't exist yet (typed without a slash) now count as patterns in `IgnoreOutcome::patterns`, so the output says the rule applies to the whole project.
 - 02-cli § `paper ignore` already says `.gitignore` files and `paper.toml` are never untracked.
 - fmt, clippy and the full `cargo test --workspace --all-targets --no-fail-fast` pass.
+
+### GREEN (review round 1) · rust-engineer · 2026-10-18
+
+1. **Restore unchanged.** `plan_checkout` is back to its old behaviour (restore.rs untouched); the new `plan_checkout_to_draft` adds the "leave ignored files" rule. One-call edits only: `undo.rs::go` and `recover.rs::finish_checkout` now call it. Regression test `restore_of_a_file_the_older_save_did_not_have_still_removes_it_even_if_ignored_there` (single path and `.`).
+2. **Nested `.gitignore`**: `Layers::from_tree` builds root and nested matchers from the wanted tree's blobs; `.git/info/exclude` and the global excludes stay on disk. `plan_ignore` uses it too (draft tree, root replaced by the new text). Test `undo_to_a_state_whose_nested_gitignore_ignores_a_file_keeps_it_on_disk`.
+3. **Specs**: 03-architecture (§ Checkout, new paragraph), 02-cli § `paper undo` (bullet) and § `paper ignore` (refusals, spelling, `#`). Restore section untouched.
+4. **Already-matching targets**: in the planner, a target not in `current` whose on-disk bytes and exec bit equal the wanted blob is neither written nor skipped (every caller). `undo_restores_the_old_gitignore...` now asserts `undone.skipped.is_empty()` (an assertion added, none changed). All existing undo/restore/recover/crash suites pass unchanged.
+5. A bare name starting with `#` is written `\#name` (test added).
+6. Patterns starting above the project or inside `.git` are refused with three-part errors (test added). Gitignore-style absolute patterns (`/data/*.csv`) are left alone.
+7. Names use the spelling found on disk (`on_disk_spelling`); the test detects a case-insensitive filesystem at runtime and returns early otherwise.
+8. The decision layers now use the `ignore` crate's `Gitignore::global()`, as the walker does. `GitRepo::global_excludes_file` is kept for the listing only: the core listing test sets `core.excludesFile` in the repository's own config, which the crate's global lookup doesn't read. Added the `USERPROFILE` fallback (Windows only).
+9. An existing file named `!bang` is ignored, not refused (test added); 02-cli refusal wording updated.

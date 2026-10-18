@@ -352,9 +352,13 @@ marker without its end, or two blocks) is a user error, and nothing is written.
    `.gitignore`.
 
 Refused with a user error, writing nothing (one refused argument stops the whole command): an
-empty argument; a leading `!` (taking a file back off the list is `paper unignore`, coming in
+empty argument; a leading `!` unless it names an existing file (taking a file back off the
+list is `paper unignore`, coming in
 v0.2; until then edit `.gitignore`); `.gitignore` and `paper.toml` themselves; anything under
-`.git`; the whole project folder; a path outside the project.
+`.git`; the whole project folder; a path outside the project; a pattern that starts above the
+project (`../*.aux`) or inside `.git`, which could never match. A name is written with the
+spelling found on disk, so `DATA/raw` on a filesystem that ignores case gives `/data/raw/`. A
+bare name starting with `#` is written `\#name`, so it isn't a comment.
 
 A rule already in paper's block is not added again: it is reported as already ignored, and its
 matches are still untracked.
@@ -441,6 +445,11 @@ unreadable source has no place in this fixed shape, so only the human output nam
   as an edits entry, and a leftover or any other file edited again is a real edit. When
   there is nothing to take back or bring back, the output is `Nothing to undo.` or `Nothing to
   redo.` and the exit code is 0.
+- Files that the state `undo`, `redo` or `undo --to` goes to doesn't track, and whose
+  `.gitignore` rules ignore them (what `paper ignore` leaves behind), stay on disk: they are
+  not deleted and not listed as skipped. A file that is not in the draft but already holds
+  exactly the wanted bytes (and executable bit) is not "in the way" either: nothing is written
+  and nothing is listed. `restore` is unchanged.
 - After a plain `git commit` or `git switch`, `undo`, `redo` and `undo --to` refuse with the
   errors of `save` and change nothing.
 - `--json`: `{"schema":1,"outcome","entry","changed","skipped","files_match"}`, every key
