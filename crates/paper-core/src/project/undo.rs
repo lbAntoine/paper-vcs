@@ -171,6 +171,11 @@ impl Project {
             path: log.root().join("head"),
         })?;
         let head = log.read(&head_id)?;
+        if let Resolved::To(target) = &resolved
+            && head.position == target.id
+        {
+            return Ok(UndoOutcome::AlreadyThere);
+        }
         let step = match resolved {
             Resolved::Undo => step_undo(&log, &head)?,
             Resolved::Redo => step_redo(&log, &head)?,

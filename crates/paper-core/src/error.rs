@@ -564,6 +564,62 @@ impl From<OpenError> for PaperError {
     }
 }
 
+/// The `OutOfSyncWithGit` refusal; `consequence` is the sentence that differs per command.
+fn out_of_sync(line: &crate::name::LineName, consequence: &str) -> PaperError {
+    PaperError::user(
+        format!("The line '{line}' was changed outside paper"),
+        format!(
+            "Commits were added to it, or it was moved, with plain git since paper last saw \
+             it. {consequence} Paper will be able to bring in changes made with plain git in \
+             v0.4; until then, keep working with plain git on this line, or move it back to \
+             paper's last save."
+        ),
+        vec![
+            Suggestion::new(format!("git log {line}"), "see what changed"),
+            Suggestion::new(
+                format!("git reflog {line}"),
+                "find paper's last save, then move the line back to it with `git branch -f`; \
+                 your git commits stay reachable in the reflog",
+            ),
+        ],
+    )
+}
+
+/// The `HeadOnAnotherBranch` refusal; `why` and `then` differ per command.
+fn other_branch(
+    line: &crate::name::LineName,
+    found: Option<String>,
+    why: &str,
+    then: &str,
+) -> PaperError {
+    let place = found.map_or("no branch (detached HEAD)".to_owned(), |branch| {
+        format!("the branch '{branch}'")
+    });
+    PaperError::user(
+        format!("Git is on {place}, not on the line '{line}'"),
+        why,
+        vec![Suggestion::new(format!("git switch {line}"), then)],
+    )
+}
+
+/// `undo`, `redo` and `undo --to` refuse like `save` does, in their own words.
+fn undo_save_refusal(error: SaveError) -> PaperError {
+    match error {
+        SaveError::OutOfSyncWithGit { line } => out_of_sync(
+            &line,
+            "Paper can't undo or redo across that yet, and nothing was undone or changed.",
+        ),
+        SaveError::HeadOnAnotherBranch { line, found } => other_branch(
+            &line,
+            found,
+            "Undo works on the line you are on, and paper's current line and git's branch \
+             have to agree. Nothing was undone.",
+            "go back to the line, then try again",
+        ),
+        other => other.into(),
+    }
+}
+
 impl From<SaveError> for PaperError {
     fn from(error: SaveError) -> Self {
         match error {
@@ -587,29 +643,17 @@ impl From<SaveError> for PaperError {
                     "list the files with unsaved changes",
                 )],
             ),
-            SaveError::OutOfSyncWithGit { line } => Self::user(
-                format!("The line '{line}' was changed outside paper"),
-                "Commits were added to it, or it was moved, with plain git since paper last saw \
-                 it. Paper can't save on top of that yet, and nothing was saved or changed.",
-                vec![Suggestion::new(
-                    format!("git log {line}"),
-                    "see what changed",
-                )],
+            SaveError::OutOfSyncWithGit { line } => out_of_sync(
+                &line,
+                "Paper can't save on top of that yet, and nothing was saved or changed.",
             ),
-            SaveError::HeadOnAnotherBranch { line, found } => {
-                let place = found.map_or("no branch (detached HEAD)".to_owned(), |branch| {
-                    format!("the branch '{branch}'")
-                });
-                Self::user(
-                    format!("Git is on {place}, not on the line '{line}'"),
-                    "A save is added to the line you are on, and paper's current line and git's \
-                     branch have to agree. Nothing was saved.",
-                    vec![Suggestion::new(
-                        format!("git switch {line}"),
-                        "go back to the line, then save again",
-                    )],
-                )
-            }
+            SaveError::HeadOnAnotherBranch { line, found } => other_branch(
+                &line,
+                found,
+                "A save is added to the line you are on, and paper's current line and git's \
+                 branch have to agree. Nothing was saved.",
+                "go back to the line, then save again",
+            ),
             SaveError::Git(_)
             | SaveError::Snapshot(_)
             | SaveError::Activity(_)
@@ -734,7 +778,7 @@ impl From<StatusError> for PaperError {
 impl From<UndoError> for PaperError {
     fn from(error: UndoError) -> Self {
         match error {
-            UndoError::Save(inner) => inner.into(),
+            UndoError::Save(inner) => undo_save_refusal(inner),
             UndoError::EmptyEntry => Self::user(
                 "Say which entry to go back to",
                 "`--to` needs the start of an entry id (hexadecimal, as the first column of the \

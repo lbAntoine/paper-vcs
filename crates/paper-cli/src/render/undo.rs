@@ -3,7 +3,7 @@
 
 use std::fmt::Write as _;
 
-use paper_core::project::{UndoOutcome, Undone};
+use paper_core::project::{ActivityEntry, UndoOutcome, Undone};
 use serde::Serialize;
 
 use super::human::{change_lines, files};
@@ -25,7 +25,7 @@ pub fn human(verb: Verb, outcome: &UndoOutcome) -> String {
         UndoOutcome::NothingToUndo => "Nothing to undo.\n".to_owned(),
         UndoOutcome::NothingToRedo => "Nothing to redo.\n".to_owned(),
         UndoOutcome::Undone(undone) => undone_text(verb, undone),
-        UndoOutcome::AlreadyThere => todo!("PV-030: print `Already there.`"),
+        UndoOutcome::AlreadyThere => "Already there.\n".to_owned(),
     }
 }
 
@@ -102,11 +102,17 @@ struct UndoOut {
 }
 
 /// One line of JSON with every key present.
-pub fn json(verb: Verb, outcome: &UndoOutcome) -> String {
+///
+/// `target` is the entry an `AlreadyThere` answer names; it is `null` if it can't be listed.
+pub fn json(verb: Verb, outcome: &UndoOutcome, target: Option<&ActivityEntry>) -> String {
     let out = match outcome {
         UndoOutcome::NothingToUndo => nothing("nothing_to_undo"),
         UndoOutcome::NothingToRedo => nothing("nothing_to_redo"),
-        UndoOutcome::AlreadyThere => todo!("PV-030: JSON outcome `already_there`"),
+        UndoOutcome::AlreadyThere => UndoOut {
+            // Nothing happened, so there is no `files_match` to report.
+            entry: target.map(entry_info),
+            ..nothing("already_there")
+        },
         UndoOutcome::Undone(undone) => UndoOut {
             schema: SCHEMA,
             outcome: match verb {
@@ -114,19 +120,23 @@ pub fn json(verb: Verb, outcome: &UndoOutcome) -> String {
                 Verb::Redo => "redone",
                 Verb::GoBack => "went_back",
             },
-            entry: Some(EntryInfo {
-                id: undone.entry.id.to_string(),
-                short_id: undone.entry.short_id.clone(),
-                time: undone.entry.time.clone(),
-                kind: op_kind_name(undone.entry.kind),
-                description: undone.entry.description.clone(),
-            }),
+            entry: Some(entry_info(&undone.entry)),
             changed: changes(&undone.changed),
             skipped: restore_skipped(&undone.skipped),
             files_match: Some(undone.files_match),
         },
     };
     line(&out)
+}
+
+fn entry_info(entry: &ActivityEntry) -> EntryInfo {
+    EntryInfo {
+        id: entry.id.to_string(),
+        short_id: entry.short_id.clone(),
+        time: entry.time.clone(),
+        kind: op_kind_name(entry.kind),
+        description: entry.description.clone(),
+    }
 }
 
 fn nothing(outcome: &'static str) -> UndoOut {

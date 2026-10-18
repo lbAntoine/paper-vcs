@@ -501,6 +501,8 @@ impl Session {
             self.model_redo.clear();
         }
 
+        // `undo --to` the entry the project is at records nothing: position and redo stack stay.
+        let already_there = matches!(aim, Aim::To(id) if *id == self.model_pos);
         let expect_change = match aim {
             Aim::Undo => match self.prev[&self.model_pos].clone() {
                 None => false,
@@ -518,6 +520,7 @@ impl Session {
                     true
                 }
             }
+            Aim::To(_) if already_there => false,
             Aim::To(id) => {
                 self.model_pos.clone_from(id);
                 self.model_redo.clear();
@@ -526,11 +529,11 @@ impl Session {
         };
         let variant_ok = match &outcome {
             UndoOutcome::Undone(_) => expect_change,
-            UndoOutcome::NothingToUndo => !expect_change && !matches!(aim, Aim::Redo),
+            UndoOutcome::NothingToUndo => {
+                !expect_change && !already_there && !matches!(aim, Aim::Redo)
+            }
             UndoOutcome::NothingToRedo => !expect_change && matches!(aim, Aim::Redo),
-            // Not modelled yet: PV-030 GREEN decides how the model treats `undo --to` at the
-            // current position.
-            UndoOutcome::AlreadyThere => false,
+            UndoOutcome::AlreadyThere => already_there,
         };
         if !variant_ok {
             return Err(format!(

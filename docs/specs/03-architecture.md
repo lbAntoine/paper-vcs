@@ -126,8 +126,9 @@ line's tip and draft); `position` (the op whose state is current; the op itself 
 op); `redo` (the redo stack, a list of op ids, empty for a normal op); `description`. The
 project's view is the `view` of the op `activity/head` names. An op is appended by writing its
 file first and then moving `head`, so a crash leaves either the old head or a complete new op.
-Today every view change appends its own op (a `save` may write a `snapshot` op and then a `save`
-op); one op per command arrives with `paper activity`.
+A command appends at most two ops (invariant I4): the `snapshot` op for edits made since the
+last command, then the op for the command itself (a `save` may write both). `paper activity`
+lists them.
 
 **Crash leftovers.** A crash can leave a `.tmp*` file in `activity/` or `ops/`, or an op file
 that `head` never reached (an orphan). They are harmless: `paper activity` lists only `*.json`

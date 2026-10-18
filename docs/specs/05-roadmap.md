@@ -21,8 +21,8 @@ own. Since v0.1, users can already share work by running `git push`.
 
 `undo`, `redo`, `activity`, `undo --to`, `gc`.
 
-- [ ] Operation log, view model, head pointer with atomic rename
-- [ ] Keep-alive chain, crash recovery (steps 2 and 8 of the lifecycle), fault-injection tests
+- [x] Operation log, view model, head pointer with atomic rename
+- [x] Keep-alive chain, crash recovery (steps 2 and 8 of the lifecycle), fault-injection tests
 - [x] Proptest for I4: undo restores the exact view and the exact working files
 - **Accept:** a random 200-step session can be fully undone step by step, and redone.
 

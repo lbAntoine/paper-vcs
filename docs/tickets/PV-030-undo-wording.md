@@ -147,3 +147,18 @@ Existing tests `undo_after_a_plain_git_commit_exits_with_saves_error...` and the
 compare only the first stderr line and the exit code, which stay equal, so they still pass.
 
 Questions: none.
+
+### GREEN · rust-engineer · 2026-10-18
+
+Implemented:
+- `error.rs`: shared helpers `out_of_sync` and `other_branch`; `From<SaveError>` keeps save's wording and `UndoError::Save` goes through `undo_save_refusal` (both variants, undo wording from the Decisions; other variants fall through to save's mapping). Exit codes and `next` shape unchanged.
+- Way out: the `OutOfSyncWithGit` `why` ends with the exact v0.4 sentence. Suggestions are `git log <line>`, then **`git reflog <line>`** (find paper's last save, then `git branch -f`), because `SaveError` does not carry the last save id; no field added.
+- `undo.rs`: `go` returns `AlreadyThere` after the I1 snapshot when `head.position == target.id`. Nothing is recorded or checked out; with unsaved edits the position has moved, so the normal go-back happens.
+- CLI: `Already there.` (exit 0); JSON `outcome: "already_there"`, `entry` = the target (looked up via `activity()` in `commands.rs`, `null` if it can't be listed), `changed`/`skipped` `[]`, `files_match` `null`. `render::undo::json` gained a `target` argument.
+- `session_proptest.rs` (explicitly allowed): model treats `Aim::To(model_pos)` as `AlreadyThere` (position and redo stack unchanged); `variant_ok` updated. Passes with PROPTEST_CASES=5.
+
+Spec changes: 02-cli § save (refusal text and way out), § restore (the two stale v0.2 sentences), § undo (refusal wording, AlreadyThere, `already_there` in JSON); 03-architecture lines 129-130 (now I4's "at most two ops"). Beyond the listed ones: 05-roadmap v0.2 boxes for the op log and for keep-alive/crash recovery ticked (shipped). Searched for "until v0.2", "arrives in v0.2", "planned (v0.2", "later the undo and redo kinds" (already gone), and gc-as-planned: nothing else left outside PV-032's sections. Left alone: 02-cli "Escape hatches" still says save "names `git log <line>`" (true, not complete); status's refusal block (PV-029) unchanged.
+
+Bookkeeping: PV-035 sprint v0.3 plus maintainer note in tasks.json; PV-026 CI-time box ticked (Windows 47 s, PR #69).
+
+Checks: fmt, clippy -D warnings and `cargo test --workspace --all-targets --no-fail-fast` (PROPTEST_CASES=5) all pass; no snapshots changed.

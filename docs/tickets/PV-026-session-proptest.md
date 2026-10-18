@@ -100,7 +100,7 @@ every step exactly.
 - [x] A random 200-step session is fully undone step by step, with each state exact (view and
   working files), then fully redone back to the session's final state, for every generated case.
 - [x] `files_match` is true at every undo and redo. `git fsck --strict` is clean.
-- [ ] With the default case count the test finishes in under about 3 minutes on CI, and
+- [x] With the default case count the test finishes in under about 3 minutes on CI (Windows 47 s, PR #69), and
   `PROPTEST_CASES` raises the count.
 - [x] The oracle sanity tests pass, and a deliberately wrong expectation is detected.
 - [x] No files are written to the source tree by a failing run.
