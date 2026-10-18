@@ -165,6 +165,7 @@ fn request(from: &str, args: &[&str], yes: bool) -> IgnoreRequest {
         args: args.iter().map(|a| (*a).to_owned()).collect(),
         from: from.to_owned(),
         yes,
+        local: false,
     }
 }
 

@@ -19,6 +19,7 @@ mod restore_plan;
 mod save;
 mod status;
 mod undo;
+mod unignore_stub;
 
 use std::fs;
 use std::io;
@@ -48,6 +49,7 @@ pub use restore::{RestoreError, RestoreRequest, RestoreSkip, Restored, SkippedPa
 pub use save::{DraftState, PathSelection, SaveError, SaveOutcome, SaveRequest, Saved};
 pub use status::{ChangeStat, OutsidePaper, Status, StatusEntry, StatusError, StatusOptions};
 pub use undo::{UndoError, UndoOutcome, Undone};
+pub use unignore_stub::{IgnoreMatch, IgnoreWhy, UnignoreError, UnignoreOutcome, UnignoreRequest};
 
 /// Version of the on-disk format in `.git/paper/`. Migrations are keyed on it.
 pub const FORMAT_VERSION: u32 = 2;

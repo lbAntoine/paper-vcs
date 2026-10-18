@@ -33,6 +33,9 @@ pub struct IgnoreRequest {
     pub from: String,
     /// Go ahead when more than 20 saved files would stop being tracked.
     pub yes: bool,
+    /// Write the rules to paper's block in `.git/info/exclude` (not shared, outside history)
+    /// instead of the root `.gitignore`.
+    pub local: bool,
 }
 
 /// What `paper ignore <args>` did.
@@ -49,6 +52,8 @@ pub struct IgnoreOutcome {
     pub untracked: Vec<String>,
     /// The activity entry recorded; `None` when there was nothing to do.
     pub entry: Option<ActivityEntry>,
+    /// Whether the rules went to `.git/info/exclude` (`--local`).
+    pub local: bool,
 }
 
 /// Where an ignore rule comes from.
@@ -160,6 +165,9 @@ impl Project {
     ///
     /// Never.
     pub fn ignore(&mut self, request: &IgnoreRequest) -> Result<IgnoreOutcome, IgnoreError> {
+        if request.local {
+            todo!("PV-032: `--local` writes paper's block in .git/info/exclude");
+        }
         let workdir = self.repo.workdir().to_owned();
         let parsed = request
             .args
@@ -411,6 +419,7 @@ impl IgnorePlan {
             patterns: self.patterns.clone(),
             untracked: self.untracked.clone(),
             entry,
+            local: false,
         }
     }
 }

@@ -64,7 +64,13 @@ pub fn execute(cli: &Cli, style: Style) -> Output {
             dry_run,
         } => gc(cli, older_than, *dry_run),
         Command::Redo => undo_family(cli, Verb::Redo, Project::redo),
-        Command::Ignore { paths, yes } => ignore(cli, paths, *yes),
+        Command::Ignore {
+            paths,
+            yes,
+            local,
+            why,
+        } => ignore(cli, paths, *yes, *local, why.as_deref()),
+        Command::Unignore { paths, local } => unignore(cli, paths, *local),
         Command::Restore { paths, from } => inspect::restore(cli, paths, from.as_deref()),
     }
 }
@@ -85,7 +91,10 @@ pub(crate) fn finish(
 }
 
 /// `paper ignore [<path|pattern>...]`: add rules, or with no arguments list the rules.
-fn ignore(cli: &Cli, args: &[String], yes: bool) -> Output {
+fn ignore(cli: &Cli, args: &[String], yes: bool, local: bool, why: Option<&str>) -> Output {
+    if why.is_some() {
+        todo!("PV-032: paper ignore --why");
+    }
     let (mut project, locator) = open(cli)?;
     if args.is_empty() {
         let listing = project.ignore_listing();
@@ -100,12 +109,22 @@ fn ignore(cli: &Cli, args: &[String], yes: bool) -> Output {
         .iter()
         .map(|arg| from_here(&locator, &from, arg))
         .collect::<Result<Vec<_>, _>>()?;
-    let outcome = project.ignore(&IgnoreRequest { args, from, yes })?;
+    let outcome = project.ignore(&IgnoreRequest {
+        args,
+        from,
+        yes,
+        local,
+    })?;
     Ok(finish(
         cli,
         || ignore_render::human(&outcome),
         || ignore_render::json(&outcome),
     ))
+}
+
+/// `paper unignore <path|pattern>...`: stop ignoring, and track the files again.
+fn unignore(_cli: &Cli, _args: &[String], _local: bool) -> Output {
+    todo!("PV-032: paper unignore")
 }
 
 /// An absolute path as a path relative to `from` (where paper runs), which is what `paper-core`
