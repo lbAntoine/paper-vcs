@@ -48,6 +48,11 @@ pub(super) struct Exported {
 }
 
 impl Exported {
+    /// The line HEAD was attached to at the last export.
+    pub(super) fn head(&self) -> &str {
+        &self.head
+    }
+
     /// What paper last wrote for `ref_name`, if it wrote it.
     pub(super) fn ref_value(&self, ref_name: &str) -> Option<&str> {
         self.refs.get(ref_name).map(String::as_str)
@@ -188,12 +193,14 @@ pub(super) fn export(
     if index_due {
         repo.reset_index_to(&repo.read_commit(&view.current().tip)?.tree)?;
     }
+    crate::fault::crash_point("after-index");
     for (name_ref, tip) in &line_writes {
         repo.set_ref(name_ref, tip, "paper: export")?;
     }
     if head_to_set {
         repo.set_head_branch(current.as_str(), "paper: export")?;
     }
+    crate::fault::crash_point("after-refs");
 
     let record = Exported {
         schema: EXPORTED_SCHEMA,
@@ -203,7 +210,9 @@ pub(super) fn export(
     let mut json = serde_json::to_vec_pretty(&record).expect("exported.json always serialises");
     json.push(b'\n');
     let path = paper_dir.join(EXPORTED_FILE);
-    write_atomic(&path, &json).map_err(|source| ExportError::Io { path, source })
+    write_atomic(&path, &json).map_err(|source| ExportError::Io { path, source })?;
+    crate::fault::crash_point("after-export");
+    Ok(())
 }
 
 /// What paper last wrote for `ref_name`: `exported.json` if it has the ref, else `fallback`.
