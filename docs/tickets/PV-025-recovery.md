@@ -1,6 +1,6 @@
 # PV-025: crash recovery on open, and fault-injection tests
 
-- **Status:** In progress
+- **Status:** Done
 - **Issue:** #43
 - **Branch:** `feat/PV-025-recovery`
 - **Depends on:** PV-023/024 (merged). Runs in parallel with PV-027 (gc).
