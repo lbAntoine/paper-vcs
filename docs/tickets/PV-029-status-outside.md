@@ -1,6 +1,6 @@
 # PV-029: status says when the line moved outside paper
 
-- **Status:** In progress
+- **Status:** Done
 - **Issue:** #52
 - **Branch:** `feat/PV-029-status-outside`
 - **Depends on:** PV-022 (merged). Runs in parallel with PV-031 (undo leftovers).
