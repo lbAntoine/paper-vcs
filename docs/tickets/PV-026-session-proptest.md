@@ -1,6 +1,6 @@
 # PV-026: I4 acceptance, random 200-step sessions undo and redo exactly (proptest)
 
-- **Status:** In progress
+- **Status:** Done
 - **Issue:** #44
 - **Branch:** `feat/PV-026-session-proptest`
 - **Depends on:** PV-023/024/025/031 (merged). Runs in parallel with PV-018 (`paper ignore`).
