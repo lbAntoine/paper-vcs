@@ -3,6 +3,28 @@
 Dated process lessons and project decisions that aren't architecture (those are ADRs).
 Newest first.
 
+## 2026-10-18: sprint v0.2-a retrospective
+
+Sprint v0.2-a met its goal: every paper command can be undone and redone, working files
+included (PV-017, PV-019 to PV-024; PRs #47 to #56). A goal verification passed with a hand-run
+session: five undos back to the start and five redos forward, a v0.1.0 project upgraded, and
+`git gc` keeping everything undo needs.
+
+- **What slowed us down: RED expectations that couldn't be checked until code existed.** In three
+  of seven tickets GREEN stopped (BLOCKED, correctly) on a test bug rather than a product bug: a
+  hand-written snapshot with the wrong padding, an exit code that contradicted the rest of the CLI,
+  and a state-capturing helper that crashed on a detached HEAD and compared a ref that moves by
+  design. A test helper that redacted hex op ids in every snapshot would also have added random
+  failures across the suite. The RED check now forbids hand-written snapshots of output that
+  doesn't exist yet and requires a sanity test for every new shared helper.
+- **What worked: review that probes the real binary, plus agents that stop instead of guessing.**
+  Round 1 found a blocker or major in six of seven tickets, all real: a migration that would have
+  reset a v0.1 user's plain-git commit, a crash window that would silently reverse an undo, a
+  missing-head error that looped back to `paper init`, and power-cut gaps before `version`. Agents
+  reported BLOCKED instead of editing assertions every time a test was wrong.
+- **Open from verification:** undo can get stuck behind a file its checkout had to leave alone
+  (PV-031, #57); spec sentences that describe `paper gc` as existing (#55).
+
 ## 2026-10-17: v0.1 retrospective
 
 v0.1.0 shipped as a GitHub pre-release: 17 pull requests (#1–#18), 636 tests on three operating
