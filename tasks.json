@@ -35,11 +35,11 @@
       "id": "e1a0c029",
       "title": "PV-029: status says when the line moved outside paper",
       "description": "GitHub issue #52. Wave 2, parallel with PV-031. Size S.",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "medium",
       "sprint": "v0.2-b",
       "created_at": "2026-10-18T00:05:04Z",
-      "updated_at": "2026-10-18T09:25:14Z"
+      "updated_at": "2026-10-18T13:24:42Z"
     },
     {
       "id": "e1a0c026",
