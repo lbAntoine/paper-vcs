@@ -23,7 +23,7 @@ own. Since v0.1, users can already share work by running `git push`.
 
 - [ ] Operation log, view model, head pointer with atomic rename
 - [ ] Keep-alive chain, crash recovery (steps 2 and 8 of the lifecycle), fault-injection tests
-- [ ] Proptest for I4: undo restores the exact view and the exact working files
+- [x] Proptest for I4: undo restores the exact view and the exact working files
 - **Accept:** a random 200-step session can be fully undone step by step, and redone.
 
 ## v0.3: Reads like prose (**first public alpha**)

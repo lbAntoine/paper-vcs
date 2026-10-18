@@ -464,6 +464,8 @@ URL (in `command`, with the prose in `explanation`). The CLI's own failures use
 | CLI | `assert_cmd` + `insta` snapshots | Wording, exit codes, `--json` schema stability |
 | Cross-platform | GitHub Actions on macOS, Linux and Windows | Paths, line endings (no EOL conversion in v0.x, documented), file locking |
 
+The I4 session property (`crates/paper-core/tests/session_proptest.rs`) runs 1 case per CI job by default; `PROPTEST_CASES=200 cargo test -p paper-core --test session_proptest` runs a long session. Each case is 200 steps of edits and commands, undone step by step and redone exactly (view and working files), on repositories with no symlinks and no ignored files. A failure prints its seed (`PROPTEST_RNG_SEED`) and the shrunk session.
+
 Coverage target: **80%+ on `paper-core` and `paper-diff`**, measured with `cargo-llvm-cov`.
 
 ## Performance targets

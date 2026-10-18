@@ -23,6 +23,7 @@ jobs:
       - run: cargo clippy --workspace --all-targets
 
   test:
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
