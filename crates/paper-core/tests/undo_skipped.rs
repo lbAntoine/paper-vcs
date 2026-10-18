@@ -541,3 +541,37 @@ fn a_remembered_file_of_the_wrong_shape_changes_nothing_and_is_replaced() {
         fs::write(left_path(dir), serde_json::to_vec(&json).unwrap()).unwrap();
     });
 }
+
+// ---- review round 1 ----
+
+/// The reviewer's reproduction: a folder swapped for a file and back to a folder holding only
+/// an ignored file. Undo plans against the files on disk, not the stored draft, so a
+/// remembered path is never deleted or written as if it held the draft's content.
+fn swapped_scenario() -> (tempfile::TempDir, Project) {
+    let (dir, mut project) = project_with(&[
+        (".gitignore", "*.log\n"),
+        ("chap/x.tex", "x\n"),
+        ("keep.tex", "k\n"),
+    ]);
+    fs::remove_dir_all(dir.path().join("chap")).unwrap();
+    write(dir.path(), "chap", "f\n");
+    save_all(&mut project, "Y");
+    fs::remove_file(dir.path().join("chap")).unwrap();
+    write(dir.path(), "chap/cache.log", "log\n");
+    save_all(&mut project, "Z");
+    (dir, project)
+}
+
+#[test]
+fn four_undos_past_a_directory_swapped_for_a_file_never_plan_to_delete_a_remembered_path() {
+    let (dir, mut project) = swapped_scenario();
+
+    for round in 1..=4 {
+        let outcome = project.undo();
+        assert!(outcome.is_ok(), "undo {round}: {outcome:?}");
+        assert_git_consistent(dir.path());
+    }
+
+    assert_eq!(text(dir.path(), "chap/cache.log"), "log\n");
+    assert_eq!(text(dir.path(), "keep.tex"), "k\n");
+}

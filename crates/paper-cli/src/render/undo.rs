@@ -45,24 +45,53 @@ fn undone_text(verb: Verb, undone: &Undone) -> String {
     }
     if !undone.files_match {
         out.push('\n');
-        out.push_str(&warning(undone.skipped.len()));
+        out.push_str(&warning(undone));
         out.push('\n');
     }
     out
 }
 
-fn warning(skipped: usize) -> String {
-    let (left, records) = match skipped {
-        0 => (
-            "Some files were left as they are".to_owned(),
+fn warning(undone: &Undone) -> String {
+    let skipped = undone.skipped.len();
+    let left = &undone.left_over;
+    let (head, records) = if skipped > 0 {
+        let head = if skipped == 1 {
+            "1 file was left as it is (see above).".to_owned()
+        } else {
+            format!("{skipped} files were left as they are (see above).")
+        };
+        (
+            head,
+            if skipped == 1 {
+                "it as an edit"
+            } else {
+                "them as edits"
+            },
+        )
+    } else if let [only] = left.as_slice() {
+        (
+            format!("{only} is still as an earlier undo left it."),
+            "it as an edit",
+        )
+    } else if left.is_empty() {
+        (
+            "Some files were left as they are.".to_owned(),
             "them as edits",
-        ),
-        1 => ("1 file was left as it is".to_owned(), "it as an edit"),
-        n => (format!("{n} files were left as they are"), "them as edits"),
+        )
+    } else {
+        (
+            format!(
+                "{} files are still as an earlier undo left them: {}.",
+                left.len(),
+                left.join(", ")
+            ),
+            "them as edits",
+        )
     };
     format!(
-        "{left} (see above). paper undo and paper redo go on from here; any other paper \
-         command records {records}, which clears what you can redo."
+        "{head} `paper undo` and `paper redo` go on from here; any other paper command that \
+         looks at your files (`paper status`, `paper save`, ...) records {records}, which \
+         clears what you can redo."
     )
 }
 
@@ -121,5 +150,82 @@ fn nothing(outcome: &'static str) -> UndoOut {
         changed: Vec::new(),
         skipped: Vec::new(),
         files_match: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use paper_core::activity::OpKind;
+    use paper_core::project::ActivityEntry;
+
+    use super::*;
+
+    fn undone(skipped: usize, left_over: &[&str]) -> Undone {
+        Undone {
+            entry: ActivityEntry {
+                id: "0".repeat(32).parse().unwrap(),
+                short_id: "0000".to_owned(),
+                time: String::new(),
+                kind: OpKind::Save,
+                description: "save \"one\"".to_owned(),
+            },
+            changed: Vec::new(),
+            skipped: (0..skipped)
+                .map(|n| paper_core::project::SkippedPath {
+                    path: format!("s{n}"),
+                    reason: paper_core::project::RestoreSkip::Blocked,
+                })
+                .collect(),
+            files_match: false,
+            left_over: left_over.iter().map(|p| (*p).to_owned()).collect(),
+        }
+    }
+
+    const TAIL: &str = "`paper undo` and `paper redo` go on from here; any other paper \
+                        command that looks at your files (`paper status`, `paper save`, ...) \
+                        records";
+
+    #[test]
+    fn one_leftover_from_an_earlier_undo_is_named() {
+        let text = warning(&undone(0, &["chap/one.tex"]));
+        assert!(
+            text.starts_with("chap/one.tex is still as an earlier undo left it. "),
+            "{text}"
+        );
+        assert!(
+            text.contains(&format!(
+                "{TAIL} it as an edit, which clears what you can redo."
+            )),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn several_leftovers_from_an_earlier_undo_are_counted_and_named() {
+        let text = warning(&undone(0, &["a", "b"]));
+        assert!(
+            text.starts_with("2 files are still as an earlier undo left them: a, b. "),
+            "{text}"
+        );
+        assert!(
+            text.contains(&format!(
+                "{TAIL} them as edits, which clears what you can redo."
+            )),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn skipped_files_are_listed_above_so_the_warning_points_there() {
+        let text = warning(&undone(2, &["a"]));
+        assert!(
+            text.starts_with("2 files were left as they are (see above). "),
+            "{text}"
+        );
+        let text = warning(&undone(1, &[]));
+        assert!(
+            text.starts_with("1 file was left as it is (see above). "),
+            "{text}"
+        );
     }
 }

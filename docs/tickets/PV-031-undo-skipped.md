@@ -191,3 +191,30 @@ are ...") isn't specified by the ticket; the tests don't cover it.
 - Specs: 02-cli § `paper undo`, 03-architecture § On-disk layout and § Undo / redo algorithm.
 - No test assertions changed. Not covered: `gc` and the new file (gc.rs off limits; it
   ignores unknown files in `.git/paper/` as far as the tests show).
+
+### GREEN (review round 1) · rust-engineer · 2026-10-18
+
+- Finding 1: `go()` plans the checkout against the working files (`DraftState::working`, a
+  new `pub(super)` tree id of the I1 snapshot) instead of the stored draft. Skipped paths now
+  show again at each step where they are still in the way (the plan's own obstacle rules), so
+  the "(see above)" list is real. Core test `four_undos_past_a_directory_swapped_for_a_file_...`
+  and CLI twin carry the reviewer's sequence, but that exact sequence did NOT fail on the old
+  planning for me (macOS, in-process and with the binary: undo 4 skipped `chap` as blocked);
+  they pass and stay as regression tests. The PV-025 crash sequence
+  (`a_crash_after_the_checkout_of_a_blocked_undo_does_not_stop_the_undos_that_follow`) does
+  fail on the old planning and passes now.
+- Finding 2: `leftovers_to_remember` (pure, unit-tested in `undo.rs`): remembered only if the
+  path differs from the new draft and holds what the I1 snapshot saw. Since a real race
+  can't be timed with the binary, the rule is tested at that level; the consequence (a
+  changed remembered path is recorded by the next I1) is the existing
+  `editing_a_remembered_path_again_records_the_normal_edits_entry`.
+- Finding 3: `Undone::left_over`; the warning names them when `skipped` is empty. Caveat:
+  with decision 1 the plan reconsiders every differing path, so a leftover that is still in the
+  way is in `skipped` again; `left_over` is non-empty only in odd races, so the variant is
+  covered by render unit tests, not a CLI test. When both are empty the text is
+  "Some files were left as they are." (no "see above"). JSON follow-up for PV-030: expose
+  `left_over`.
+- Findings 4-7: warning and 02-cli reworded (backticks, "looks at your files"), `files_match`
+  doc updated, new snapshot `undo__undo_blocked_single_human.snap` (read), `undo_blocked_human`
+  re-accepted (only the last line changed). 03-architecture updated for the plan and the
+  remember rule. `checkout.rs` untouched.

@@ -332,8 +332,12 @@ Details:
   way) keep their on-disk content, so the working files may not equal the new draft
   (`Undone::files_match` is false). Undo does not record an entry for that. After the
   checkout and the stat-cache refresh, before the marker is cleared, the checkout writes
-  `checkout-left.json` (every path where the files differ from the new draft, with what a
-  snapshot sees there); when the files match it removes the file. The undo family's own
+  `checkout-left.json`: every path where the files differ from the new draft *and* still hold
+  what the I1 snapshot saw at the start of the command, with what a snapshot sees there (a
+  path edited during the command never entered history, so it is not remembered and the next
+  command records it as an edit); when nothing is left it removes the file. The checkout is
+  planned against the working files (the I1 snapshot's tree), not the stored draft, so a
+  remembered path is treated as what is really on disk. The undo family's own
   snapshot ignores those paths while they stay as remembered, so repeated `undo` keeps
   walking back and `redo` keeps working. Every other command's snapshot records the
   difference as an edits entry (which clears the redo stack); the next `undo` takes that

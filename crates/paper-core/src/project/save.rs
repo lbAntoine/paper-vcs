@@ -47,6 +47,8 @@ pub struct DraftState {
     pub skipped: Vec<Skipped>,
     /// Large tracked files, with their size.
     pub large: Vec<(String, u64)>,
+    /// The tree the working files made at this snapshot (what is really on disk).
+    pub(super) working: paper_git::TreeId,
 }
 
 /// A save that was written.
@@ -188,6 +190,7 @@ impl Project {
             changes: diff_trees(&self.repo, &tip_tree, &snap.tree)?,
             skipped: snap.skipped,
             large: snap.large,
+            working: snap.tree,
         })
     }
 

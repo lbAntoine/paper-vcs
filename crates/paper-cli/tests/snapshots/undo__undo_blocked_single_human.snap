@@ -1,0 +1,10 @@
+---
+source: crates/paper-cli/tests/undo.rs
+expression: env.redact(&run.stdout)
+---
+Undid: edited notes.tex
+
+Skipped (left as they are):
+  notes.tex  (a file paper doesn't track is in the way)
+
+1 file was left as it is (see above). `paper undo` and `paper redo` go on from here; any other paper command that looks at your files (`paper status`, `paper save`, ...) records it as an edit, which clears what you can redo.
