@@ -75,7 +75,7 @@
       "id": "e1a0c030",
       "title": "PV-030: undo wording polish (refusal text, repeated undo --to) and stale spec sentences",
       "description": "GitHub issue #55. Wave 4, parallel with PV-032. Size S.",
-      "status": "in_progress",
+      "status": "done",
       "priority": "low",
       "sprint": "v0.2-b",
       "created_at": "2026-10-18T00:05:04Z",

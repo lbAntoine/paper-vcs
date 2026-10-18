@@ -1,6 +1,6 @@
 # PV-030: undo wording polish and stale spec sentences
 
-- **Status:** In progress
+- **Status:** Done
 - **Issue:** #55
 - **Branch:** `feat/PV-030-undo-wording`
 - **Depends on:** PV-024 (merged). Runs in parallel with PV-032 (unignore).
