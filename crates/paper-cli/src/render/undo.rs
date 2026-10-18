@@ -25,7 +25,7 @@ pub fn human(verb: Verb, outcome: &UndoOutcome) -> String {
         UndoOutcome::NothingToUndo => "Nothing to undo.\n".to_owned(),
         UndoOutcome::NothingToRedo => "Nothing to redo.\n".to_owned(),
         UndoOutcome::Undone(undone) => undone_text(verb, undone),
-        UndoOutcome::AlreadyThere => "Already there.\n".to_owned(),
+        UndoOutcome::AlreadyThere(_) => "Already there.\n".to_owned(),
     }
 }
 
@@ -102,15 +102,13 @@ struct UndoOut {
 }
 
 /// One line of JSON with every key present.
-///
-/// `target` is the entry an `AlreadyThere` answer names; it is `null` if it can't be listed.
-pub fn json(verb: Verb, outcome: &UndoOutcome, target: Option<&ActivityEntry>) -> String {
+pub fn json(verb: Verb, outcome: &UndoOutcome) -> String {
     let out = match outcome {
         UndoOutcome::NothingToUndo => nothing("nothing_to_undo"),
         UndoOutcome::NothingToRedo => nothing("nothing_to_redo"),
-        UndoOutcome::AlreadyThere => UndoOut {
+        UndoOutcome::AlreadyThere(target) => UndoOut {
             // Nothing happened, so there is no `files_match` to report.
-            entry: target.map(entry_info),
+            entry: Some(entry_info(target)),
             ..nothing("already_there")
         },
         UndoOutcome::Undone(undone) => UndoOut {

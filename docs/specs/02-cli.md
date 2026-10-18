@@ -197,9 +197,10 @@ HEAD). Every other key is unchanged.
   branch creation, roadmap § v0.4: Safe experiments); every row of the interop table is
   covered by v0.8; co-authors' work arrives with `sync` in v0.6. The error names the line,
   says that paper will be able to bring in plain-git changes in v0.4 (until then: keep working
-  with plain git on this line, or move it back to paper's last save), and suggests `git log
-  <line>` to see what changed and `git reflog <line>` to find paper's last save; it never
-  suggests a command that could drop git commits. If git is on another branch (or detached), it refuses too and says to run
+  with plain git on this line, or run `git reset --soft <id>` to go back to paper's last save,
+  keeping the changes of your git commits as unsaved edits paper can save), and suggests
+  `git log <line>` to see what changed; it never suggests a command that could drop git
+  commits. If git is on another branch (or detached), it refuses too and says to run
   `git switch <line>`.
 - An empty draft means a no-op: `Nothing to save.` (exit 0).
 - It prints the short change ID and message, the files saved, and the files left in the draft.
@@ -457,12 +458,13 @@ unreadable source has no place in this fixed shape, so only the human output nam
 - After a plain `git commit` or `git switch`, `undo`, `redo` and `undo --to` refuse and change
   nothing, with `save`'s exit code and suggestions and their own wording. A moved line reads
   "The line 'main' was changed outside paper … Paper can't undo or redo across that yet, and
-  nothing was undone or changed", followed by the way out `save` gives (v0.4 import; keep
-  working with plain git, or move the line back to paper's last save). Another branch reads
+  nothing was undone or changed", followed by the same way out `save` gives (v0.4 import; keep
+  working with plain git, or `git reset --soft <id>`). Another branch reads
   "Git is on the branch 'other', not on the line 'main' … Nothing was undone", suggesting
   `git switch main`.
 - `undo --to` the entry the project is already at is harmless: it prints `Already there.`
-  (exit 0) and records and checks out nothing, apart from the entry for unsaved edits. After
+  (exit 0) and records and checks out nothing, apart from the entry for unsaved edits, and the redo stack
+  is kept. The same holds for the id of the head entry. After
   such edits the target is no longer current, so the normal go-back happens.
 - `--json`: `{"schema":1,"outcome","entry","changed","skipped","files_match"}`, every key
   always present. `outcome` is `undone`, `redone`, `went_back`, `nothing_to_undo`,
@@ -658,8 +660,9 @@ saved like any other. `ui.editor` is not a key yet.
   changes on its next run (see [03-architecture](03-architecture.md#git-interop)) starts in
   v0.4 with `git checkout` and branch creation (roadmap § v0.4: Safe experiments, Interop);
   bringing in co-authors' work arrives with `sync` in v0.6. *Today (v0.1 to v0.3):* paper
-  doesn't import them. After `git commit` or `git reset`, `save` refuses and names
-  `git log <line>`; if git is on another branch, it says to run `git switch <line>`.
+  doesn't import them. After `git commit` or `git reset`, `save`, `undo` and `redo` refuse, and
+  suggest `git log <line>` and a way back to paper's last save; if git is on another branch,
+  they say to run `git switch <line>`.
 - `git push` works today. `git pull` (or `git merge`) isn't supported yet: after a pull
   brings new commits, `status` shows their edits as your unsaved changes, `history` doesn't
   show their saves, and `paper save` refuses. Importing starts in v0.4 (see above);

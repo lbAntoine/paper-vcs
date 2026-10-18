@@ -485,7 +485,7 @@ impl Session {
             Aim::To(id) => self.project.undo_to(id),
         }
         .map_err(|e| format!("{aim:?} failed: {e}"))?;
-        let fresh = self.record(&before, Some(head_before));
+        let fresh = self.record(&before, Some(head_before.clone()));
 
         // I1 first: unsaved edits become one entry of their own, then the transition.
         let transitioned = matches!(outcome, UndoOutcome::Undone(_));
@@ -502,7 +502,10 @@ impl Session {
         }
 
         // `undo --to` the entry the project is at records nothing: position and redo stack stay.
-        let already_there = matches!(aim, Aim::To(id) if *id == self.model_pos);
+        // The head's view is its position's view, so naming the head is a no-op too (unless
+        // unsaved edits just became the head).
+        let already_there = matches!(aim, Aim::To(id)
+            if *id == self.model_pos || (!expected_edits && *id == head_before));
         let expect_change = match aim {
             Aim::Undo => match self.prev[&self.model_pos].clone() {
                 None => false,
@@ -533,7 +536,7 @@ impl Session {
                 !expect_change && !already_there && !matches!(aim, Aim::Redo)
             }
             UndoOutcome::NothingToRedo => !expect_change && matches!(aim, Aim::Redo),
-            UndoOutcome::AlreadyThere => already_there,
+            UndoOutcome::AlreadyThere(_) => already_there,
         };
         if !variant_ok {
             return Err(format!(
@@ -550,6 +553,9 @@ impl Session {
             if !undone.files_match {
                 return Err(format!("files_match is false after {:?}", undone.entry));
             }
+            self.check_position()?;
+        } else if already_there {
+            // Nothing was written: the files still are the position's state.
             self.check_position()?;
         }
         Ok(outcome)
@@ -713,7 +719,7 @@ impl Session {
                 UndoOutcome::NothingToUndo => break,
                 UndoOutcome::NothingToRedo => return Err("undo said NothingToRedo".to_owned()),
                 UndoOutcome::Undone(_) => back.push(self.position()),
-                UndoOutcome::AlreadyThere => return Err("undo said AlreadyThere".to_owned()),
+                UndoOutcome::AlreadyThere(_) => return Err("undo said AlreadyThere".to_owned()),
             }
             if back.len() > bound {
                 return Err(format!(
@@ -738,7 +744,7 @@ impl Session {
                 }
                 UndoOutcome::NothingToUndo => return Err("redo said NothingToUndo".to_owned()),
                 UndoOutcome::Undone(_) => forward.push(self.position()),
-                UndoOutcome::AlreadyThere => return Err("redo said AlreadyThere".to_owned()),
+                UndoOutcome::AlreadyThere(_) => return Err("redo said AlreadyThere".to_owned()),
             }
             if forward.len() > bound {
                 return Err(format!("redo did not stop in {bound} steps"));

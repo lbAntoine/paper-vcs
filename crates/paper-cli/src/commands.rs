@@ -63,7 +63,7 @@ pub fn execute(cli: &Cli, style: Style) -> Output {
             older_than,
             dry_run,
         } => gc(cli, older_than, *dry_run),
-        Command::Redo => undo_family(cli, Verb::Redo, None, Project::redo),
+        Command::Redo => undo_family(cli, Verb::Redo, Project::redo),
         Command::Ignore { paths, yes } => ignore(cli, paths, *yes),
         Command::Restore { paths, from } => inspect::restore(cli, paths, from.as_deref()),
     }
@@ -297,10 +297,8 @@ fn activity(cli: &Cli, limit: usize, style: Style) -> Output {
 /// `paper undo` and `paper undo --to <id>`.
 fn undo(cli: &Cli, to: Option<&str>) -> Output {
     match to {
-        Some(prefix) => undo_family(cli, Verb::GoBack, Some(prefix), |project| {
-            project.undo_to(prefix)
-        }),
-        None => undo_family(cli, Verb::Undo, None, Project::undo),
+        Some(prefix) => undo_family(cli, Verb::GoBack, |project| project.undo_to(prefix)),
+        None => undo_family(cli, Verb::Undo, Project::undo),
     }
 }
 
@@ -317,19 +315,10 @@ fn gc(cli: &Cli, older_than: &str, dry_run: bool) -> Output {
 fn undo_family(
     cli: &Cli,
     verb: Verb,
-    target: Option<&str>,
     run: impl FnOnce(&mut Project) -> Result<UndoOutcome, UndoError>,
 ) -> Output {
     let (mut project, _) = open(cli)?;
     let outcome = run(&mut project)?;
-    // `AlreadyThere` names the entry the user asked for; it is the position, so it is listed.
-    let target = match (&outcome, target) {
-        (UndoOutcome::AlreadyThere, Some(prefix)) => project
-            .activity(usize::MAX)?
-            .into_iter()
-            .find(|entry| entry.id.to_string().starts_with(prefix)),
-        _ => None,
-    };
     let trimmed = ActivityLog::open(project.paper_dir()).has_horizon();
     Ok(finish(
         cli,
@@ -341,7 +330,7 @@ fn undo_family(
             }
             text
         },
-        || undo::json(verb, &outcome, target.as_ref()),
+        || undo::json(verb, &outcome),
     ))
 }
 

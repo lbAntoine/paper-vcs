@@ -162,3 +162,13 @@ Spec changes: 02-cli § save (refusal text and way out), § restore (the two sta
 Bookkeeping: PV-035 sprint v0.3 plus maintainer note in tasks.json; PV-026 CI-time box ticked (Windows 47 s, PR #69).
 
 Checks: fmt, clippy -D warnings and `cargo test --workspace --all-targets --no-fail-fast` (PROPTEST_CASES=5) all pass; no snapshots changed.
+
+### GREEN (review round 1) · rust-engineer · 2026-10-18
+
+- 1: `SaveError::OutOfSyncWithGit` carries `last_save` (first 12 chars of `written`). The explanation now ends with the coordinator's `git reset --soft <id>` sentence; `next` is only `git log <line>`; the reflog suggestion is gone. New CLI test `the_way_out_after_a_plain_git_commit_works_with_git_reset_soft` follows the id from the error through `git reset --soft`, `status`, `save` and `fsck`. Existing tests changed only as the new text required: the RED `V04_WAY_OUT`/`assert_way_out` in core undo.rs now match the new sentence and a single suggestion, and `{ line }` patterns gained `..`.
+- 2, 7: 03-architecture transition-table row, "Already there" bullet, Refusals wording, git-interop paragraph; 02-cli Escape hatches and § save/§ undo updated.
+- 3: `undo_to` rustdoc fixed; spec says the redo stack is kept; core test undo-then-`undo --to` position-then-redo.
+- 4: `UndoOutcome::AlreadyThere(ActivityEntry)` built in core; CLI lookup, `target` parameters and the `Option` removed.
+- 5: `target.id == head.id` is also AlreadyThere; core test added; the proptest model treats `To(head)` the same (when no edits entry was just recorded).
+- 8: proptest runs `check_position` for `AlreadyThere`.
+- 6 NOT done: "Nothing was undone or redone." would break the RED assertions that the another-branch and detached-HEAD text contains "Nothing was undone." (and the mapping has no verb to branch on). Say if you want those assertions loosened.

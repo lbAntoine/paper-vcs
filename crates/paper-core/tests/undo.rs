@@ -729,7 +729,7 @@ fn undo_redo_and_undo_to_refuse_after_a_plain_git_commit() {
     assert_refused_untouched(
         dir.path(),
         &mut project,
-        |err| matches!(err, UndoError::Save(SaveError::OutOfSyncWithGit { line }) if line.as_str() == "main"),
+        |err| matches!(err, UndoError::Save(SaveError::OutOfSyncWithGit { line, .. }) if line.as_str() == "main"),
     );
     git(dir.path(), &["fsck", "--strict", "--no-progress"]);
 }
@@ -761,8 +761,8 @@ fn undo_refuses_when_git_detached_head() {
 
 // ---- undo-family wording after plain git ----
 
-const V04_WAY_OUT: &str = "Paper will be able to bring in changes made with plain git in v0.4; \
-     until then, keep working with plain git on this line, or move it back to paper's last save.";
+const V04_WAY_OUT: &str = "Paper will be able to bring in changes made with plain git in v0.4. \
+     Until then, keep working with plain git on this line, or run `git reset --soft ";
 
 /// The text of a `PaperError`, with runs of whitespace collapsed.
 fn words(error: &PaperError) -> String {
@@ -778,14 +778,16 @@ fn words(error: &PaperError) -> String {
 }
 
 fn assert_way_out(error: &PaperError) {
-    assert!(error.why.ends_with(V04_WAY_OUT), "{error:?}");
-    assert!(error.next.len() >= 2, "two suggestions: {error:?}");
-    assert_eq!(error.next[0].command, "git log main", "{error:?}");
-    let second = &error.next[1].command;
+    assert!(error.why.contains(V04_WAY_OUT), "{error:?}");
     assert!(
-        second.starts_with("git branch -f main") || second.starts_with("git reflog main"),
+        error.why.ends_with(
+            "` to go back to paper's last save: the changes of your git commits stay in your \
+             files, as unsaved edits paper can save."
+        ),
         "{error:?}"
     );
+    assert_eq!(error.next.len(), 1, "{error:?}");
+    assert_eq!(error.next[0].command, "git log main", "{error:?}");
 }
 
 #[test]
@@ -894,7 +896,10 @@ fn undo_to_the_entry_the_project_is_at_records_nothing() {
 
     let outcome = project.undo_to(&latest.short_id).unwrap();
 
-    assert_eq!(outcome, UndoOutcome::AlreadyThere);
+    assert!(
+        matches!(outcome, UndoOutcome::AlreadyThere(_)),
+        "{outcome:?}"
+    );
     assert_eq!(stored(dir.path()), before);
     assert_eq!(op_count(dir.path()), ops);
     assert_git_consistent(dir.path());
@@ -912,7 +917,7 @@ fn repeating_undo_to_records_one_go_back_entry_and_the_second_is_already_there()
 
     let second = project.undo_to(&target.short_id).unwrap();
 
-    assert_eq!(second, UndoOutcome::AlreadyThere);
+    assert!(matches!(second, UndoOutcome::AlreadyThere(_)), "{second:?}");
     assert_eq!(stored(dir.path()), before);
     assert_eq!(op_count(dir.path()), ops);
     assert_eq!(descriptions(&project), listed, "no second go-back entry");
@@ -935,6 +940,46 @@ fn undo_to_the_same_entry_with_unsaved_edits_in_between_goes_back_again() {
     // The edits were recorded first, so they stay reachable.
     entry(&project, "edited a.tex");
     assert_git_consistent(dir.path());
+}
+
+#[test]
+fn undo_to_the_position_after_an_undo_keeps_the_redo_stack() {
+    let (dir, mut project) = three_saves();
+    let two = entry(&project, "save \"two\"");
+    // The save of "three" and its edits are two entries; the position is then "two".
+    undo(&mut project);
+    undo(&mut project);
+    let before = stored(dir.path());
+
+    let outcome = project.undo_to(&two.short_id).unwrap();
+
+    match outcome {
+        UndoOutcome::AlreadyThere(target) => assert_eq!(target.short_id, two.short_id),
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(stored(dir.path()), before);
+    let redone = undone(project.redo().unwrap());
+    assert!(!redone.entry.description.is_empty());
+    assert_git_consistent(dir.path());
+}
+
+#[test]
+fn undo_to_the_head_when_it_is_an_undo_entry_records_nothing() {
+    let (dir, mut project) = three_saves();
+    project.undo().unwrap();
+    let head = project.activity(1).unwrap().remove(0);
+    assert!(head.description.starts_with("undo"), "{head:?}");
+    let before = stored(dir.path());
+    let ops = op_count(dir.path());
+
+    let outcome = project.undo_to(&head.short_id).unwrap();
+
+    assert!(
+        matches!(outcome, UndoOutcome::AlreadyThere(_)),
+        "{outcome:?}"
+    );
+    assert_eq!(stored(dir.path()), before);
+    assert_eq!(op_count(dir.path()), ops);
 }
 
 // ---- files paper does not record ----

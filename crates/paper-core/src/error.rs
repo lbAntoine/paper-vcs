@@ -565,23 +565,22 @@ impl From<OpenError> for PaperError {
 }
 
 /// The `OutOfSyncWithGit` refusal; `consequence` is the sentence that differs per command.
-fn out_of_sync(line: &crate::name::LineName, consequence: &str) -> PaperError {
+/// The way back is in the explanation, not in `next`: git refuses to force-move the branch
+/// that is checked out, and `git reset --soft` is the command that works there.
+fn out_of_sync(line: &crate::name::LineName, last_save: &str, consequence: &str) -> PaperError {
     PaperError::user(
         format!("The line '{line}' was changed outside paper"),
         format!(
             "Commits were added to it, or it was moved, with plain git since paper last saw \
              it. {consequence} Paper will be able to bring in changes made with plain git in \
-             v0.4; until then, keep working with plain git on this line, or move it back to \
-             paper's last save."
+             v0.4. Until then, keep working with plain git on this line, or run `git reset \
+             --soft {last_save}` to go back to paper's last save: the changes of your git \
+             commits stay in your files, as unsaved edits paper can save."
         ),
-        vec![
-            Suggestion::new(format!("git log {line}"), "see what changed"),
-            Suggestion::new(
-                format!("git reflog {line}"),
-                "find paper's last save, then move the line back to it with `git branch -f`; \
-                 your git commits stay reachable in the reflog",
-            ),
-        ],
+        vec![Suggestion::new(
+            format!("git log {line}"),
+            "see what changed",
+        )],
     )
 }
 
@@ -605,8 +604,9 @@ fn other_branch(
 /// `undo`, `redo` and `undo --to` refuse like `save` does, in their own words.
 fn undo_save_refusal(error: SaveError) -> PaperError {
     match error {
-        SaveError::OutOfSyncWithGit { line } => out_of_sync(
+        SaveError::OutOfSyncWithGit { line, last_save } => out_of_sync(
             &line,
+            &last_save,
             "Paper can't undo or redo across that yet, and nothing was undone or changed.",
         ),
         SaveError::HeadOnAnotherBranch { line, found } => other_branch(
@@ -643,8 +643,9 @@ impl From<SaveError> for PaperError {
                     "list the files with unsaved changes",
                 )],
             ),
-            SaveError::OutOfSyncWithGit { line } => out_of_sync(
+            SaveError::OutOfSyncWithGit { line, last_save } => out_of_sync(
                 &line,
+                &last_save,
                 "Paper can't save on top of that yet, and nothing was saved or changed.",
             ),
             SaveError::HeadOnAnotherBranch { line, found } => other_branch(
@@ -1124,7 +1125,10 @@ mod tests {
             SaveError::NoChangesAt {
                 paths: vec!["a.tex".to_owned(), "b.tex".to_owned()],
             },
-            SaveError::OutOfSyncWithGit { line: line("main") },
+            SaveError::OutOfSyncWithGit {
+                line: line("main"),
+                last_save: "abc123".to_owned(),
+            },
             SaveError::HeadOnAnotherBranch {
                 line: line("main"),
                 found: Some("other".to_owned()),
@@ -1174,7 +1178,10 @@ mod tests {
 
     #[test]
     fn an_out_of_sync_line_never_suggests_a_command_that_drops_commits() {
-        let error = PaperError::from(SaveError::OutOfSyncWithGit { line: line("main") });
+        let error = PaperError::from(SaveError::OutOfSyncWithGit {
+            line: line("main"),
+            last_save: "abc123".to_owned(),
+        });
         for suggestion in &error.next {
             assert!(!suggestion.command.contains("reset"), "{error:?}");
         }
@@ -1462,7 +1469,11 @@ mod tests {
                 paths: unknown_paths(),
             }
             .to_string(),
-            SaveError::OutOfSyncWithGit { line: line("main") }.to_string(),
+            SaveError::OutOfSyncWithGit {
+                line: line("main"),
+                last_save: "abc123".to_owned(),
+            }
+            .to_string(),
         ]
     }
 
