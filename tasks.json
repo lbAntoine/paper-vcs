@@ -120,6 +120,26 @@
       "sprint": "v0.3",
       "created_at": "2026-10-18T00:05:04Z",
       "updated_at": "2026-10-18T09:25:14Z"
+    },
+    {
+      "id": "e1a0c034",
+      "title": "PV-034: paper and git disagree on a repo-local core.excludesFile",
+      "description": "GitHub issue #66. Follow-up from PV-018.",
+      "status": "todo",
+      "priority": "low",
+      "sprint": "v0.3",
+      "created_at": "2026-10-18T19:30:00Z",
+      "updated_at": "2026-10-18T19:30:00Z"
+    },
+    {
+      "id": "e1a0c035",
+      "title": "PV-035: undo after a Unicode-normalisation-only rename deletes the file (macOS)",
+      "description": "GitHub issue #67. Follow-up from PV-018.",
+      "status": "todo",
+      "priority": "high",
+      "sprint": "v0.2-b",
+      "created_at": "2026-10-18T19:30:00Z",
+      "updated_at": "2026-10-18T19:30:00Z"
     }
   ]
 }

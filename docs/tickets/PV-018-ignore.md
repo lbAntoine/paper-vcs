@@ -174,28 +174,28 @@ command, and see every rule that applies, without learning gitignore syntax. Han
 
 ## Acceptance criteria
 
-- [ ] `paper ignore data/raw` with saved files under it writes `/data/raw/` in paper's block,
+- [x] `paper ignore data/raw` with saved files under it writes `/data/raw/` in paper's block,
   untracks them (gone from the draft, still on disk byte-identical), lists them, and records one
   `ignore …` activity entry. The next `paper save` records their removal, and `paper history`
   still shows them in earlier saves. Cross-check with `git ls-files` after the save and `git
   check-ignore -v`.
-- [ ] `paper undo` after it restores `.gitignore` and tracks the files again.
-- [ ] `paper ignore '*.aux'` is written as typed. An existing file with glob characters in its
+- [x] `paper undo` after it restores `.gitignore` and tracks the files again.
+- [x] `paper ignore '*.aux'` is written as typed. An existing file with glob characters in its
   name gets an escaped anchored rule, and `git check-ignore` agrees.
-- [ ] With a profile block present, paper's block goes after it. `paper config set
+- [x] With a profile block present, paper's block goes after it. `paper config set
   project.profile …` afterwards keeps paper's block. Hand-written lines are byte-identical.
   CRLF files stay CRLF.
-- [ ] A user negation after the rule keeps that file tracked.
-- [ ] More than 20 files to untrack without `--yes`: a three-part error, nothing written. With
+- [x] A user negation after the rule keeps that file tracked.
+- [x] More than 20 files to untrack without `--yes`: a three-part error, nothing written. With
   `--yes`: done.
-- [ ] Refusals (`!x`, `.gitignore`, `paper.toml`, `.git/...`, outside, empty): three-part errors,
+- [x] Refusals (`!x`, `.gitignore`, `paper.toml`, `.git/...`, outside, empty): three-part errors,
   nothing written.
-- [ ] Re-running finishes the job. A no-op says `Nothing to do: already ignored.` and records no
+- [x] Re-running finishes the job. A no-op says `Nothing to do: already ignored.` and records no
   entry.
-- [ ] `paper ignore` lists rules from all five sources with file and line, and the JSON key sets
+- [x] `paper ignore` lists rules from all five sources with file and line, and the JSON key sets
   are fixed. Snapshot-tested.
-- [ ] Specs updated (only the listed sections).
-- [ ] fmt, clippy (`-D warnings`) and the full suite pass (CI on Linux, macOS, Windows).
+- [x] Specs updated (only the listed sections).
+- [ ] fmt, clippy (`-D warnings`) and the full suite pass (CI on Linux, macOS, Windows). Local run passes; CI is left to the coordinator.
 
 ## Test plan
 
@@ -215,9 +215,18 @@ command, and see every rule that applies, without learning gitignore syntax. Han
 
 ## Summary
 
+`paper ignore` adds rules to a second marked block of the root `.gitignore` (after the profile
+block), takes the saved files they match out of the draft while leaving them on disk, records
+one undoable `ignore` entry, and with no arguments lists every rule that applies by source.
+`gitignore.rs` handles two block kinds; `project/ignore.rs` holds the command and the git-order
+matcher; the shared checkout planner (`plan_checkout_to_draft`) leaves ignored, untracked files
+alone on undo, redo and recovery, so redoing an `ignore` never deletes data. Restore is
+unchanged. Follow-ups: PV-034 (repo-local `core.excludesFile`, #66) and PV-035 (Unicode
+normalisation-only renames, #67).
+
 ## Known gaps
 
-- A repository-local `core.excludesFile` is shown by the `paper ignore` listing (git honours it) but not applied by the snapshot walker or the untrack decision (the `ignore` crate reads only the user's global config). Predates this ticket; follow-up ticket.
+- A repository-local `core.excludesFile` is shown by the `paper ignore` listing (git honours it) but not applied by the snapshot walker or the untrack decision (the `ignore` crate reads only the user's global config). Predates this ticket; PV-034, GitHub issue #66.
 
 ## Handoff log
 
@@ -344,3 +353,9 @@ In `project/ignore.rs`, inside `impl Project` (uses the private `Layers`):
 - **Restore spec.** Test `restoring_an_ignored_untracked_file_with_the_saved_bytes_is_still_listed_as_blocked`. 03-architecture "In every checkout" now names undo, redo, `undo --to` and recovery only; 02-cli § undo bullet updated; § restore already says ignored files are never overwritten and listed as skipped, which matches the code.
 - Doc comment of `on_disk_symlink` moved back above it.
 - Known gap (global excludes mismatch) recorded in the ticket under "Known gaps".
+
+### GREEN (post-approval) · rust-engineer · 2026-10-18
+
+- `has_case_twin` now takes a lowercase-path count map built once per plan (`lowercase_counts`), so the cost no longer grows with added files times tracked files. The exists-on-disk check runs before `spelled_exactly`.
+- 02-cli wording and the 03-architecture paragraph rewrapped as asked.
+- `tasks.json`: PV-034 (#66, v0.3, low) and PV-035 (#67, v0.2-b, high) added as todo. Ticket: Summary filled in, acceptance criteria ticked except the CI part, PV-034 marked under Known gaps.

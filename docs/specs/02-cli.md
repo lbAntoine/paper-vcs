@@ -449,7 +449,8 @@ unreadable source has no place in this fixed shape, so only the human output nam
   `.gitignore` rules ignore them (what `paper ignore` leaves behind), stay on disk: they are
   not deleted and not listed as skipped. A file that is not in the draft but already holds
   exactly the wanted bytes (and executable bit) is not "in the way" either: nothing is written
-  and nothing is listed (unless a path differing only in letter case is involved). `restore` is
+  and nothing is listed (unless the name on disk is spelled differently, or another draft file differs only in letter
+  case). `restore` is
   unchanged: such a file stays listed as `blocked`.
 - After a plain `git commit` or `git switch`, `undo`, `redo` and `undo --to` refuse with the
   errors of `save` and change nothing.

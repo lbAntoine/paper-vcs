@@ -140,6 +140,7 @@ impl Project {
         let mut skipped = Vec::new();
         let mut deletes: Vec<&String> = Vec::new();
         let mut candidates = Vec::new();
+        let case_counts = lowercase_counts(current);
         let ignored = if leave_ignored {
             self.ignored_in(current, wanted)?
         } else {
@@ -168,7 +169,8 @@ impl Project {
                 // the other spelling's file here.
                 let already_there = leave_ignored
                     && !current.contains_key(path)
-                    && !has_case_twin(current, path)
+                    && !has_case_twin(&case_counts, path)
+                    && fs::symlink_metadata(self.repo.workdir().join(path)).is_ok()
                     && self.spelled_exactly(path)
                     && want.is_some_and(|file| self.on_disk_equals(path, file));
                 if !already_there {
@@ -330,12 +332,19 @@ impl Project {
     }
 }
 
-/// Whether another path in `files` differs from `path` only in letter case.
-fn has_case_twin(files: &BTreeMap<String, TreeFile>, path: &str) -> bool {
-    let lower = path.to_lowercase();
-    files
-        .keys()
-        .any(|other| other != path && other.to_lowercase() == lower)
+/// How many paths of `files` have each lowercase spelling.
+fn lowercase_counts(files: &BTreeMap<String, TreeFile>) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::new();
+    for path in files.keys() {
+        *counts.entry(path.to_lowercase()).or_insert(0) += 1;
+    }
+    counts
+}
+
+/// Whether another path of the files behind `counts` differs from `path` only in letter case.
+/// `path` itself is not one of them (callers ask about paths absent from those files).
+fn has_case_twin(counts: &BTreeMap<String, usize>, path: &str) -> bool {
+    counts.contains_key(&path.to_lowercase())
 }
 
 /// Why the snapshot left `path` out (or something above it, like a nested repository).
