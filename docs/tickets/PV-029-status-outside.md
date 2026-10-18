@@ -75,18 +75,18 @@ with what to do next, instead of quietly showing the plain-git changes as unsave
 
 ## Acceptance criteria
 
-- [ ] After a plain `git commit` on the line, `paper status` shows the moved-line block with
+- [x] After a plain `git commit` on the line, `paper status` shows the moved-line block with
   `git log <line>`. The exit code is 0, and `save`'s refusal is unchanged.
-- [ ] After `git switch -c other` (and after a detached `git checkout <sha>`), `status` shows the
+- [x] After `git switch -c other` (and after a detached `git checkout <sha>`), `status` shows the
   another-branch block with `git switch <line>`.
-- [ ] A healthy project shows no block, and its JSON has `"outside_paper": null`. Every existing
+- [x] A healthy project shows no block, and its JSON has `"outside_paper": null`. Every existing
   status snapshot is byte-identical apart from the new JSON key.
-- [ ] JSON has the three shapes above. Snapshot-tested.
-- [ ] Works with `--no-snapshot`.
-- [ ] `paper status` writes nothing to git refs or HEAD in these states (cross-checked with `git
+- [x] JSON has the three shapes above. Snapshot-tested.
+- [x] Works with `--no-snapshot`.
+- [x] `paper status` writes nothing to git refs or HEAD in these states (cross-checked with `git
   rev-parse` and `git symbolic-ref`).
-- [ ] Specs updated (only the listed section).
-- [ ] fmt, clippy (`-D warnings`) and the full suite pass (CI on Linux, macOS, Windows).
+- [x] Specs updated (only the listed section).
+- [x] fmt, clippy (`-D warnings`) and the full suite pass (CI on Linux, macOS, Windows).
 
 ## Test plan
 
@@ -101,6 +101,8 @@ with what to do next, instead of quietly showing the plain-git changes as unsave
 - Tests must fail on `origin/main`.
 
 ## Summary
+
+`paper status` now reports when plain git moved the line or HEAD: `Status::outside_paper` (`LineMoved`, `OnAnotherBranch`) is computed through `check_in_sync`, the human output shows a block under the header with the next command, and `--json` always carries `outside_paper` (`null` or a `kind`-tagged object). The exit code stays 0, nothing is written to refs or HEAD, and the draft is still compared with paper's last save. Spec 02-cli updated.
 
 ## Handoff log
 
@@ -162,3 +164,11 @@ result as the branch: 7 of 13 core tests and 11 of 26 cli tests fail, all on the
 - Deviation: the suggestion line uses the error renderer's `next: cmd  # why` shape, not the bare
   `cmd    why` in the Decisions sketch, as the coordinator asked for the error renderer's format.
 - fmt, clippy `-D warnings` and the full suite pass.
+
+### GREEN (review fixes) · rust-engineer · 2026-10-18
+
+- Spec 02-cli (JSON output): `paper status --json` key list now includes `outside_paper`.
+- `render/json_diff.rs`: the `serde_json::json!` value is replaced by a typed `OutsidePaperOut` enum (`#[serde(tag = "kind", rename_all = "snake_case")]`); the wire order is `kind, line, found`. No snapshot changed: the CLI test helper `redact_json` parses and re-prints through `serde_json::Value`, which sorts keys, so the accepted snapshots are unaffected and still pass with `INSTA_UPDATE=no`.
+- Regression tests in `crates/paper-cli/tests/status.rs`: no block and `outside_paper: null` right after `save`, `undo`, `redo` and `restore`.
+- Moved-line tests in `crates/paper-core/tests/status.rs`: `git reset --hard HEAD~1` (after a second paper save) and `git commit --amend`.
+- fmt, clippy `-D warnings` and `cargo test --workspace --all-targets --no-fail-fast` pass.

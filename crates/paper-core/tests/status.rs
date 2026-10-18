@@ -336,3 +336,34 @@ fn the_draft_is_still_compared_with_papers_last_save_when_the_line_moved() {
     assert_eq!(status.changes.len(), 1);
     assert!(status.outside_paper.is_some());
 }
+
+#[test]
+fn status_reports_the_line_moved_after_git_reset_hard() {
+    let (dir, mut project) = project_with(&[("a.tex", "1\n")]);
+    write(dir.path(), "a.tex", "2\n");
+    save_all(&mut project, "Second");
+    git(dir.path(), &["reset", "--hard", "HEAD~1"]);
+
+    let status = project.status(&with_snapshot()).unwrap();
+
+    assert_eq!(
+        status.outside_paper,
+        Some(OutsidePaper::LineMoved { line: main_line() })
+    );
+}
+
+#[test]
+fn status_reports_the_line_moved_after_git_commit_amend() {
+    let (dir, mut project) = project_with(&[("a.tex", "1\n")]);
+    git(
+        dir.path(),
+        &["commit", "--amend", "--allow-empty", "-m", "amended"],
+    );
+
+    let status = project.status(&without_snapshot()).unwrap();
+
+    assert_eq!(
+        status.outside_paper,
+        Some(OutsidePaper::LineMoved { line: main_line() })
+    );
+}

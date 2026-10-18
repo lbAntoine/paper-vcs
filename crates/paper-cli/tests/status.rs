@@ -492,3 +492,44 @@ fn status_json_says_found_null_for_a_detached_head() {
         serde_json::json!({"kind": "on_another_branch", "line": "main", "found": null})
     );
 }
+
+/// After a paper command moves the line, `status` must not claim plain git did it.
+fn assert_no_outside_paper(env: &Env) {
+    let run = env.paper(&["status"]);
+    run.assert_code(0);
+    assert!(!run.stdout.contains("outside paper"), "{run:#?}");
+    assert!(!run.stdout.contains("Git is on"), "{run:#?}");
+    let json = env.paper(&["--json", "status"]).json();
+    assert_eq!(json["outside_paper"], serde_json::Value::Null, "{json}");
+}
+
+#[test]
+fn no_outside_paper_block_right_after_save() {
+    let env = project();
+    env.write("sections/intro.tex", "Intro v4\n");
+    env.paper(&["save", "Another save"]).assert_code(0);
+    assert_no_outside_paper(&env);
+}
+
+#[test]
+fn no_outside_paper_block_right_after_undo() {
+    let env = project();
+    env.paper(&["undo"]).assert_code(0);
+    assert_no_outside_paper(&env);
+}
+
+#[test]
+fn no_outside_paper_block_right_after_redo() {
+    let env = project();
+    env.paper(&["undo"]).assert_code(0);
+    env.paper(&["redo"]).assert_code(0);
+    assert_no_outside_paper(&env);
+}
+
+#[test]
+fn no_outside_paper_block_right_after_restore() {
+    let env = project();
+    env.paper(&["restore", "--from", "last~2", "sections/intro.tex"])
+        .assert_code(0);
+    assert_no_outside_paper(&env);
+}

@@ -79,7 +79,7 @@ file's last line when it has no trailing newline). For a binary file `added` and
 are `null`, the byte sizes are set (`null` for an absent side) and `hunks` is `[]`.
 `paper diff --json` prints `{schema, files}` (also with `--stat`), `paper show --json`
 adds `files` beside `save` and `changes`, and `paper status --json` prints
-`{schema, line, last, changes, skipped, large}`, where `last` has the shape of a save in
+`{schema, line, last, changes, skipped, large, outside_paper}`, where `last` has the shape of a save in
 `history` and each change has the file-diff keys without `hunks`.
 `paper restore --json` prints `{schema, from, changes: [{path, kind}], skipped: [{path, reason, bytes}]}`,
 with `from` the commit the files were restored from.

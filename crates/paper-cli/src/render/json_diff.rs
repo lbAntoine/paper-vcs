@@ -60,7 +60,15 @@ struct StatusOut {
     changes: Vec<StatusChange>,
     skipped: Vec<SkippedFile>,
     large: Vec<LargeFile>,
-    outside_paper: Option<serde_json::Value>,
+    outside_paper: Option<OutsidePaperOut>,
+}
+
+/// Where the line stands when plain git moved it. Key order is `kind, line, found`.
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum OutsidePaperOut {
+    LineMoved { line: String },
+    OnAnotherBranch { line: String, found: Option<String> },
 }
 
 #[derive(Serialize)]
@@ -180,14 +188,13 @@ pub fn status(status: &Status) -> String {
         skipped: status.skipped.iter().map(skipped).collect(),
         large: large(&status.large),
         outside_paper: status.outside_paper.as_ref().map(|outside| match outside {
-            OutsidePaper::LineMoved { line } => {
-                serde_json::json!({"kind": "line_moved", "line": line.to_string()})
-            }
-            OutsidePaper::OnAnotherBranch { line, found } => serde_json::json!({
-                "kind": "on_another_branch",
-                "line": line.to_string(),
-                "found": found,
-            }),
+            OutsidePaper::LineMoved { line } => OutsidePaperOut::LineMoved {
+                line: line.to_string(),
+            },
+            OutsidePaper::OnAnotherBranch { line, found } => OutsidePaperOut::OnAnotherBranch {
+                line: line.to_string(),
+                found: found.clone(),
+            },
         }),
     })
 }
