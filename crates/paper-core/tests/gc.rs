@@ -373,13 +373,17 @@ fn old_redo_stack_entries_are_kept_and_redo_still_works() {
 
     let outcome = gc(&mut project, "30d");
 
-    let oldest_redo = ops
+    // The horizon is the oldest of the redo targets and the head's undo position; the position
+    // is the op just before the oldest redo target, so it sets the horizon here.
+    let position = head["position"].as_str().unwrap();
+    let horizon = ops
         .iter()
-        .rposition(|op| redo.contains(&id_of(op)))
+        .rposition(|op| redo.contains(&id_of(op)) || id_of(op) == position)
         .unwrap();
-    assert_eq!(outcome.kept_entries, oldest_redo + 1);
-    assert_eq!(outcome.removed_entries, ops.len() - oldest_redo - 1);
-    assert_eq!(outcome.horizon.id.to_string(), id_of(&ops[oldest_redo]));
+    assert_eq!(id_of(&ops[horizon]), position, "the position is the oldest");
+    assert_eq!(outcome.kept_entries, horizon + 1);
+    assert_eq!(outcome.removed_entries, ops.len() - horizon - 1);
+    assert_eq!(outcome.horizon.id.to_string(), id_of(&ops[horizon]));
     let on_disk = op_ids_on_disk(dir.path());
     for id in &redo {
         assert!(on_disk.contains(&format!("{id}.json")), "{id} was removed");
@@ -395,6 +399,73 @@ fn old_redo_stack_entries_are_kept_and_redo_still_works() {
     assert!(matches!(
         project.redo().unwrap(),
         UndoOutcome::NothingToRedo
+    ));
+}
+
+#[test]
+fn gc_keeps_the_op_the_next_undo_starts_from_and_undo_still_works() {
+    let (dir, mut project) = history(5);
+    for _ in 0..3 {
+        assert!(matches!(project.undo().unwrap(), UndoOutcome::Undone(_)));
+    }
+    let ops = chain(dir.path());
+    let position = ops[0]["position"].as_str().unwrap().to_owned();
+    let position_index = ops.iter().position(|op| id_of(op) == position).unwrap();
+    assert!(
+        position_index > 3,
+        "the position is older than the undo ops"
+    );
+    // Only the three undo ops are new; the position and everything older are 200 days old.
+    for op in &ops[3..] {
+        backdate(dir.path(), &id_of(op), 200);
+    }
+
+    let outcome = gc(&mut project, "30d");
+
+    assert_eq!(
+        outcome.horizon.id.to_string(),
+        position,
+        "the position is kept"
+    );
+    assert_eq!(outcome.kept_entries, position_index + 1);
+    assert_eq!(outcome.removed_entries, ops.len() - position_index - 1);
+    assert!(op_ids_on_disk(dir.path()).contains(&format!("{position}.json")));
+    // Undo starts from the kept position: no MissingOp, and it stops at the horizon.
+    assert!(matches!(
+        project.undo().unwrap(),
+        UndoOutcome::NothingToUndo
+    ));
+    for _ in 0..3 {
+        assert!(matches!(project.redo().unwrap(), UndoOutcome::Undone(_)));
+    }
+}
+
+#[test]
+fn undo_after_gc_walks_back_from_the_position_to_the_horizon_and_stops() {
+    let (dir, mut project) = history(6);
+    for _ in 0..3 {
+        assert!(matches!(project.undo().unwrap(), UndoOutcome::Undone(_)));
+    }
+    let ops = chain(dir.path());
+    let position = ops[0]["position"].as_str().unwrap().to_owned();
+    let position_index = ops.iter().position(|op| id_of(op) == position).unwrap();
+    // The cutoff alone would keep less than the position needs: only the oldest 3 are old.
+    backdate_oldest(dir.path(), 3, 200);
+
+    let outcome = gc(&mut project, "30d");
+
+    assert_eq!(outcome.removed_entries, 3);
+    assert_eq!(outcome.kept_entries, ops.len() - 3);
+    assert!(outcome.kept_entries > position_index + 1);
+    let mut steps = 0;
+    while let UndoOutcome::Undone(_) = project.undo().unwrap() {
+        steps += 1;
+        assert!(steps < 100, "undo never reaches the horizon");
+    }
+    assert!(steps >= 1, "undo can still go back past the position");
+    assert!(matches!(
+        project.undo().unwrap(),
+        UndoOutcome::NothingToUndo
     ));
 }
 
@@ -433,13 +504,49 @@ fn undo_walks_back_to_the_horizon_and_then_has_nothing_to_undo() {
 
 #[test]
 fn every_kept_commit_stays_reachable_through_a_chain_of_at_most_50_parents_each() {
-    let (dir, mut project, ops) = aged(40, 10);
+    // Edit then snapshot twice before the first save: the first snapshot's draft is rewritten
+    // by the second and is not an ancestor of anything later, so only the keep chain held it.
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "a.txt", "v0\n");
+    let (mut project, _) = Project::init_with_profile(
+        dir.path(),
+        identity(),
+        &SnapshotOptions::default(),
+        Profile::builtin("generic"),
+    )
+    .unwrap();
+    write(dir.path(), "a.txt", "draft only 1\n");
+    project.snapshot().unwrap();
+    write(dir.path(), "a.txt", "draft only 2\n");
+    project.snapshot().unwrap();
+    for i in 1..=40 {
+        write(dir.path(), "a.txt", &format!("v{i}\n"));
+        write(dir.path(), &format!("extra{i}.txt"), &format!("e{i}\n"));
+        save_all(&mut project, &format!("Save {i}"));
+    }
+    backdate_oldest(dir.path(), 10, 200);
+    let ops = chain(dir.path());
     let removed: BTreeSet<String> = ops[ops.len() - 10..].iter().flat_map(commits_of).collect();
     let kept_ops = &ops[..ops.len() - 10];
     let kept: BTreeSet<String> = kept_ops.iter().flat_map(commits_of).collect();
-    let only_removed: BTreeSet<&String> = removed.difference(&kept).collect();
+    // Old save tips are git ancestors of newer kept tips, so they stay reachable. Only commits
+    // no kept commit leads to (old drafts) can be pruned.
+    let kept_args: Vec<&str> = kept.iter().map(String::as_str).collect();
+    let mut rev_list = vec!["rev-list"];
+    rev_list.extend(&kept_args);
+    let reachable_from_kept: BTreeSet<String> = git(dir.path(), &rev_list)
+        .lines()
+        .map(str::to_owned)
+        .collect();
+    let only_removed: BTreeSet<&String> = removed
+        .iter()
+        .filter(|c| !reachable_from_kept.contains(*c))
+        .collect();
     assert!(kept.len() > 50, "the test needs more than one group");
-    assert!(!only_removed.is_empty());
+    assert!(
+        !only_removed.is_empty(),
+        "a draft-only commit must be removed, or the prune check tests nothing"
+    );
 
     let outcome = gc(&mut project, "30d");
     assert_eq!(outcome.kept_entries, kept_ops.len());
