@@ -813,3 +813,32 @@ fn a_gc_with_nothing_to_remove_leaves_ops_and_refs_byte_identical() {
     assert!(!ActivityLog::open(&paper(dir.path())).has_horizon());
     assert_eq!(before, git_dir_bytes(dir.path()), "no horizon, no new refs");
 }
+
+// ---- an interrupted run ----
+
+fn keep_count(dir: &Path) -> String {
+    git(dir, &["rev-list", "--count", "refs/paper/keep"])
+        .trim()
+        .to_owned()
+}
+
+#[test]
+fn a_rerun_after_a_crash_between_horizon_and_keep_chain_rebuilds_the_chain() {
+    let (clean_dir, mut clean, _) = aged(12, 5);
+    gc(&mut clean, "30d");
+    let expected = keep_count(clean_dir.path());
+
+    let (crashed_dir, mut crashed, ops) = aged(12, 5);
+    let horizon = id_of(&ops[ops.len() - 6]);
+    fs::write(
+        paper(crashed_dir.path()).join("activity/horizon"),
+        format!("{horizon}\n"),
+    )
+    .unwrap();
+    let outcome = gc(&mut crashed, "30d");
+    assert_eq!(
+        outcome.removed_entries, 0,
+        "the horizon already cut the log"
+    );
+    assert_eq!(keep_count(crashed_dir.path()), expected);
+}

@@ -133,7 +133,8 @@ pub enum Command {
     Redo,
     /// Trim the undo history to a recent window, so git can reclaim old drafts and undone work.
     Gc {
-        /// Remove entries older than this: a number of days (`30d`) or weeks (`12w`), at least `1d`.
+        /// Remove entries older than this: a number of days (`30d`) or weeks (`12w`), at
+        /// least `1d`.
         #[arg(
             long,
             value_name = "DURATION",

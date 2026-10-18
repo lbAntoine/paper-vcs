@@ -367,8 +367,8 @@ reclaim old objects. Nothing runs it automatically.
   `0d`, a missing or unknown unit, or anything else is a user error (exit 1) and changes nothing.
 - Kept: every activity entry newer than the cutoff, the current entry, the entry your next
   `undo` starts from, and every entry you can still `redo`, plus all entries between the
-  oldest of those and now. Older entries are removed, and so are crash leftovers (`.tmp*` files, orphan operation files) and the
-  `view.json.v1` file of a format 1 upgrade. The oldest kept entry is the *horizon*: `paper
+  oldest of those and now. Older entries are removed, and so are crash leftovers (`.tmp*`
+  files, orphan operation files) and the `view.json.v1` file of a format 1 upgrade. The oldest kept entry is the *horizon*: `paper
   activity` ends there, and `undo` reports `Nothing to undo.` once it gets there.
 - Afterwards `paper activity` ends with, and `Nothing to undo.` is followed by, the line
   ``Older history was cleaned up by `paper gc`, so there is nothing further back to go to.``
@@ -381,8 +381,8 @@ reclaim old objects. Nothing runs it automatically.
   work paper no longer needs. Saves on lines are always kept.
 - `--older-than` followed by an option (`paper gc --older-than --dry-run`) is the same user
   error, and its message says a duration such as `90d` is needed after `--older-than`.
-- Output: `Removed 3 entries from the activity list; kept 12 entries, back to 2026-07-01.` (a UTC date),
-  then `Swept N leftover files:` with one path per line (relative to `.git/paper/`) when there
+- Output: `Removed 3 entries from the activity list; kept 12 entries, back to 2026-07-01.` (a
+  UTC date), then `Swept N leftover files:` with one path per line (relative to `.git/paper/`) when there
   were any, then the `git gc` line. With `--dry-run` the output starts with `Dry run: nothing
   was changed.` and says `Would remove` / `would keep` / `Would sweep`.
 - `--json`: `{"schema":1,"dry_run","removed_entries","kept_entries","horizon","swept"}`, every key

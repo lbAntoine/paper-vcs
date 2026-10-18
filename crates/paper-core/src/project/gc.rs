@@ -112,8 +112,9 @@ impl Project {
     /// stacks and everything newer), writes the horizon, rebuilds `refs/paper/keep` and sweeps
     /// crash leftovers. With `dry_run`, only reports. Records no activity entry.
     ///
-    /// When no entry is old enough, no horizon is written and the keep-alive chain is left
-    /// alone; leftovers are still swept.
+    /// When no entry is old enough and no orphan op is left over, no horizon is written and
+    /// the keep-alive chain is left alone; leftovers are still swept. Orphans (from an
+    /// interrupted run) do rebuild the keep-alive chain, without a new horizon.
     ///
     /// # Errors
     ///
@@ -129,8 +130,12 @@ impl Project {
         if !dry_run {
             // Horizon first: a crash before the new keep chain leaves the old chain covering
             // every op, and the ops below the horizon are just orphans the next run sweeps.
+            // A re-run then finds no entries to remove but orphans, so it rebuilds the keep
+            // chain for them; a run with neither writes nothing.
             if !plan.removed.is_empty() {
                 log.write_horizon(&plan.horizon.id)?;
+            }
+            if !plan.removed.is_empty() || !plan.orphans.is_empty() {
                 rebuild_keep(&self.repo, &self.identity, &plan.kept)?;
             }
             for path in plan

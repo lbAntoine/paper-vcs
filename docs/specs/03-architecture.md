@@ -175,8 +175,9 @@ A crash leaves extra files, never missing ones that are still needed; running `g
 finishes the job. `ActivityLog::read` returns the horizon op with `parent: null` whatever its
 file says (op files are never rewritten), so `activity` and `undo` stop there. The old keep
 chain becomes unreachable, so a later `git gc` can reclaim the old objects; paper never runs
-`git gc`. When nothing is old enough, `gc` writes no horizon and leaves the keep chain alone
-(it still sweeps leftovers). `gc` records no op: it trims the record undo uses, so it is not
+`git gc`. When nothing is old enough and no orphan op is left, `gc` writes no horizon and
+leaves the keep chain alone (it still sweeps leftovers); orphans from an interrupted run make
+it rebuild the keep chain, without a new horizon. `gc` records no op: it trims the record undo uses, so it is not
 undoable.
 
 **Change IDs** are 16 random bytes stored as the extra commit header `change-id`, and
