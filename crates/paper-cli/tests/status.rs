@@ -158,7 +158,15 @@ fn status_json_has_a_fixed_key_set() {
     assert_eq!(json["schema"], 1);
     assert_keys(
         &json,
-        &["schema", "line", "last", "changes", "skipped", "large"],
+        &[
+            "schema",
+            "line",
+            "last",
+            "changes",
+            "skipped",
+            "large",
+            "outside_paper",
+        ],
     );
     assert_eq!(json["line"], "main");
     assert_eq!(json["last"]["message"], "Rewrite intro");
@@ -201,7 +209,15 @@ fn status_json_for_an_empty_draft_has_every_key_with_empty_lists() {
     let json = run.json();
     assert_keys(
         &json,
-        &["schema", "line", "last", "changes", "skipped", "large"],
+        &[
+            "schema",
+            "line",
+            "last",
+            "changes",
+            "skipped",
+            "large",
+            "outside_paper",
+        ],
     );
     for key in ["changes", "skipped", "large"] {
         assert_eq!(json[key], serde_json::json!([]), "{key}");
@@ -291,4 +307,182 @@ fn the_user_config_sets_the_limit_when_the_project_does_not() {
 
     run.assert_code(0);
     assert!(run.stdout.contains("too large to track"), "{run:#?}");
+}
+
+// ---- PV-029: status says when the line moved outside paper ----
+
+/// Refs, HEAD and the current branch: everything `status` must leave alone.
+fn refs_and_head(env: &Env) -> String {
+    format!(
+        "{}\n{}\n{}",
+        env.git_work(&["for-each-ref", "--format=%(refname) %(objectname)"]),
+        env.git_work(&["rev-parse", "HEAD"]),
+        env.git_work(&["branch", "--show-current"]),
+    )
+}
+
+fn plain_commit(env: &Env) {
+    env.git_work(&["commit", "--allow-empty", "-m", "Plain commit"]);
+}
+
+#[test]
+fn refs_and_head_helper_changes_when_git_moves_the_line() {
+    let env = project();
+    let before = refs_and_head(&env);
+    assert_eq!(refs_and_head(&env), before);
+    plain_commit(&env);
+    assert_ne!(refs_and_head(&env), before);
+}
+
+#[test]
+fn status_after_a_plain_commit_says_the_line_changed_outside_paper() {
+    let env = project();
+    plain_commit(&env);
+    let before = refs_and_head(&env);
+
+    let run = env.paper(&["status"]);
+
+    run.assert_code(0);
+    assert!(run.stdout.contains("changed outside paper"), "{run:#?}");
+    assert!(run.stdout.contains("git log main"), "{run:#?}");
+    assert!(run.stdout.contains("see what changed"), "{run:#?}");
+    let header = run.stdout.find("On main").unwrap();
+    let block = run.stdout.find("changed outside paper").unwrap();
+    assert!(header < block, "block follows the header: {run:#?}");
+    assert_eq!(refs_and_head(&env), before, "status writes nothing");
+}
+
+#[test]
+fn save_still_refuses_after_a_plain_commit_and_status_has_not_changed_that() {
+    let env = project();
+    plain_commit(&env);
+    env.paper(&["status"]).assert_code(0);
+    env.write("main.tex", "changed\n");
+
+    let run = env.paper(&["save", "Refused"]);
+
+    run.assert_three_part_error(1);
+    assert!(run.stderr.contains("changed outside paper"), "{run:#?}");
+}
+
+#[test]
+fn status_after_git_switch_says_git_is_on_another_branch() {
+    let env = project();
+    env.git_work(&["switch", "-c", "other"]);
+    let before = refs_and_head(&env);
+
+    let run = env.paper(&["status"]);
+
+    run.assert_code(0);
+    assert!(
+        run.stdout
+            .contains("Git is on the branch 'other', not on the line 'main'."),
+        "{run:#?}"
+    );
+    assert!(run.stdout.contains("git switch main"), "{run:#?}");
+    assert!(run.stdout.contains("go back to the line"), "{run:#?}");
+    assert_eq!(refs_and_head(&env), before, "status writes nothing");
+    assert_eq!(env.git_work(&["branch", "--show-current"]).trim(), "other");
+}
+
+#[test]
+fn status_on_a_detached_head_says_git_is_on_no_branch() {
+    let env = project();
+    env.git_work(&["checkout", "--detach"]);
+    let before = refs_and_head(&env);
+
+    let run = env.paper(&["status"]);
+
+    run.assert_code(0);
+    assert!(
+        run.stdout
+            .contains("Git is on no branch (detached HEAD), not on the line 'main'."),
+        "{run:#?}"
+    );
+    assert!(run.stdout.contains("git switch main"), "{run:#?}");
+    assert_eq!(refs_and_head(&env), before, "status writes nothing");
+}
+
+#[test]
+fn status_with_no_snapshot_also_reports_the_line_moved_and_another_branch() {
+    let env = project();
+    plain_commit(&env);
+    let run = env.paper(&["--no-snapshot", "status"]);
+    run.assert_code(0);
+    assert!(run.stdout.contains("changed outside paper"), "{run:#?}");
+
+    let env = project();
+    env.git_work(&["switch", "-c", "other"]);
+    let run = env.paper(&["--no-snapshot", "status"]);
+    run.assert_code(0);
+    assert!(run.stdout.contains("git switch main"), "{run:#?}");
+}
+
+#[test]
+fn status_still_lists_the_draft_below_the_outside_paper_block() {
+    let env = project();
+    plain_commit(&env);
+    env.write("sections/intro.tex", "Intro v3\n");
+
+    let run = env.paper(&["status"]);
+
+    run.assert_code(0);
+    let block = run.stdout.find("changed outside paper").unwrap();
+    let draft = run.stdout.find("Draft (unsaved):").unwrap();
+    assert!(block < draft, "{run:#?}");
+}
+
+#[test]
+fn a_healthy_project_shows_no_outside_paper_block() {
+    let env = project();
+
+    let run = env.paper(&["status"]);
+
+    run.assert_code(0);
+    assert!(!run.stdout.contains("outside paper"), "{run:#?}");
+    assert!(!run.stdout.contains("Git is on"), "{run:#?}");
+    let json = env.paper(&["--json", "status"]).json();
+    assert_eq!(json.get("outside_paper"), Some(&serde_json::Value::Null));
+}
+
+#[test]
+fn status_json_says_the_line_moved() {
+    let env = project();
+    plain_commit(&env);
+
+    let run = env.paper(&["--json", "status"]);
+
+    run.assert_code(0);
+    assert_eq!(
+        run.json()["outside_paper"],
+        serde_json::json!({"kind": "line_moved", "line": "main"})
+    );
+}
+
+#[test]
+fn status_json_says_git_is_on_another_branch() {
+    let env = project();
+    env.git_work(&["switch", "-c", "other"]);
+
+    let run = env.paper(&["--json", "--no-snapshot", "status"]);
+
+    run.assert_code(0);
+    assert_eq!(
+        run.json()["outside_paper"],
+        serde_json::json!({"kind": "on_another_branch", "line": "main", "found": "other"})
+    );
+}
+
+#[test]
+fn status_json_says_found_null_for_a_detached_head() {
+    let env = project();
+    env.git_work(&["checkout", "--detach"]);
+
+    let run = env.paper(&["--json", "status"]);
+
+    run.assert_code(0);
+    assert_eq!(
+        run.json()["outside_paper"],
+        serde_json::json!({"kind": "on_another_branch", "line": "main", "found": null})
+    );
 }

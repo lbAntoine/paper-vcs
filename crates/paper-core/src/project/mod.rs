@@ -41,7 +41,7 @@ pub use lock::{DEFAULT_LOCK_WAIT, LockError, LockOptions, ProjectLock};
 pub use resolve::{Candidate, PointKind, ResolveError, Resolved};
 pub use restore::{RestoreError, RestoreRequest, RestoreSkip, Restored, SkippedPath};
 pub use save::{DraftState, PathSelection, SaveError, SaveOutcome, SaveRequest, Saved};
-pub use status::{ChangeStat, Status, StatusEntry, StatusError, StatusOptions};
+pub use status::{ChangeStat, OutsidePaper, Status, StatusEntry, StatusError, StatusOptions};
 pub use undo::{UndoError, UndoOutcome, Undone};
 
 /// Version of the on-disk format in `.git/paper/`. Migrations are keyed on it.

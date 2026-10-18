@@ -103,3 +103,47 @@ with what to do next, instead of quietly showing the plain-git changes as unsave
 ## Summary
 
 ## Handoff log
+
+### RED · test-author · 2026-10-18
+
+**Tests** (all drive a real temp repo and the `git` binary; run with an empty `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_NOSYSTEM=1`).
+
+`crates/paper-core/tests/status.rs` (+9 tests, 7 fail on the `None` placeholder):
+- fail: `status_reports_the_line_moved_after_a_plain_git_commit` (also checks refs/HEAD untouched),
+  `..._line_moved_without_a_snapshot`, `status_reports_another_branch_after_git_switch` (also
+  checks refs/HEAD), `..._another_branch_without_a_snapshot`, `status_reports_a_detached_head_as_found_none`,
+  `status_reports_another_branch_when_the_line_also_moved`,
+  `the_draft_is_still_compared_with_papers_last_save_when_the_line_moved`.
+- pass on main by design: `a_healthy_project_has_no_outside_paper_state`, and the helper sanity test
+  `git_helper_commits_and_switches_in_the_temp_repository`.
+
+`crates/paper-cli/tests/status.rs` (+11 tests, 11 fail in total incl. 2 changed ones):
+- fail: `status_after_a_plain_commit_says_the_line_changed_outside_paper` (key phrases, block after
+  header, refs/HEAD untouched), `status_after_git_switch_says_git_is_on_another_branch`,
+  `status_on_a_detached_head_says_git_is_on_no_branch`,
+  `status_with_no_snapshot_also_reports_the_line_moved_and_another_branch`,
+  `status_still_lists_the_draft_below_the_outside_paper_block`, `status_json_says_the_line_moved`,
+  `status_json_says_git_is_on_another_branch` (uses `--no-snapshot`),
+  `status_json_says_found_null_for_a_detached_head`, `a_healthy_project_shows_no_outside_paper_block`
+  (fails only on the JSON key `outside_paper: null`; the human part passes on main).
+- pass on main by design: `save_still_refuses_after_a_plain_commit_and_status_has_not_changed_that`
+  (the refusal is unchanged), and the helper sanity test `refs_and_head_helper_changes_when_git_moves_the_line`.
+- **Changed existing tests:** `status_json_has_a_fixed_key_set` and
+  `status_json_for_an_empty_draft_has_every_key_with_empty_lists` now list `outside_paper` in
+  `assert_keys` (the ticket says the JSON gains this key), so they fail until GREEN. Their snapshots
+  (`status__status_json.snap`) need GREEN to re-accept with the new key; the human snapshots stay
+  byte-identical.
+
+**Stubs.** `OutsidePaper` enum (`LineMoved { line }`, `OnAnotherBranch { line, found: Option<String> }`)
+and `Status::outside_paper: Option<OutsidePaper>` in `project/status.rs`, exported from `project/mod.rs`.
+`status` sets the field to `None` with a comment (a field can't be `todo!()`). No `todo!()` needed; no
+rendering changed.
+
+**Design choices.** Text asserted with `contains` only (`changed outside paper`, `git log main`,
+`see what changed`, `Git is on the branch 'other', not on the line 'main'.`,
+`Git is on no branch (detached HEAD), not on the line 'main'.`, `git switch main`, `go back to the line`).
+The "both conditions" case is built with `switch -c other`, a commit, then `branch -f main HEAD`.
+No snapshot was written.
+
+**Probe.** A detached worktree of `origin/main` with the stubs and the new tests copied in gave the same
+result as the branch: 7 of 13 core tests and 11 of 26 cli tests fail, all on the assertions. The probe was removed.

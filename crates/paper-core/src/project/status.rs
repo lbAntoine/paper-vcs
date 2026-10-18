@@ -42,6 +42,18 @@ pub struct StatusEntry {
     pub stat: ChangeStat,
 }
 
+/// How plain git left the repository out of step with paper (PV-029).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OutsidePaper {
+    /// Commits were added to the line, or it was moved, with plain git.
+    LineMoved { line: LineName },
+    /// Git's HEAD is on another branch than the line; `found` is `None` for a detached HEAD.
+    OnAnotherBranch {
+        line: LineName,
+        found: Option<String>,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Status {
     pub line: LineName,
@@ -51,6 +63,8 @@ pub struct Status {
     pub changes: Vec<StatusEntry>,
     pub skipped: Vec<Skipped>,
     pub large: Vec<(String, u64)>,
+    /// Set when plain git moved the line or HEAD since paper last wrote them.
+    pub outside_paper: Option<OutsidePaper>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -119,6 +133,8 @@ impl Project {
             changes,
             skipped,
             large,
+            // RED placeholder: GREEN computes this from `check_in_sync`.
+            outside_paper: None,
         })
     }
 }
