@@ -19,7 +19,6 @@ mod restore_plan;
 mod save;
 mod status;
 mod undo;
-mod unignore_stub;
 
 use std::fs;
 use std::io;
@@ -40,7 +39,8 @@ pub use export::ExportError;
 pub use gc::{GcAge, GcError, GcOutcome};
 pub use history::{HistoryEntry, HistoryError, HistoryRequest, ShowError, Shown};
 pub use ignore::{
-    IgnoreError, IgnoreListing, IgnoreOutcome, IgnoreRequest, IgnoreRule, IgnoreSource,
+    IgnoreError, IgnoreListing, IgnoreMatch, IgnoreOutcome, IgnoreRequest, IgnoreRule,
+    IgnoreSource, IgnoreWhy, UnignoreError, UnignoreOutcome, UnignoreRequest,
 };
 pub use init::{InitError, Initialized, ProfileSource, has_damaged_git};
 pub use lock::{DEFAULT_LOCK_WAIT, LockError, LockOptions, ProjectLock};
@@ -49,7 +49,6 @@ pub use restore::{RestoreError, RestoreRequest, RestoreSkip, Restored, SkippedPa
 pub use save::{DraftState, PathSelection, SaveError, SaveOutcome, SaveRequest, Saved};
 pub use status::{ChangeStat, OutsidePaper, Status, StatusEntry, StatusError, StatusOptions};
 pub use undo::{UndoError, UndoOutcome, Undone};
-pub use unignore_stub::{IgnoreMatch, IgnoreWhy, UnignoreError, UnignoreOutcome, UnignoreRequest};
 
 /// Version of the on-disk format in `.git/paper/`. Migrations are keyed on it.
 pub const FORMAT_VERSION: u32 = 2;
