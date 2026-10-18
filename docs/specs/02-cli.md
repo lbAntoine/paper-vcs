@@ -452,7 +452,7 @@ created if missing, and lines you wrote there stay byte-identical. Untracking an
 exactly as without `--local`, and one entry is recorded.
 
 **Local rules are outside history**, like git config. Undo and redo of a `--local` entry take
-back or bring back the tracking change only; `.git/info/exclude` is left as it is. Such an
+back or bring back the tracking change only (for any single `undo` or `redo` of an `ignore` or `unignore` entry, only `.gitignore` files are written or deleted; the other files stay on disk as they are, and the next command records any difference as an edit); `.git/info/exclude` is left as it is. Such an
 entry's description ends with ` (in .git/info/exclude)`, for example
 `ignore /data/raw/ (in .git/info/exclude)`, which is how `paper activity` shows where the rule
 lives. `paper undo`, `redo` and `undo --to` tell the researcher so in one extra line: ``The rule
@@ -575,7 +575,7 @@ b7e0  9 minutes ago   edited sections/intro.tex, main.tex
 
   Descriptions: `edited a.tex, b.tex, c.tex and 2 more` (sorted, at most three paths),
   `save "<first line of the message>"`, `restore <paths> from <point in paper's spelling, or last>`, `start the project`,
-  `adopt the git repository`, `upgrade to paper format 2`, `ignore <rules>`, `undo: <description of what was undone>`,
+  `adopt the git repository`, `upgrade to paper format 2`, `ignore <rules>`, `unignore <rules>` (both end with ` (in .git/info/exclude)` for `--local`), `undo: <description of what was undone>`,
   `redo: <description>` and `go back to <id>: <description>`. Several restored paths are listed
   in the order given, separated by `, `, at most three then `and N more`; restoring the whole
   project is `restore everything from <point>`. A point is written in paper's spelling, so
@@ -584,7 +584,7 @@ b7e0  9 minutes ago   edited sections/intro.tex, main.tex
   them is damaged or missing, the command stops with a project error and lists nothing.
   `--json`: `{"schema":1,"entries":[{"id","short_id","time","kind","description"}]}`, every key
   always present; `time` is RFC 3339, `kind` is `init`, `migrate`, `snapshot`, `save`,
-  `restore`, `ignore`, `undo` or `redo` (`go back to` entries have kind `undo`).
+  `restore`, `ignore`, `unignore`, `undo` or `redo` (`go back to` entries have kind `undo`).
 
 ### `paper gc [--older-than <duration>] [--dry-run]` (since v0.2)
 

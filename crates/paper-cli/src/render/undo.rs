@@ -44,6 +44,12 @@ fn undone_text(verb: Verb, undone: &Undone) -> String {
         out.push_str("\nSkipped (left as they are):\n");
         out.push_str(&restore_skipped_lines(&undone.skipped));
     }
+    if undone.local_rules() {
+        out.push_str(
+            "\nThe rule in .git/info/exclude is unchanged; change it with \
+             `paper ignore --local` or `paper unignore --local`.\n",
+        );
+    }
     if !undone.files_match {
         out.push('\n');
         out.push_str(&warning(undone));

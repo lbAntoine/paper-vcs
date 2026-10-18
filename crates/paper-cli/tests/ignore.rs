@@ -911,7 +911,6 @@ fn undo_of_a_local_ignore_tracks_the_files_and_keeps_the_private_rule() {
 }
 
 #[test]
-#[ignore = "PV-032: needs PV-030's render/undo.rs, enabled after the merge"]
 fn undoing_a_local_entry_adds_the_note_about_info_exclude() {
     let env = project();
     env.paper(&["ignore", "--local", "data/raw"]).assert_code(0);

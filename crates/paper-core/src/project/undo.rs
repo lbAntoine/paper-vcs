@@ -198,7 +198,15 @@ impl Project {
         let current = self.repo.tree_files(&state.working)?;
         let tree = self.repo.read_commit(&view.current().draft)?.tree;
         let wanted_files = self.repo.tree_files(&tree)?;
-        let targets: BTreeSet<&String> = current.keys().chain(wanted_files.keys()).collect();
+        // Taking back or bringing back an ignore or unignore changes what is tracked, never
+        // the files: only `.gitignore` files are written or deleted.
+        let tracking_only = !matches!(aim, Aim::To(_))
+            && matches!(step.entry.kind, OpKind::Ignore | OpKind::Unignore);
+        let targets: BTreeSet<&String> = current
+            .keys()
+            .chain(wanted_files.keys())
+            .filter(|path| !tracking_only || *path == ".gitignore" || path.ends_with("/.gitignore"))
+            .collect();
         // Decided, and every blob read, before anything is written.
         let plan = self.plan_checkout_to_draft(targets, &wanted_files, &current, &state.skipped)?;
 
@@ -217,8 +225,15 @@ impl Project {
             .map_err(|f| UndoError::io(f.action, &f.path, f.source))?;
         crate::fault::crash_point("after-checkout");
         let now = self.refresh_stat_cache(&tree)?;
-        let files_match = now == tree;
-        self.remember_leftovers(&log, &tree, &now, &current)?;
+        let files_match = tracking_only || now == tree;
+        if tracking_only {
+            // The files left alone are not leftovers: the next command records them as edits.
+            let file = CheckoutLeft::path(&self.paper_dir).display().to_string();
+            CheckoutLeft::remove(&self.paper_dir)
+                .map_err(|source| UndoError::io("remove", &file, source))?;
+        } else {
+            self.remember_leftovers(&log, &tree, &now, &current)?;
+        }
         PendingCheckout::clear(&self.paper_dir)
             .map_err(|source| UndoError::io("remove", &marker_name, source))?;
 

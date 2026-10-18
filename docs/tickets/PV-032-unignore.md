@@ -215,3 +215,10 @@ precedence.
 - Four CLI tests (`unignore_refuses_what_ignore_refuses_and_a_leading_bang`, `unignoring_a_path_that_is_not_ignored_says_so_and_records_nothing`, `why_cannot_be_combined_with_other_arguments_or_flags`, `why_resolves_the_path_from_where_paper_runs_and_changes_nothing`): compare against `.git/info/exclude` as read before the command, not `""` (init writes a default commented file).
 - `why_json_has_fixed_keys_and_agrees_with_git_for_every_local_source`: `local.tmp` is written after `paper ignore data/raw`, so it is untracked and locally ignored.
 - Against GREEN at HEAD: core unignore 42 pass, core ignore 52 pass, CLI ignore 55 pass + 1 ignored (the undo note). Clippy clean.
+
+### GREEN (after PV-030) · rust-engineer · 2026-10-18
+- `project/undo.rs`: a single `undo` or `redo` whose step entry is `Ignore` or `Unignore` plans the checkout over `.gitignore` paths only (`undo --to` is unchanged). For those steps `files_match` is `true` and `checkout-left.json` is removed, so nothing shows up as "left as they are"; the files the step left alone are picked up by the next command's I1 snapshot as an edit. Consequence: after undoing a `--local` unignore the next command re-tracks the files, which also ends the redo stack (`redo` says nothing to redo). That follows the decision, and the undo note tells the user how to put the rule back.
+- `render/undo.rs`: the `--local` note when `Undone::local_rules()`; the `#[ignore]` on its test is gone and it passes. `OutOfSyncWithGit` matches compile unchanged.
+- Specs: 02-cli activity list gains `unignore` and the local suffix; § `--local` says undo/redo writes only `.gitignore` files.
+- Tests (core `unignore.rs`): undo of a local unignore and of a local ignore, redo of a local ignore, and `undo --to` across ignore entries, files byte-identical; the next command re-records the left files. Shared ignore/unignore undo/redo tests are unchanged and pass.
+- fmt, clippy and the full workspace suite pass.

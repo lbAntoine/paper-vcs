@@ -1251,3 +1251,83 @@ fn why_refuses_an_empty_name_a_path_inside_git_and_one_outside_the_project() {
         Err(IgnoreError::Outside { .. })
     ));
 }
+
+// ---- undo and redo change tracking, never files ----
+
+#[test]
+fn undo_and_redo_of_a_local_unignore_leave_every_file_on_disk() {
+    let (dir, mut project) = raw_data_project();
+    ignore_local(&mut project, &["data/raw"]);
+    unignore_local(&mut project, &["data/raw"]);
+    let disk = files(dir.path());
+    let exclude_text = exclude(dir.path());
+
+    let back = undone(project.undo().unwrap());
+    assert!(back.files_match, "{back:?}");
+    assert!(back.skipped.is_empty(), "{back:?}");
+    assert_eq!(files(dir.path()), disk);
+    assert_eq!(exclude(dir.path()), exclude_text);
+
+    // The next command records the files the undo left as an edit, which ends the redo stack.
+    assert!(matches!(
+        project.redo().unwrap(),
+        UndoOutcome::NothingToRedo
+    ));
+    assert_eq!(files(dir.path()), disk);
+    git(dir.path(), &["fsck", "--strict", "--no-progress"]);
+}
+
+#[test]
+fn the_next_command_records_the_files_an_undone_local_unignore_left() {
+    let (dir, mut project) = raw_data_project();
+    ignore_local(&mut project, &["data/raw"]);
+    unignore_local(&mut project, &["data/raw"]);
+    project.undo().unwrap();
+    assert!(
+        !draft_files(dir.path())
+            .iter()
+            .any(|f| f.starts_with("data/raw/"))
+    );
+
+    project.snapshot().unwrap();
+
+    let draft = draft_files(dir.path());
+    for file in RAW_FILES {
+        assert!(draft.contains(&file.to_owned()), "{draft:?}");
+    }
+}
+
+#[test]
+fn undo_and_redo_of_a_local_ignore_leave_every_file_on_disk() {
+    let (dir, mut project) = raw_data_project();
+    let disk = files(dir.path());
+    ignore_local(&mut project, &["data/raw"]);
+
+    let back = undone(project.undo().unwrap());
+    assert!(back.files_match, "{back:?}");
+    assert_eq!(files(dir.path()), disk);
+
+    let redone = undone(project.redo().unwrap());
+    assert!(redone.files_match, "{redone:?}");
+    assert_eq!(files(dir.path()), disk);
+}
+
+#[test]
+fn undo_to_across_ignore_entries_keeps_the_usual_rules() {
+    let (dir, mut project) = raw_data_project();
+    ignore(&mut project, &["data/raw"]);
+    let target = project.activity(1).unwrap()[0].short_id.clone();
+    unignore(&mut project, &["data/raw"]);
+    let disk = files(dir.path());
+
+    let outcome = project.undo_to(&target).unwrap();
+
+    let reached = undone(outcome);
+    assert_eq!(reached.entry.kind, OpKind::Ignore);
+    assert_eq!(files_but_gitignore(dir.path()), {
+        let mut d = disk;
+        d.remove(".gitignore");
+        d
+    });
+    assert!(check_verbose(dir.path(), "data/raw/a.csv").is_some());
+}
