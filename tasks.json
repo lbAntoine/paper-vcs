@@ -45,11 +45,11 @@
       "id": "e1a0c026",
       "title": "PV-026: I4 acceptance: random 200-step sessions undo and redo exactly (proptest)",
       "description": "GitHub issue #44. Wave 3, parallel with PV-018 (tests only). Size M. Needs PV-025 and PV-031.",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "high",
       "sprint": "v0.2-b",
       "created_at": "2026-10-17T08:47:11Z",
-      "updated_at": "2026-10-18T09:25:14Z"
+      "updated_at": "2026-10-18T15:25:37Z"
     },
     {
       "id": "e1a0c018",
