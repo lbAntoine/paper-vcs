@@ -5,13 +5,13 @@
 - **Branch:** `feat/PV-027-gc`
 - **Depends on:** PV-022, PV-023 (merged). Runs in parallel with PV-025 (crash recovery).
 - **Touches:** `crates/paper-core/src/activity/` (deleting op files, the horizon), `crates/paper-core/src/project/gc.rs` (new),
-  `crates/paper-core/src/project/activity.rs` (stop at the horizon), `crates/paper-core/src/project/undo.rs`
-  (only: the horizon op has no parent for undo), `crates/paper-core/src/error.rs` (additions only),
+  `crates/paper-core/src/project/mod.rs` (one `mod gc;` line and its re-exports only),
+  `crates/paper-core/src/error.rs` (additions only),
   `crates/paper-core/tests/gc.rs` (new), `crates/paper-cli/src/**` (the `gc` command),
   `crates/paper-cli/tests/gc.rs` (new), `docs/specs/02-cli.md` (new § `paper gc`),
   `docs/specs/03-architecture.md` (§ On-disk layout: keep-alive chain and gc paragraphs only)
-- **Must not touch:** `crates/paper-core/src/project/{mod,checkout,export,save,init}.rs` and the
-  open path (PV-025); 03-architecture § Command lifecycle and § Crash safety (PV-025).
+- **Must not touch:** `crates/paper-core/src/project/{checkout,export,save,init,undo,activity}.rs`
+  and the open path in `mod.rs` (PV-025); 03-architecture § Command lifecycle and § Crash safety (PV-025).
 - **Specs:** `03-architecture.md` § On-disk layout (keep-alive chain, `paper gc`, crash leftovers);
   `05-roadmap.md` § v0.2 (`gc`)
 
@@ -38,10 +38,12 @@ Nothing inside the window is affected, and nothing is cleaned up automatically.
 - **What is kept:** every op on the head chain newer than the cutoff, plus every op on the head's
   redo stack and on the redo stacks of kept ops (so `redo` still works), plus the head op itself
   even if older. The oldest kept op on the head chain becomes the **horizon**.
-- **The horizon:** `.git/paper/activity/horizon` holds that op's id (written atomically). The
-  activity listing stops at the horizon (the last line says older history was cleaned up), and
-  `undo` treats the horizon op as having no parent (`NothingToUndo`, with a note in the outcome
-  that older history was cleaned up by gc). Without a horizon file, behaviour is unchanged.
+- **The horizon:** `.git/paper/activity/horizon` holds that op's id (written atomically).
+  `ActivityLog::read` returns the horizon op with `parent: None`, so the activity listing and
+  `undo` both stop there without any change to `undo.rs` or `project/activity.rs` (undo reports
+  `NothingToUndo`). `ActivityLog` exposes whether a horizon exists; the CLI adds a note to
+  `paper activity` and to `Nothing to undo.` saying older history was cleaned up by `paper gc`.
+  Without a horizon file, behaviour is unchanged.
 - **What is removed:** op files not kept, `.tmp*` files in `activity/` and `ops/`, and
   `view.json.v1`.
 - **Keep-alive chain rebuilt:** a new `refs/paper/keep` whose commits name every commit referenced
@@ -60,7 +62,7 @@ Nothing inside the window is affected, and nothing is cleaned up automatically.
 ## Scope
 
 1. paper-core `Project::gc(older_than, dry_run) -> GcOutcome`, the horizon file, the rebuilt chain.
-2. The activity listing and undo respect the horizon.
+2. The horizon is applied when ops are read; the CLI notes it in `activity` and `Nothing to undo.`.
 3. CLI `paper gc` (human and JSON).
 4. Specs: 02-cli new § `paper gc`; 03-architecture § On-disk layout (horizon file; chain rebuild in
    groups of 50; gc is not undoable).
