@@ -25,11 +25,11 @@
       "id": "e1a0c031",
       "title": "PV-031: undo gets stuck behind a file it had to leave alone (skipped paths re-recorded as edits)",
       "description": "GitHub issue #57. Wave 2, parallel with PV-029. Size M. Maintainer: option (a).",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "high",
       "sprint": "v0.2-b",
       "created_at": "2026-10-18T00:05:04Z",
-      "updated_at": "2026-10-18T09:25:14Z"
+      "updated_at": "2026-10-18T13:24:42Z"
     },
     {
       "id": "e1a0c029",
