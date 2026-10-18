@@ -100,6 +100,8 @@ the immutability-first style.
       activity/ops/<opid>.json  one file per operation (immutable: written once, fsynced, renamed
                                 into place, then the directory is fsynced)
       activity/head             current op id (replaced atomically via rename)
+      activity/horizon          only after `paper gc`: the oldest op still kept (an op id,
+                                replaced atomically); that op is read with `parent: null`
       view.json.v1              format 1's view, kept after migration (removed by `gc`)
       exported.json             git refs as paper last wrote them
       wc-state.json             stat cache for the checked-out draft (path → size,mtime,inode,blob)
@@ -157,9 +159,26 @@ itself (a crash leaves at worst one extra keep commit). The commit has the empty
 message `paper keep-alive`, and paper's identity at the current time. Its parents are the
 previous keep commit (if any) plus every commit of the op's view that the previous op's view
 did not have (the first op: all of them), an octopus merge. This
-uses one ref instead of thousands. `paper gc [--older-than 90d]` rebuilds the chain from
-the operations inside the window and deletes older ops. Nothing is garbage-collected
-automatically before v1.0.
+uses one ref instead of thousands. Nothing is garbage-collected automatically before v1.0.
+
+**`paper gc [--older-than 90d] [--dry-run]`** trims the log to a recent window. It keeps every
+op on the head chain newer than the cutoff, the head, the head's `position` op (where the next
+`undo` starts) and every op on a kept op's redo stack (so `redo` still works); the chain from
+the oldest kept op (the *horizon*) to the head stays whole. An op the head names is never
+swept, even if a damaged log leaves it off the chain. Under the project lock it (1) writes
+`activity/horizon`, then (2) writes a new `refs/paper/keep` whose commits name every commit of
+the kept ops' views, in groups of at most 50 parents per commit (each linked to the previous
+commit of the new chain), then (3) deletes the older op files, `.tmp*` files in `activity/` and
+`ops/`, orphan ops, and `view.json.v1`. The horizon goes first so that a crash before step (2)
+leaves the old keep chain covering every op, and the ops below the horizon are only orphans.
+A crash leaves extra files, never missing ones that are still needed; running `gc` again
+finishes the job. `ActivityLog::read` returns the horizon op with `parent: null` whatever its
+file says (op files are never rewritten), so `activity` and `undo` stop there. The old keep
+chain becomes unreachable, so a later `git gc` can reclaim the old objects; paper never runs
+`git gc`. When nothing is old enough and no orphan op is left, `gc` writes no horizon and
+leaves the keep chain alone (it still sweeps leftovers); orphans from an interrupted run make
+it rebuild the keep chain, without a new horizon. `gc` records no op: it trims the record undo uses, so it is not
+undoable.
 
 **Change IDs** are 16 random bytes stored as the extra commit header `change-id`, and
 displayed in `k`–`z` letters with the shortest unique prefix

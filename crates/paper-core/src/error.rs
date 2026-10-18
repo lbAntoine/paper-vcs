@@ -11,7 +11,7 @@ use crate::config::{ConfigError, Conflict, Key, Origin, Scope};
 use crate::point::ParsePointError;
 use crate::profile::gitignore::GitignoreError;
 use crate::project::{
-    DiffError, HistoryError, InitError, OpenError, ResolveError, RestoreError, SaveError,
+    DiffError, GcError, HistoryError, InitError, OpenError, ResolveError, RestoreError, SaveError,
     ShowError, StatusError, UndoError,
 };
 
@@ -808,6 +808,38 @@ impl From<RestoreError> for PaperError {
                 converted
                     .next
                     .insert(0, Suggestion::new("paper status", "see where things stand"));
+                converted
+            }
+        }
+    }
+}
+
+impl From<GcError> for PaperError {
+    fn from(error: GcError) -> Self {
+        match error {
+            GcError::InvalidAge { given } => Self::user(
+                format!("'{given}' is not a duration paper understands"),
+                if given.starts_with("--") {
+                    format!(
+                        "`--older-than` needs a duration such as `90d` right after it, but \
+                         '{given}' looks like another option. Nothing was removed."
+                    )
+                } else {
+                    "`--older-than` takes a whole number of days or weeks, at least one: `30d`, \
+                     `12w`. Nothing was removed."
+                        .to_owned()
+                },
+                vec![
+                    Suggestion::new("paper gc --older-than 30d", "keep the last 30 days"),
+                    Suggestion::new("paper gc --older-than 12w", "keep the last 12 weeks"),
+                ],
+            ),
+            GcError::Git(_) | GcError::Activity(_) | GcError::Io { .. } => {
+                let mut converted = Self::project("Paper could not clean up the history", &error);
+                converted.next.insert(
+                    0,
+                    Suggestion::new("paper gc", "run it again; it finishes what it started"),
+                );
                 converted
             }
         }

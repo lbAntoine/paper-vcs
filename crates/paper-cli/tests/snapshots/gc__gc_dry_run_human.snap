@@ -1,0 +1,9 @@
+---
+source: crates/paper-cli/tests/gc.rs
+expression: env.redact(&dry.stdout)
+---
+Dry run: nothing was changed.
+Would remove 3 entries from the activity list; would keep 2 entries, back to [TIME].
+Would sweep 1 leftover file:
+  activity/ops/.tmp-op
+Paper does not run `git gc` for you: run it to let git reclaim the old drafts and undone work paper no longer needs. Your saves are always kept.

@@ -4,11 +4,12 @@
 use std::io::{self, IsTerminal};
 use std::path::{Path, PathBuf};
 
+use paper_core::activity::ActivityLog;
 use paper_core::config::Settings;
 use paper_core::profile::Profile;
 use paper_core::project::{
-    HistoryRequest, InitError, LockOptions, PathSelection, Project, SaveOutcome, SaveRequest,
-    UndoError, UndoOutcome, has_damaged_git,
+    GcAge, HistoryRequest, InitError, LockOptions, PathSelection, Project, SaveOutcome,
+    SaveRequest, UndoError, UndoOutcome, has_damaged_git,
 };
 use paper_core::{ErrorKind, PaperError, Suggestion};
 use paper_git::{GitRepo, Identity};
@@ -18,6 +19,7 @@ use crate::config_cmd;
 use crate::inspect;
 use crate::paths::Paths;
 use crate::prompt;
+use crate::render::gc;
 use crate::render::style::Style;
 use crate::render::undo::{self, Verb};
 use crate::render::{Verbosity, human, json};
@@ -56,6 +58,10 @@ pub fn execute(cli: &Cli, style: Style) -> Output {
         Command::Config { action } => config_cmd::run(cli, action),
         Command::Activity { limit } => activity(cli, *limit, style),
         Command::Undo { to } => undo(cli, to.as_deref()),
+        Command::Gc {
+            older_than,
+            dry_run,
+        } => gc(cli, older_than, *dry_run),
         Command::Redo => undo_family(cli, Verb::Redo, Project::redo),
         Command::Restore { paths, from } => inspect::restore(cli, paths, from.as_deref()),
     }
@@ -230,9 +236,23 @@ fn history(
 fn activity(cli: &Cli, limit: usize, style: Style) -> Output {
     let (project, _) = open(cli)?;
     let entries = project.activity(limit)?;
+    // The note belongs under the listing only when it reached the horizon; a `-n` that cuts
+    // the list short says nothing about what lies further back.
+    let horizon = ActivityLog::open(project.paper_dir()).horizon()?;
+    let trimmed = horizon
+        .as_ref()
+        .is_some_and(|id| entries.last().is_some_and(|last| last.id == *id));
     Ok(finish(
         cli,
-        || human::activity(&entries, now(), style),
+        || {
+            let mut text = human::activity(&entries, now(), style);
+            if trimmed {
+                text.push('\n');
+                text.push_str(gc::HORIZON_NOTE);
+                text.push('\n');
+            }
+            text
+        },
         || json::activity(&entries),
     ))
 }
@@ -245,6 +265,14 @@ fn undo(cli: &Cli, to: Option<&str>) -> Output {
     }
 }
 
+/// `paper gc`: opens without snapshotting; gc records no entry.
+fn gc(cli: &Cli, older_than: &str, dry_run: bool) -> Output {
+    let age = GcAge::parse(older_than).map_err(PaperError::from)?;
+    let (mut project, _) = open(cli)?;
+    let outcome = project.gc(age, dry_run)?;
+    Ok(finish(cli, || gc::human(&outcome), || gc::json(&outcome)))
+}
+
 /// Opens the project (core snapshots first, so the CLI doesn't), runs one undo-family command
 /// and renders what it did.
 fn undo_family(
@@ -254,9 +282,17 @@ fn undo_family(
 ) -> Output {
     let (mut project, _) = open(cli)?;
     let outcome = run(&mut project)?;
+    let trimmed = ActivityLog::open(project.paper_dir()).has_horizon();
     Ok(finish(
         cli,
-        || undo::human(verb, &outcome),
+        || {
+            let mut text = undo::human(verb, &outcome);
+            if trimmed && outcome == UndoOutcome::NothingToUndo {
+                text.push_str(gc::HORIZON_NOTE);
+                text.push('\n');
+            }
+            text
+        },
         || undo::json(verb, &outcome),
     ))
 }
