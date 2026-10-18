@@ -127,9 +127,11 @@ impl Project {
         let log = ActivityLog::open(&self.paper_dir);
         let plan = Plan::make(&log, &self.paper_dir, older_than)?;
         if !dry_run {
+            // Horizon first: a crash before the new keep chain leaves the old chain covering
+            // every op, and the ops below the horizon are just orphans the next run sweeps.
             if !plan.removed.is_empty() {
-                rebuild_keep(&self.repo, &self.identity, &plan.kept)?;
                 log.write_horizon(&plan.horizon.id)?;
+                rebuild_keep(&self.repo, &self.identity, &plan.kept)?;
             }
             for path in plan
                 .removed
@@ -191,17 +193,25 @@ impl Plan {
         let last = horizon_index(&chain, age);
         let removed: Vec<OpId> = chain[last + 1..].iter().map(|op| op.id.clone()).collect();
         let on_chain: BTreeSet<String> = chain.iter().map(|op| op.id.to_string()).collect();
+        // An op the head names (a redo id or the position) is never an orphan, even when a
+        // damaged log leaves it off the chain.
+        let named: BTreeSet<String> = chain
+            .first()
+            .into_iter()
+            .flat_map(|head| head.redo.iter().chain(std::iter::once(&head.position)))
+            .map(ToString::to_string)
+            .collect();
         let orphans: Vec<String> = log
             .op_file_names()?
             .into_iter()
-            .filter(|name| !on_chain.contains(name))
+            .filter(|name| !on_chain.contains(name) && !named.contains(name))
             .collect();
 
         let mut swept: Vec<String> = orphans
             .iter()
             .map(|name| format!("activity/ops/{name}.json"))
             .collect();
-        swept.extend(tmp_files(&log.root().join("ops"), "activity/ops")?);
+        swept.extend(tmp_files(&log.ops_dir(), "activity/ops")?);
         swept.extend(tmp_files(log.root(), "activity")?);
         if paper_dir.join(OLD_VIEW).is_file() {
             swept.push(OLD_VIEW.to_owned());
@@ -239,7 +249,8 @@ fn walk_chain(log: &ActivityLog) -> Result<Vec<Op>, GcError> {
 }
 
 /// The index of the oldest op to keep: the head, everything newer than the cutoff, the head's
-/// `position` op (where the next undo starts) and the redo stacks of what is kept (the chain between them stays whole).
+/// `position` op (where the next undo starts) and the redo stacks of what is kept (the chain
+/// between them stays whole).
 fn horizon_index(chain: &[Op], age: GcAge) -> usize {
     let cutoff = jiff::Timestamp::now()
         .checked_sub(jiff::SignedDuration::from_hours(24 * i64::from(age.days)))

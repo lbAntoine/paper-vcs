@@ -644,6 +644,39 @@ fn leftovers_orphans_and_the_old_view_are_swept() {
     git(dir.path(), &["fsck", "--strict", "--no-progress"]);
 }
 
+#[test]
+fn an_op_the_head_names_is_never_swept_even_when_it_is_off_the_chain() {
+    let (dir, mut project) = history(2);
+    let head = chain(dir.path())[0].clone();
+    let (redo_id, position_id) = (OpId::random().to_string(), OpId::random().to_string());
+    for id in [&redo_id, &position_id] {
+        let mut stray = head.clone();
+        stray["id"] = id.clone().into();
+        stray["parent"] = Value::Null;
+        fs::write(
+            ops_dir(dir.path()).join(format!("{id}.json")),
+            serde_json::to_vec_pretty(&stray).unwrap(),
+        )
+        .unwrap();
+    }
+    // A hand-made inconsistent log: the head names ops that its chain does not contain.
+    let mut damaged = head.clone();
+    damaged["redo"] = serde_json::json!([redo_id]);
+    damaged["position"] = position_id.clone().into();
+    fs::write(
+        ops_dir(dir.path()).join(format!("{}.json", id_of(&head))),
+        serde_json::to_vec_pretty(&damaged).unwrap(),
+    )
+    .unwrap();
+
+    let outcome = gc(&mut project, "30d");
+
+    assert!(outcome.swept.is_empty(), "{:?}", outcome.swept);
+    for id in [&redo_id, &position_id] {
+        assert!(ops_dir(dir.path()).join(format!("{id}.json")).is_file());
+    }
+}
+
 // ---- --dry-run ----
 
 #[test]

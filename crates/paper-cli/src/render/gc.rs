@@ -11,7 +11,7 @@ use super::json::{SCHEMA, line};
 pub const HORIZON_NOTE: &str =
     "Older history was cleaned up by `paper gc`, so there is nothing further back to go to.";
 
-/// The date (`YYYY-MM-DD`) of the horizon entry, from its RFC 3339 time.
+/// The date (`YYYY-MM-DD`, UTC) of the horizon entry, from its RFC 3339 time.
 fn horizon_date(outcome: &GcOutcome) -> &str {
     outcome
         .horizon
@@ -67,7 +67,8 @@ pub fn human(outcome: &GcOutcome) -> String {
         }
     }
     out.push_str(
-        "Paper does not run `git gc` for you: run it to let git reclaim the space of old saves.\n",
+        "Paper does not run `git gc` for you: run it to let git reclaim the old drafts and \
+         undone work paper no longer needs. Your saves are always kept.\n",
     );
     out
 }

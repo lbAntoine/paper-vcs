@@ -5,4 +5,4 @@ expression: env.redact(&real.stdout)
 Removed 3 entries from the activity list; kept 2 entries, back to [TIME].
 Swept 1 leftover file:
   activity/ops/.tmp-op
-Paper does not run `git gc` for you: run it to let git reclaim the space of old saves.
+Paper does not run `git gc` for you: run it to let git reclaim the old drafts and undone work paper no longer needs. Your saves are always kept.

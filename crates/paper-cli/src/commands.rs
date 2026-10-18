@@ -236,7 +236,12 @@ fn history(
 fn activity(cli: &Cli, limit: usize, style: Style) -> Output {
     let (project, _) = open(cli)?;
     let entries = project.activity(limit)?;
-    let trimmed = ActivityLog::open(project.paper_dir()).has_horizon();
+    // The note belongs under the listing only when it reached the horizon; a `-n` that cuts
+    // the list short says nothing about what lies further back.
+    let horizon = ActivityLog::open(project.paper_dir()).horizon()?;
+    let trimmed = horizon
+        .as_ref()
+        .is_some_and(|id| entries.last().is_some_and(|last| last.id == *id));
     Ok(finish(
         cli,
         || {

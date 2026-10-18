@@ -818,8 +818,16 @@ impl From<GcError> for PaperError {
         match error {
             GcError::InvalidAge { given } => Self::user(
                 format!("'{given}' is not a duration paper understands"),
-                "`--older-than` takes a whole number of days or weeks, at least one: `30d`, \
-                 `12w`. Nothing was removed.",
+                if given.starts_with("--") {
+                    format!(
+                        "`--older-than` needs a duration such as `90d` right after it, but \
+                         '{given}' looks like another option. Nothing was removed."
+                    )
+                } else {
+                    "`--older-than` takes a whole number of days or weeks, at least one: `30d`, \
+                     `12w`. Nothing was removed."
+                        .to_owned()
+                },
                 vec![
                     Suggestion::new("paper gc --older-than 30d", "keep the last 30 days"),
                     Suggestion::new("paper gc --older-than 12w", "keep the last 12 weeks"),

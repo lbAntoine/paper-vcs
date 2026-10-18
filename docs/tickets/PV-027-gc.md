@@ -55,9 +55,10 @@ Nothing inside the window is affected, and nothing is cleaned up automatically.
   by the kept ops' views, chained in groups of at most 50 parents per commit (big octopus commits
   upset some git tools). The old chain becomes unreachable, so a later `git gc` can reclaim old
   objects; paper doesn't run `git gc` itself, and the output says so.
-- **Order and safety:** under the lock; write the new keep chain and the horizon first, then delete
-  files. A crash midway leaves extra files, never missing ones that are still needed; running `gc`
-  again finishes the job.
+- **Order and safety:** under the lock; write the horizon first, then the new keep chain, then delete
+  files. After a crash between the steps the old keep chain still covers every op, and the ops
+  below the horizon are only orphans. A crash leaves extra files, never missing ones that are
+  still needed; running `gc` again finishes the job.
 - **Not undoable:** gc records no activity entry (it trims the record undo uses). `--dry-run` lists
   what would be removed and changes nothing. The output reports how many entries were removed and
   kept, the horizon's date, and the files swept.
@@ -135,3 +136,12 @@ Nothing inside the window is affected, and nothing is cleaned up automatically.
 - `crates/paper-core/src/project/gc.rs`: `horizon_index` now starts from the oldest of the cutoff's oldest kept op and the head's `position` op, then extends for redo targets as before. `undo.rs` untouched.
 - Specs: `02-cli.md` (§ `paper gc` kept list) and `03-architecture.md` (gc paragraph) name the head's position op.
 - No deviations.
+
+### GREEN (review round 1) · rust-engineer · 2026-10-18
+
+- `paper activity` shows the horizon note only when the last listed entry is the horizon op, so a `-n` that truncates the list gets no note. New CLI test with more kept entries than the default limit (no note by default, note with `-n 1000`). Specified in 02-cli § `paper gc`.
+- Write order is now horizon, then the rebuilt keep chain, then deletions (reason in the ticket Decision and the 03-architecture gc paragraph).
+- Wording: gc help and output say git can reclaim old drafts and undone work, and that saves are always kept. The `gc_human` and `gc_dry_run_human` snapshots changed in that one line only.
+- `--older-than --dry-run` (value starting with `--`): the error now says a duration such as `90d` is needed after `--older-than`. `allow_hyphen_values` kept; test added.
+- `gc.rs` uses `log.ops_dir()`. An op named by the head (redo ids, position) is never an orphan; core test with a hand-made inconsistent log. Rewrapped the long lines in gc.rs and both specs; the spec says the horizon date is UTC.
+- No existing test assertions changed.

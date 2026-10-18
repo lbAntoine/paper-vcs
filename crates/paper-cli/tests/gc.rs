@@ -297,6 +297,31 @@ fn leftovers_are_swept_and_listed() {
     assert!(!env.work.join(".git/paper/view.json.v1").exists());
 }
 
+#[test]
+fn the_note_shows_only_when_activity_reached_the_horizon() {
+    let env = project();
+    for i in 0..12 {
+        env.write("sections/intro.tex", &format!("draft {i}\n"));
+        env.paper(&["save", &format!("More {i}")]).assert_code(0);
+    }
+    assert!(
+        chain(&env).len() > 25,
+        "more entries than the default limit"
+    );
+    backdate_oldest(&env, 3, 200);
+    env.paper(&["gc", "--older-than", "30d"]).assert_code(0);
+    let kept = activity_count(&env);
+    assert!(kept > 20, "{kept} kept entries");
+
+    let short = env.paper(&["activity"]);
+    let full = env.paper(&["activity", "-n", "1000"]);
+
+    short.assert_code(0);
+    assert!(!short.stdout.to_lowercase().contains(NOTE), "{short:#?}");
+    full.assert_code(0);
+    assert!(full.stdout.to_lowercase().contains(NOTE), "{full:#?}");
+}
+
 // ---- --dry-run ----
 
 #[test]
@@ -337,6 +362,15 @@ fn a_duration_below_one_day_or_garbage_is_a_three_part_user_error() {
         run.assert_three_part_error(1);
     }
     assert_eq!(before, git_dir_bytes(&env.work), "nothing was touched");
+}
+
+#[test]
+fn a_flag_after_older_than_says_a_duration_is_needed() {
+    let env = project();
+    let run = env.paper(&["gc", "--older-than", "--dry-run"]);
+    run.assert_three_part_error(1);
+    assert!(run.stderr.contains("90d"), "{run:#?}");
+    assert!(run.stderr.contains("--dry-run"), "{run:#?}");
 }
 
 // ---- snapshots ----
