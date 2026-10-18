@@ -2,7 +2,7 @@
 
 use std::fmt::Write as _;
 
-use paper_core::project::{ChangeStat, RestoreSkip, Restored, SkippedPath, Status};
+use paper_core::project::{ChangeStat, OutsidePaper, RestoreSkip, Restored, SkippedPath, Status};
 use paper_core::snapshot::ChangeKind;
 
 use super::diff::{binary_sizes, counts};
@@ -27,6 +27,10 @@ pub fn status(status: &Status, now: i64, style: Style) -> String {
         last.message,
         relative_time(last.time.seconds, now)
     );
+    if let Some(outside) = &status.outside_paper {
+        out.push_str(&outside_paper(outside));
+        out.push('\n');
+    }
     if status.changes.is_empty() {
         out.push_str("Nothing unsaved.\n");
     } else {
@@ -59,6 +63,33 @@ pub fn status(status: &Status, now: i64, style: Style) -> String {
         out.push_str(&large_lines(&status.large));
     }
     out
+}
+
+/// The block that says plain git moved things, worded like save's refusal.
+fn outside_paper(outside: &OutsidePaper) -> String {
+    let (text, command, explanation) = match outside {
+        OutsidePaper::LineMoved { line } => (
+            format!(
+                "The line '{line}' was changed outside paper: commits were added to it, or it \
+                 was moved, with plain git. Paper can't save on top of that yet."
+            ),
+            format!("git log {line}"),
+            "see what changed",
+        ),
+        OutsidePaper::OnAnotherBranch { line, found } => {
+            let place = found
+                .as_ref()
+                .map_or("no branch (detached HEAD)".to_owned(), |b| {
+                    format!("the branch '{b}'")
+                });
+            (
+                format!("Git is on {place}, not on the line '{line}'."),
+                format!("git switch {line}"),
+                "go back to the line",
+            )
+        }
+    };
+    format!("{text}\n  next: {command}  # {explanation}\n")
 }
 
 pub fn restore(restored: &Restored) -> String {

@@ -1,7 +1,9 @@
 //! `--json` output for `status`, `diff` and `restore`; `show` reuses [`files`].
 //! Shapes are documented in `docs/specs/02-cli.md` (JSON output).
 
-use paper_core::project::{ChangeStat, FileDiffEntry, RestoreSkip, Restored, SkippedPath, Status};
+use paper_core::project::{
+    ChangeStat, FileDiffEntry, OutsidePaper, RestoreSkip, Restored, SkippedPath, Status,
+};
 use paper_diff::{FileDiff, LineKind};
 use serde::Serialize;
 
@@ -58,6 +60,15 @@ struct StatusOut {
     changes: Vec<StatusChange>,
     skipped: Vec<SkippedFile>,
     large: Vec<LargeFile>,
+    outside_paper: Option<OutsidePaperOut>,
+}
+
+/// Where the line stands when plain git moved it. Key order is `kind, line, found`.
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum OutsidePaperOut {
+    LineMoved { line: String },
+    OnAnotherBranch { line: String, found: Option<String> },
 }
 
 #[derive(Serialize)]
@@ -176,6 +187,15 @@ pub fn status(status: &Status) -> String {
         changes,
         skipped: status.skipped.iter().map(skipped).collect(),
         large: large(&status.large),
+        outside_paper: status.outside_paper.as_ref().map(|outside| match outside {
+            OutsidePaper::LineMoved { line } => OutsidePaperOut::LineMoved {
+                line: line.to_string(),
+            },
+            OutsidePaper::OnAnotherBranch { line, found } => OutsidePaperOut::OnAnotherBranch {
+                line: line.to_string(),
+                found: found.clone(),
+            },
+        }),
     })
 }
 

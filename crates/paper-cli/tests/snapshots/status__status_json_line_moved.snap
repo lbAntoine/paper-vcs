@@ -1,0 +1,29 @@
+---
+source: crates/paper-cli/tests/status.rs
+expression: env.redact_json(&run.stdout)
+---
+{
+  "changes": [],
+  "large": [],
+  "last": {
+    "author": {
+      "email": "mina@uni.example",
+      "name": "Mina Park"
+    },
+    "change_id": "[ID]",
+    "commit": "[HASH]",
+    "id": "[ID]",
+    "message": "Rewrite intro",
+    "time": "[TIME]",
+    "tip_of": [
+      "main"
+    ]
+  },
+  "line": "main",
+  "outside_paper": {
+    "kind": "line_moved",
+    "line": "main"
+  },
+  "schema": 1,
+  "skipped": []
+}
