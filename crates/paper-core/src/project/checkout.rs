@@ -112,10 +112,44 @@ impl Project {
         current: &BTreeMap<String, TreeFile>,
         snapshot_skipped: &[Skipped],
     ) -> Result<CheckoutPlan, GitError> {
+        self.plan(targets, wanted, current, snapshot_skipped, false)
+    }
+
+    /// [`Project::plan_checkout`] for the commands that set the draft to `wanted` directly
+    /// (undo, redo, `undo --to`, and finishing an interrupted checkout). A file that `wanted`
+    /// doesn't track and whose `.gitignore` files ignore is left on disk, not deleted: that
+    /// is what `paper ignore` leaves behind. It isn't listed as skipped either.
+    pub(super) fn plan_checkout_to_draft(
+        &self,
+        targets: BTreeSet<&String>,
+        wanted: &BTreeMap<String, TreeFile>,
+        current: &BTreeMap<String, TreeFile>,
+        snapshot_skipped: &[Skipped],
+    ) -> Result<CheckoutPlan, GitError> {
+        self.plan(targets, wanted, current, snapshot_skipped, true)
+    }
+
+    fn plan(
+        &self,
+        targets: BTreeSet<&String>,
+        wanted: &BTreeMap<String, TreeFile>,
+        current: &BTreeMap<String, TreeFile>,
+        snapshot_skipped: &[Skipped],
+        leave_ignored: bool,
+    ) -> Result<CheckoutPlan, GitError> {
         let mut skipped = Vec::new();
         let mut deletes: Vec<&String> = Vec::new();
         let mut candidates = Vec::new();
+        let case_counts = lowercase_counts(current);
+        let ignored = if leave_ignored {
+            self.ignored_in(current, wanted)?
+        } else {
+            BTreeSet::new()
+        };
         for path in targets {
+            if ignored.contains(path) {
+                continue;
+            }
             let want = wanted.get(path);
             let kept = left_alone(snapshot_skipped, path)
                 .or_else(|| self.on_disk_symlink(path))
@@ -128,7 +162,20 @@ impl Project {
             } else if want.is_none() {
                 deletes.push(path);
             } else if want != current.get(path) {
-                candidates.push(path);
+                // Not recorded in the draft, but already on disk exactly as wanted (an
+                // ignored file that becomes tracked again): nothing to write, nothing in the way.
+                // Only for the commands that set the draft directly, and never where a path
+                // differing only in case is involved: a case-folding filesystem would show
+                // the other spelling's file here.
+                let already_there = leave_ignored
+                    && !current.contains_key(path)
+                    && !has_case_twin(&case_counts, path)
+                    && fs::symlink_metadata(self.repo.workdir().join(path)).is_ok()
+                    && self.spelled_exactly(path)
+                    && want.is_some_and(|file| self.on_disk_equals(path, file));
+                if !already_there {
+                    candidates.push(path);
+                }
             }
         }
         let plan = self.settle(candidates, deletes, |p| current.contains_key(p));
@@ -201,6 +248,42 @@ impl Project {
         Ok(())
     }
 
+    /// Whether every part of `path` is listed on disk with exactly that spelling.
+    fn spelled_exactly(&self, path: &str) -> bool {
+        let mut dir = self.repo.workdir().to_owned();
+        for part in path.split('/') {
+            let listed = fs::read_dir(&dir)
+                .is_ok_and(|entries| entries.flatten().any(|e| e.file_name() == part));
+            if !listed {
+                return false;
+            }
+            dir.push(part);
+        }
+        true
+    }
+
+    /// Whether the regular file at `path` has the bytes, and the executable bit, of `file`.
+    fn on_disk_equals(&self, path: &str, file: &TreeFile) -> bool {
+        let absolute = self.repo.workdir().join(path);
+        let Ok(meta) = fs::symlink_metadata(&absolute) else {
+            return false;
+        };
+        if !meta.is_file() || file.kind == FileKind::Symlink {
+            return false;
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if (meta.permissions().mode() & 0o111 != 0) != (file.kind == FileKind::Executable) {
+                return false;
+            }
+        }
+        match (fs::read(&absolute), self.repo.read_blob(&file.blob)) {
+            (Ok(on_disk), Ok(saved)) => on_disk == saved,
+            _ => false,
+        }
+    }
+
     /// Whether the path, or any directory above it, is a symlink on disk.
     fn on_disk_symlink(&self, path: &str) -> Option<RestoreSkip> {
         let root = self.repo.workdir();
@@ -247,6 +330,21 @@ impl Project {
         }
         Ok(())
     }
+}
+
+/// How many paths of `files` have each lowercase spelling.
+fn lowercase_counts(files: &BTreeMap<String, TreeFile>) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::new();
+    for path in files.keys() {
+        *counts.entry(path.to_lowercase()).or_insert(0) += 1;
+    }
+    counts
+}
+
+/// Whether another path of the files behind `counts` differs from `path` only in letter case.
+/// `path` itself is not one of them (callers ask about paths absent from those files).
+fn has_case_twin(counts: &BTreeMap<String, usize>, path: &str) -> bool {
+    counts.contains_key(&path.to_lowercase())
 }
 
 /// Why the snapshot left `path` out (or something above it, like a nested repository).

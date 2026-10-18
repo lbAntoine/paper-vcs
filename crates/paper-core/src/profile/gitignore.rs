@@ -1,13 +1,20 @@
-//! The marked profile block in `.gitignore`.
+//! The marked blocks in `.gitignore`.
 //!
-//! Profiles only ever add a block between two marker lines; every other byte of the file is the
-//! user's and is never touched (04-content.md § Profiles):
+//! Paper only ever writes between two marker lines; every other byte of the file is the
+//! user's and is never touched (04-content.md § Profiles, 02-cli.md § paper ignore). There are
+//! two kinds of block, told apart by their marker text, at most one of each:
 //!
 //! ```text
 //! # >>> paper-vcs profile: latex >>>
 //! *.aux
 //! # <<< paper-vcs profile: latex <<<
+//! # >>> paper-vcs: ignored >>>
+//! /data/raw/
+//! # <<< paper-vcs: ignored <<<
 //! ```
+//!
+//! The profile block is paper's suggestion for a kind of project; the second block holds the
+//! rules `paper ignore` added. When both exist, the profile block comes first.
 
 use std::fmt::Write as _;
 use std::fs;
@@ -61,11 +68,12 @@ pub enum GitignoreError {
 /// Applies `profile`'s block to the text of a `.gitignore` (`None` when the file doesn't exist).
 ///
 /// - No file: the result is the block alone.
-/// - No block in the file: the block is appended after a blank line, every existing byte kept.
-/// - A paper-vcs block (any profile name): replaced in place.
+/// - A profile block (any profile name): replaced in place.
+/// - No profile block, but paper's own block: the profile block goes right before it.
+/// - Neither: the block is appended after a blank line, every existing byte kept.
 ///
-/// Lines end in CRLF if the first line of the file does, else LF. Returns `Ok(None)` when the
-/// file would not change.
+/// Paper's own block is never touched. Lines end in CRLF if the first line of the file does,
+/// else LF. Returns `Ok(None)` when the file would not change.
 ///
 /// # Errors
 ///
@@ -78,16 +86,8 @@ pub fn apply(existing: Option<&str>, profile: &Profile) -> Result<Option<String>
     let Some(text) = existing else {
         return Ok(Some(render_block(profile, "\n", true)));
     };
-    let eol = if text
-        .split_inclusive('\n')
-        .next()
-        .is_some_and(|l| l.ends_with("\r\n"))
-    {
-        "\r\n"
-    } else {
-        "\n"
-    };
-    let result = if let Some(span) = find_block(text)? {
+    let eol = eol_of(text);
+    let result = if let Some(span) = find_block(text, Kind::Profile)? {
         let terminated = text[span.start..span.end].ends_with('\n');
         format!(
             "{}{}{}",
@@ -95,18 +95,209 @@ pub fn apply(existing: Option<&str>, profile: &Profile) -> Result<Option<String>
             render_block(profile, eol, terminated),
             &text[span.end..]
         )
+    } else if let Some(paper) = find_block(text, Kind::Paper)? {
+        format!(
+            "{}{}{}",
+            &text[..paper.start],
+            render_block(profile, eol, true),
+            &text[paper.start..]
+        )
     } else {
         let mut out = text.to_owned();
-        if !text.is_empty() {
-            if !text.ends_with('\n') {
-                out.push_str(eol);
-            }
-            out.push_str(eol);
-        }
+        push_blank_line(&mut out, eol);
         out.push_str(&render_block(profile, eol, true));
         out
     };
     Ok((result != text).then_some(result))
+}
+
+/// The rules in paper's own block (`# >>> paper-vcs: ignored >>>`) of a `.gitignore` text, in
+/// order. Comments and blank lines are skipped; no block gives no rules.
+///
+/// # Errors
+///
+/// [`GitignoreError::UnterminatedBlock`] or [`GitignoreError::DuplicateBlock`].
+///
+/// # Panics
+///
+/// Never.
+pub fn paper_rules(existing: Option<&str>) -> Result<Vec<String>, GitignoreError> {
+    let Some(text) = existing else {
+        return Ok(Vec::new());
+    };
+    Ok(find_block(text, Kind::Paper)?
+        .map(|span| rules_in(&text[span.start..span.end]))
+        .unwrap_or_default())
+}
+
+/// Adds `rules` to paper's own block. A new block goes at the end of the file after a blank
+/// line, so it comes after the profile block and after the user's lines (later lines win in
+/// gitignore). Rules already in the block are not repeated. Returns
+/// `Ok(None)` when the text would not change; an empty block is never written.
+///
+/// # Errors
+///
+/// [`GitignoreError::UnterminatedBlock`] or [`GitignoreError::DuplicateBlock`].
+///
+/// # Panics
+///
+/// Never.
+pub fn add_rules(
+    existing: Option<&str>,
+    rules: &[String],
+) -> Result<Option<String>, GitignoreError> {
+    let text = existing.unwrap_or_default();
+    let eol = eol_of(text);
+    let span = find_block(text, Kind::Paper)?;
+    let present = span
+        .as_ref()
+        .map(|span| rules_in(&text[span.start..span.end]))
+        .unwrap_or_default();
+    let mut fresh: Vec<&str> = Vec::new();
+    for rule in rules {
+        if !present.contains(rule) && !fresh.contains(&rule.as_str()) {
+            fresh.push(rule);
+        }
+    }
+    if fresh.is_empty() {
+        return Ok(None);
+    }
+    let lines = fresh.iter().fold(String::new(), |mut out, rule| {
+        out.push_str(rule);
+        out.push_str(eol);
+        out
+    });
+    if let Some(span) = span {
+        // New rules go right before the end marker line, after the existing ones.
+        let block = &text[span.start..span.end];
+        let end_line = block
+            .trim_end_matches('\n')
+            .rfind('\n')
+            .map_or(0, |at| at + 1);
+        let at = span.start + end_line;
+        return Ok(Some(format!("{}{lines}{}", &text[..at], &text[at..])));
+    }
+    let block = format!("{PAPER_START}{eol}{lines}{PAPER_END}{eol}");
+    let mut out = text.to_owned();
+    push_blank_line(&mut out, eol);
+    out.push_str(&block);
+    Ok(Some(out))
+}
+
+/// Which block a rule line sits in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlockKind {
+    /// The profile block.
+    Profile,
+    /// Paper's own block.
+    Paper,
+}
+
+/// One rule line of a `.gitignore`: not a comment, not blank.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuleLine {
+    /// The block it sits in; `None` for the user's own lines.
+    pub block: Option<BlockKind>,
+    /// 1-based line number.
+    pub line: usize,
+    /// The line without its line ending.
+    pub rule: String,
+}
+
+/// Every rule line of `text` with the block it sits in. Lenient: a damaged block (no end marker)
+/// runs to the end of the file, so listing never fails.
+#[must_use]
+pub fn rule_lines(text: &str) -> Vec<RuleLine> {
+    let mut block = None;
+    let mut out = Vec::new();
+    for (index, raw) in text.split('\n').enumerate() {
+        let line = raw.trim_end_matches('\r');
+        let trimmed = line.trim();
+        if Kind::Profile.is_start(trimmed) {
+            block = Some(BlockKind::Profile);
+        } else if Kind::Paper.is_start(trimmed) {
+            block = Some(BlockKind::Paper);
+        } else if Kind::Profile.is_end(trimmed) || Kind::Paper.is_end(trimmed) {
+            block = None;
+        } else if is_rule(line) {
+            out.push(RuleLine {
+                block,
+                line: index + 1,
+                rule: line.to_owned(),
+            });
+        }
+    }
+    out
+}
+
+const PAPER_START: &str = "# >>> paper-vcs: ignored >>>";
+const PAPER_END: &str = "# <<< paper-vcs: ignored <<<";
+
+/// The two kinds of block.
+#[derive(Clone, Copy)]
+enum Kind {
+    Profile,
+    Paper,
+}
+
+impl Kind {
+    fn is_start(self, trimmed: &str) -> bool {
+        match self {
+            Self::Profile => {
+                trimmed.starts_with("# >>> paper-vcs profile: ") && trimmed.ends_with(" >>>")
+            }
+            Self::Paper => trimmed == PAPER_START,
+        }
+    }
+
+    fn is_end(self, trimmed: &str) -> bool {
+        match self {
+            Self::Profile => {
+                trimmed.starts_with("# <<< paper-vcs profile: ") && trimmed.ends_with(" <<<")
+            }
+            Self::Paper => trimmed == PAPER_END,
+        }
+    }
+}
+
+/// `\r\n` if the first line of `text` ends that way, else `\n`.
+fn eol_of(text: &str) -> &'static str {
+    if text
+        .split_inclusive('\n')
+        .next()
+        .is_some_and(|l| l.ends_with("\r\n"))
+    {
+        "\r\n"
+    } else {
+        "\n"
+    }
+}
+
+/// Ends `out` with a line ending and a blank line, unless it is empty.
+fn push_blank_line(out: &mut String, eol: &str) {
+    if !out.is_empty() {
+        if !out.ends_with('\n') {
+            out.push_str(eol);
+        }
+        out.push_str(eol);
+    }
+}
+
+fn is_rule(line: &str) -> bool {
+    let trimmed = line.trim();
+    !trimmed.is_empty() && !trimmed.starts_with('#')
+}
+
+/// The rules between the marker lines of a block's text.
+fn rules_in(block: &str) -> Vec<String> {
+    let lines: Vec<&str> = block.split_inclusive('\n').collect();
+    let inner = lines.get(1..lines.len().saturating_sub(1)).unwrap_or(&[]);
+    inner
+        .iter()
+        .map(|line| line.trim_end_matches(['\r', '\n']))
+        .filter(|line| is_rule(line))
+        .map(str::to_owned)
+        .collect()
 }
 
 /// Byte range of the existing block, from its start marker to the end of its end-marker line.
@@ -115,17 +306,14 @@ struct Span {
     end: usize,
 }
 
-fn find_block(text: &str) -> Result<Option<Span>, GitignoreError> {
+fn find_block(text: &str, kind: Kind) -> Result<Option<Span>, GitignoreError> {
     let mut found: Option<Span> = None;
     let mut open: Option<(usize, usize)> = None; // (byte offset, line number)
     let mut offset = 0;
     for (index, line) in text.split_inclusive('\n').enumerate() {
         let number = index + 1;
         let trimmed = line.trim();
-        let is_marker = |open_tag: &str, close_tag: &str| {
-            trimmed.starts_with(open_tag) && trimmed.ends_with(close_tag)
-        };
-        if is_marker("# >>> paper-vcs profile: ", " >>>") {
+        if kind.is_start(trimmed) {
             if let Some((_, first)) = open {
                 return Err(GitignoreError::UnterminatedBlock { line: first });
             }
@@ -133,7 +321,7 @@ fn find_block(text: &str) -> Result<Option<Span>, GitignoreError> {
                 return Err(GitignoreError::DuplicateBlock { line: number });
             }
             open = Some((offset, number));
-        } else if is_marker("# <<< paper-vcs profile: ", " <<<")
+        } else if kind.is_end(trimmed)
             && let Some((start, _)) = open.take()
         {
             found = Some(Span {

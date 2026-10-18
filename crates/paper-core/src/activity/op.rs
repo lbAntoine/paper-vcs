@@ -17,6 +17,8 @@ pub enum OpKind {
     /// `undo` and `undo --to`.
     Undo,
     Redo,
+    /// `ignore`: new rules in paper's `.gitignore` block, and the files they stopped tracking.
+    Ignore,
 }
 
 /// One immutable operation: the full view after it, and the undo bookkeeping.

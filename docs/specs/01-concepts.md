@@ -53,7 +53,9 @@ These are the promises the implementation must keep. Tests assert them (see [03-
 6. **I6: it is always git.** After any paper command, the repo is a valid git repo. `git log`
    shows the saves, `git status` shows the draft as unstaged changes, and the checked-out
    git branch is the current line.
-7. **I7: new files are tracked automatically** unless ignored. There are three exceptions,
+7. **I7: new files are tracked automatically** unless ignored. `paper ignore` adds the
+   rule, and also stops tracking matching files that are already saved (earlier saves keep
+   them). There are three exceptions,
    all reported in `status`:
    - oversized files are skipped (see [04-content](04-content.md#large-files));
    - `.theirs` copies made for a conflict are never tracked (see [04-content](04-content.md#merging));

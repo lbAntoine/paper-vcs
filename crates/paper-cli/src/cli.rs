@@ -146,6 +146,15 @@ pub enum Command {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Stop tracking files or folders, even saved ones; with no arguments, list the ignore rules.
+    Ignore {
+        /// The files, folders or patterns (like `*.aux`) to ignore; folders and files are
+        /// relative to where you run paper.
+        paths: Vec<String>,
+        /// Go ahead when more than 20 saved files would stop being tracked.
+        #[arg(long)]
+        yes: bool,
+    },
     /// Put files back the way they were at a point.
     Restore {
         /// The files or folders to restore (relative to where you run paper).

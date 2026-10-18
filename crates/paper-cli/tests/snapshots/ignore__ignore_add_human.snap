@@ -1,0 +1,13 @@
+---
+source: crates/paper-cli/tests/ignore.rs
+expression: env.redact(&human.stdout)
+---
+Now ignoring:
+  /data/raw/
+  *.aux  (a pattern: applies to the whole project)
+
+Stopped tracking 2 files; they are still on your disk:
+  data/raw/a.csv
+  data/raw/b.csv
+Your next save records their removal; earlier saves keep their versions.
+`paper undo` takes this back.

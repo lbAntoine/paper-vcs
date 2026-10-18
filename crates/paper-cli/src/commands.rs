@@ -8,8 +8,8 @@ use paper_core::activity::ActivityLog;
 use paper_core::config::Settings;
 use paper_core::profile::Profile;
 use paper_core::project::{
-    GcAge, HistoryRequest, InitError, LockOptions, PathSelection, Project, SaveOutcome,
-    SaveRequest, UndoError, UndoOutcome, has_damaged_git,
+    GcAge, HistoryRequest, IgnoreRequest, InitError, LockOptions, PathSelection, Project,
+    SaveOutcome, SaveRequest, UndoError, UndoOutcome, has_damaged_git,
 };
 use paper_core::{ErrorKind, PaperError, Suggestion};
 use paper_git::{GitRepo, Identity};
@@ -20,6 +20,7 @@ use crate::inspect;
 use crate::paths::Paths;
 use crate::prompt;
 use crate::render::gc;
+use crate::render::ignore as ignore_render;
 use crate::render::style::Style;
 use crate::render::undo::{self, Verb};
 use crate::render::{Verbosity, human, json};
@@ -63,6 +64,7 @@ pub fn execute(cli: &Cli, style: Style) -> Output {
             dry_run,
         } => gc(cli, older_than, *dry_run),
         Command::Redo => undo_family(cli, Verb::Redo, Project::redo),
+        Command::Ignore { paths, yes } => ignore(cli, paths, *yes),
         Command::Restore { paths, from } => inspect::restore(cli, paths, from.as_deref()),
     }
 }
@@ -80,6 +82,41 @@ pub(crate) fn finish(
     } else {
         human_text()
     }
+}
+
+/// `paper ignore [<path|pattern>...]`: add rules, or with no arguments list the rules.
+fn ignore(cli: &Cli, args: &[String], yes: bool) -> Output {
+    let (mut project, locator) = open(cli)?;
+    if args.is_empty() {
+        let listing = project.ignore_listing();
+        return Ok(finish(
+            cli,
+            || ignore_render::listing_human(&listing),
+            || ignore_render::listing_json(&listing),
+        ));
+    }
+    let from = locator.project_path("")?;
+    let args = args
+        .iter()
+        .map(|arg| from_here(&locator, &from, arg))
+        .collect::<Result<Vec<_>, _>>()?;
+    let outcome = project.ignore(&IgnoreRequest { args, from, yes })?;
+    Ok(finish(
+        cli,
+        || ignore_render::human(&outcome),
+        || ignore_render::json(&outcome),
+    ))
+}
+
+/// An absolute path as a path relative to `from` (where paper runs), which is what `paper-core`
+/// takes. Patterns (`*.aux`, `/data/*.csv`) and relative paths are passed as typed.
+fn from_here(locator: &Paths, from: &str, arg: &str) -> Result<String, PaperError> {
+    if !Path::new(arg).is_absolute() || arg.contains(['*', '?', '[']) {
+        return Ok(arg.to_owned());
+    }
+    let inside = locator.project_path(arg)?;
+    let up = "../".repeat(from.split('/').filter(|part| !part.is_empty()).count());
+    Ok(format!("{up}{inside}"))
 }
 
 fn init(cli: &Cli, path: Option<&Path>, profile: Option<&str>) -> Output {

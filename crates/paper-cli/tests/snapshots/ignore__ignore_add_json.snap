@@ -1,0 +1,23 @@
+---
+source: crates/paper-cli/tests/ignore.rs
+expression: env_json.redact_json(&json.stdout)
+---
+{
+  "added": [
+    "/data/raw/",
+    "*.aux"
+  ],
+  "already": [],
+  "entry": {
+    "description": "ignore /data/raw/, *.aux",
+    "id": "[ID]",
+    "kind": "ignore",
+    "short_id": "[ID]",
+    "time": "[TIME]"
+  },
+  "schema": 1,
+  "untracked": [
+    "data/raw/a.csv",
+    "data/raw/b.csv"
+  ]
+}
