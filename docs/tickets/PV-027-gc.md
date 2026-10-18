@@ -1,6 +1,6 @@
 # PV-027: paper gc
 
-- **Status:** In progress
+- **Status:** Done
 - **Issue:** #45
 - **Branch:** `feat/PV-027-gc`
 - **Depends on:** PV-022, PV-023 (merged). Runs in parallel with PV-025 (crash recovery).
@@ -80,16 +80,16 @@ Nothing inside the window is affected, and nothing is cleaned up automatically.
 
 ## Acceptance criteria
 
-- [ ] With ops older and newer than the cutoff, `gc` removes the older ones, keeps the newer, the head and every redo-stack op, and writes the horizon; `paper activity` stops there and says older history was cleaned up.
-- [ ] `undo` walks back to the horizon and then reports nothing more to undo (with the note); `redo` still works for kept redo entries.
-- [ ] Every commit named by a kept op is reachable from the rebuilt `refs/paper/keep` (no keep commit has more than 51 parents); after expiring reflogs and `git gc --prune=now`, undo to the horizon still works and `git fsck --strict` is clean.
-- [ ] `.tmp*` files, orphan ops and `view.json.v1` are swept.
-- [ ] `--dry-run` changes nothing (every file and ref byte-identical) and lists what would go.
-- [ ] `--older-than` parses `d` and `w`, rejects `0d` and garbage with a three-part user error.
-- [ ] Running `gc` twice is safe; the second run removes nothing new.
-- [ ] gc records no activity entry; `--json` has the fixed key set; snapshot-tested.
-- [ ] Specs updated (only the listed sections).
-- [ ] fmt, clippy (`-D warnings`) and the full suite pass (CI on Linux, macOS, Windows).
+- [x] With ops older and newer than the cutoff, `gc` removes the older ones, keeps the newer, the head and every redo-stack op, and writes the horizon; `paper activity` stops there and says older history was cleaned up.
+- [x] `undo` walks back to the horizon and then reports nothing more to undo (with the note); `redo` still works for kept redo entries.
+- [x] Every commit named by a kept op is reachable from the rebuilt `refs/paper/keep` (no keep commit has more than 51 parents); after expiring reflogs and `git gc --prune=now`, undo to the horizon still works and `git fsck --strict` is clean.
+- [x] `.tmp*` files, orphan ops and `view.json.v1` are swept.
+- [x] `--dry-run` changes nothing (every file and ref byte-identical) and lists what would go.
+- [x] `--older-than` parses `d` and `w`, rejects `0d` and garbage with a three-part user error.
+- [x] Running `gc` twice is safe; the second run removes nothing new.
+- [x] gc records no activity entry; `--json` has the fixed key set; snapshot-tested.
+- [x] Specs updated (only the listed sections).
+- [x] fmt, clippy (`-D warnings`) and the full suite pass (CI on Linux, macOS, Windows).
 
 ## Test plan
 
@@ -99,6 +99,17 @@ Nothing inside the window is affected, and nothing is cleaned up automatically.
 - CLI `tests/gc.rs`: human and JSON output, `--dry-run`, bad durations.
 
 ## Summary
+
+`paper gc [--older-than 90d] [--dry-run]` trims undo history to a recent window. It keeps the
+head chain newer than the cutoff, the head, the op the next undo starts from (the head's
+`position`) and every redo target, and the chain from the oldest of those to the head stays whole.
+`.git/paper/activity/horizon` names the oldest kept op; `ActivityLog::read` returns it with
+`parent: None`, so `paper activity` and `undo` stop there (with a note when the listing reaches
+it). Order: horizon, then a rebuilt `refs/paper/keep` (groups of at most 50 parents), then
+deletions; a crash leaves extra files only, and a re-run finishes the job, including the chain.
+Sweeps `.tmp*` files, orphan ops and `view.json.v1`, never an op the head names. Records no
+activity entry; `--dry-run` is byte-identical; human and JSON output, specs 02-cli and
+03-architecture.
 
 ## Handoff log
 
