@@ -119,3 +119,43 @@ every step exactly.
 ## Summary
 
 ## Handoff log
+
+### RED · test-author · 2026-10-18
+
+**Result: the property passes on main. No bug found.** (Expected for an acceptance test.)
+
+- `crates/paper-core/tests/session_proptest.rs`: 6 tests (1 property, 5 sanity). Workspace
+  dependency `proptest = "1.12"` (1.12.0 checked in the registry source: `Config` fields
+  `cases`, `max_shrink_iters`, `failure_persistence`), paper-core dev-dependency, `Cargo.lock`.
+  No `src/` change and no stubs: the API already exists.
+- **Generator:** exactly 200 steps, weights out of 100: write a pool path (30; empty, small
+  text, or 1-7 random bytes), delete a file and prune empty parents (6), file to folder (4),
+  folder to file (4), save all (10), save a selection of 1-2 names (5), restore 1-2 names from
+  `last` or `last~1..3` (6), undo (12), redo (8), `undo --to` a random entry (5), status (5).
+  Pool of 8 paths (3 in subfolders, `sec/deep/x.txt`); selections can also name `sec` and a
+  `ghost.txt`. Save `NoChangesAt` and restore `UnknownPaths`/`Resolve` are accepted as user
+  errors; every other error fails the session. A write replaces whatever stands in the way.
+- **Oracle:** state = canonical view JSON + working files (path to bytes, plus empty folders).
+  After each step, every op added since the last one is recorded: the head with the live state,
+  an older new op (an edits entry) with its own view and the files as they were before the
+  step. Inside the session, each undo/redo/undo-to checks `files_match` and that the state
+  equals the recorded state of the head's `position`. At the end: a `status` flushes pending
+  edits, then undo to `NothingToUndo` with the same check after each, then redo back to the
+  session's end position (a session can end with redo entries on the stack, so redo stops where
+  the session ended, not at `NothingToRedo`), checking each step. The redo positions must
+  retrace the undo positions in reverse, the final state must equal the session's final state,
+  and `git fsck --strict` must be clean.
+- **Config:** `PROPTEST_CASES` honoured, default 3, `max_shrink_iters = 64`,
+  `failure_persistence = None`. Nothing is written to the source tree.
+- **Sanity tests (pass on main):** capture sees a one-byte edit and a new empty folder; compare
+  flags a wrong file, an extra file and a wrong view; a fixed short session (save, edit, undo,
+  redo, file-to-folder) passes the full checks; the position check flags a file changed behind
+  undo's back; a session of only unsaved edits undoes and redoes.
+- **Runs** (macOS, debug, isolated git config): 1 case 18.6 s; default 3 cases 64 s (about
+  21 s per case; 106 s inside the full workspace run under load, so the 3-minute CI budget is
+  tight on slower runners); `PROPTEST_CASES=50` 1156 s, passed. fmt and clippy clean, full
+  workspace suite passes.
+- Note for GREEN/coordinator: a failing oracle shrinks up to 64 times at about 20 s each, so a
+  failure takes about 20 minutes to finish. Lower `max_shrink_iters` if that matters.
+- Not verified: a deliberately broken `undo` run through the whole property (only the oracle's
+  comparison and the position check are shown to detect wrong states).
