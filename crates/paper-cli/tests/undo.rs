@@ -11,8 +11,24 @@ use paper_core::snapshot::SnapshotOptions;
 use paper_git::Identity;
 use serde_json::json;
 
-const WARNING_TAIL: &str = "were left as they are (see above); your next paper command will \
-                            record them as edits, and that clears what you can redo.";
+/// The key phrases of the warning after a checkout that left files alone. Backticks around the
+/// commands are optional, so they are stripped before matching.
+fn assert_warning(stdout: &str, first_words: &str, records: &str) {
+    let plain = stdout.replace('`', "");
+    for phrase in [
+        first_words,
+        "(see above)",
+        "paper undo and paper redo go on from here",
+        records,
+        "which clears what you can redo",
+    ] {
+        assert!(plain.contains(phrase), "missing {phrase:?} in {stdout}");
+    }
+    assert!(
+        !plain.contains("your next paper command will"),
+        "the old wording is gone: {stdout}"
+    );
+}
 
 fn project() -> Env {
     let env = Env::new();
@@ -402,9 +418,10 @@ fn a_checkout_that_skips_files_prints_each_with_its_reason_and_the_warning() {
             .contains("chap/one.tex  (kept because chap can't be restored)"),
         "{run:#?}"
     );
-    assert!(
-        run.stdout.contains(&format!("2 files {WARNING_TAIL}")),
-        "{run:#?}"
+    assert_warning(
+        &run.stdout,
+        "2 files were left as they are",
+        "records them as edits",
     );
     settings().bind(|| {
         insta::assert_snapshot!("undo_blocked_human", env.redact(&run.stdout));
@@ -422,12 +439,10 @@ fn a_single_skipped_file_gets_the_singular_warning() {
     let run = env.paper(&["undo"]);
 
     run.assert_code(0);
-    assert!(
-        run.stdout.contains(
-            "\n1 file was left as it is (see above); your next paper command will record it as \
-             an edit, and that clears what you can redo.\n"
-        ),
-        "{run:#?}"
+    assert_warning(
+        &run.stdout,
+        "1 file was left as it is",
+        "records it as an edit",
     );
 }
 
@@ -460,6 +475,101 @@ fn a_clean_checkout_prints_no_warning() {
     assert!(run.stdout.starts_with("Undid: "), "{run:#?}");
     assert!(!run.stdout.contains("were left as they are"), "{run:#?}");
     assert!(!run.stdout.contains("Skipped"), "{run:#?}");
+}
+
+// ---- undo keeps walking back past a file it left alone (PV-031) ----
+
+/// `Undid: ...` lines of the undo family, or the entry descriptions in `--json`.
+fn undone_entry(env: &Env, args: &[&str]) -> (String, bool) {
+    let run = env.paper(args);
+    run.assert_code(0);
+    let json = run.json();
+    (
+        json["entry"]["description"].as_str().unwrap().to_owned(),
+        json["files_match"].as_bool().unwrap(),
+    )
+}
+
+fn edited_entries(env: &Env) -> usize {
+    entries(env)
+        .iter()
+        .filter(|(_, _, d)| d.starts_with("edited"))
+        .count()
+}
+
+/// Four entries behind the head, an ignored file in the way of `chap` coming back.
+fn ignored_in_the_way() -> Env {
+    let env = Env::new();
+    env.write(".gitignore", "*.log\n");
+    env.write("chap", "a file\n");
+    env.write("keep.tex", "v0\n");
+    let (mut project, _) = Project::init(
+        &env.work,
+        Identity {
+            name: "Mina Park".to_owned(),
+            email: "mina@uni.example".to_owned(),
+        },
+        &SnapshotOptions::default(),
+    )
+    .unwrap();
+    env.write("keep.tex", "v1\n");
+    save_all(&mut project, "one");
+    fs::remove_file(env.work.join("chap")).unwrap();
+    env.write("chap/one.tex", "1\n");
+    save_all(&mut project, "folder");
+    env.write("chap/cache.log", "my ignored log\n");
+    env
+}
+
+#[test]
+fn three_undos_walk_back_past_an_ignored_file_and_redo_brings_the_entries_back() {
+    let env = ignored_in_the_way();
+
+    let steps: Vec<(String, bool)> = (0..4)
+        .map(|_| undone_entry(&env, &["--json", "undo"]))
+        .collect();
+
+    // The folder swap is listed as `edited chap, chap/one.tex`; only its start matters here.
+    let described: Vec<&str> = steps
+        .iter()
+        .map(|(d, _)| {
+            if d.starts_with("edited chap") {
+                "edited chap"
+            } else {
+                d.as_str()
+            }
+        })
+        .collect();
+    assert_eq!(
+        described,
+        [
+            "save \"folder\"",
+            "edited chap",
+            "save \"one\"",
+            "edited keep.tex",
+        ],
+        "every undo takes back the next entry: {steps:?}"
+    );
+    assert!(!steps[1].1, "the ignored file was left alone");
+    assert_eq!(edited_entries(&env), 2, "no edits entry for the leftover");
+    assert_eq!(env.read("chap/cache.log"), "my ignored log\n");
+    assert_eq!(env.read("keep.tex"), "v0\n");
+
+    let redone: Vec<String> = (0..4)
+        .map(|_| undone_entry(&env, &["--json", "redo"]).0)
+        .map(|d| {
+            if d.starts_with("edited chap") {
+                "edited chap".to_owned()
+            } else {
+                d
+            }
+        })
+        .collect();
+    let expected: Vec<&str> = described.iter().rev().copied().collect();
+    assert_eq!(redone, expected);
+    assert_eq!(env.read("keep.tex"), "v1\n");
+    assert_eq!(env.read("chap/cache.log"), "my ignored log\n");
+    env.fsck();
 }
 
 // ---- JSON ----
@@ -556,4 +666,109 @@ fn activity_lists_undo_redo_and_go_back_entries() {
     assert!(human.stdout.contains("undo: save \"Rewrite intro\""));
     assert!(human.stdout.contains("redo: save \"Rewrite intro\""));
     assert!(human.stdout.contains("go back to "));
+}
+
+// ---- review round 1 (PV-031) ----
+
+fn init_project(env: &Env) -> Project {
+    Project::init(
+        &env.work,
+        Identity {
+            name: "Mina Park".to_owned(),
+            email: "mina@uni.example".to_owned(),
+        },
+        &SnapshotOptions::default(),
+    )
+    .unwrap()
+    .0
+}
+
+/// A folder swapped for a file, then for a folder that holds only an ignored file.
+fn swapped_folder() -> Env {
+    let env = Env::new();
+    env.write(".gitignore", "*.log\n");
+    env.write("chap/x.tex", "x\n");
+    env.write("keep.tex", "k\n");
+    let mut project = init_project(&env);
+    fs::remove_dir_all(env.work.join("chap")).unwrap();
+    env.write("chap", "f\n");
+    save_all(&mut project, "Y");
+    fs::remove_file(env.work.join("chap")).unwrap();
+    env.write("chap/cache.log", "log\n");
+    save_all(&mut project, "Z");
+    env
+}
+
+#[test]
+fn four_undos_past_a_folder_swapped_for_a_file_never_plan_to_delete_a_remembered_path() {
+    let env = swapped_folder();
+
+    for round in 1..=4 {
+        let run = env.paper(&["undo"]);
+        assert_eq!(run.code, 0, "undo {round}: {run:#?}");
+    }
+
+    assert_eq!(env.read("chap/cache.log"), "log\n");
+    assert!(!env.work.join(".git/paper/checkout-pending").exists());
+    env.fsck();
+}
+
+/// A tracked file replaced by a folder that holds only an ignored file, after a save.
+fn file_swapped_for_an_ignored_folder() -> Env {
+    let env = Env::new();
+    env.write(".gitignore", "*.log\n");
+    env.write("notes.tex", "n\n");
+    env.write("keep.tex", "v0\n");
+    let mut project = init_project(&env);
+    env.write("keep.tex", "v1\n");
+    save_all(&mut project, "one");
+    fs::remove_file(env.work.join("notes.tex")).unwrap();
+    env.write("notes.tex/cache.log", "log\n");
+    env
+}
+
+#[test]
+fn a_single_file_left_alone_gets_the_singular_warning_on_every_os() {
+    let env = file_swapped_for_an_ignored_folder();
+
+    let run = env.paper(&["undo"]);
+
+    run.assert_code(0);
+    assert_warning(
+        &run.stdout,
+        "1 file was left as it is",
+        "records it as an edit",
+    );
+    settings().bind(|| {
+        insta::assert_snapshot!("undo_blocked_single_human", env.redact(&run.stdout));
+    });
+    env.fsck();
+}
+
+#[test]
+#[cfg_attr(
+    not(debug_assertions),
+    ignore = "PAPER_DEBUG_CRASH_AT is compiled out of release builds"
+)]
+fn a_crash_after_the_checkout_of_a_blocked_undo_does_not_stop_the_undos_that_follow() {
+    let env = ignored_in_the_way();
+    env.paper(&["undo"]).assert_code(0);
+    let crashed = env.paper_in(
+        &env.work,
+        &[("PAPER_DEBUG_CRASH_AT", "after-checkout")],
+        &["undo"],
+    );
+    assert_ne!(crashed.code, 0, "{crashed:#?}");
+
+    env.paper(&["status"]).assert_code(0);
+    for round in 1..=2 {
+        let run = env.paper(&["undo"]);
+        assert_eq!(run.code, 0, "undo {round} after recovery: {run:#?}");
+        assert!(
+            !env.work.join(".git/paper/checkout-pending").exists(),
+            "{run:#?}"
+        );
+    }
+    assert_eq!(env.read("chap/cache.log"), "my ignored log\n");
+    env.fsck();
 }

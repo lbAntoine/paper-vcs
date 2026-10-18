@@ -45,27 +45,39 @@ fn undone_text(verb: Verb, undone: &Undone) -> String {
     }
     if !undone.files_match {
         out.push('\n');
-        out.push_str(&warning(undone.skipped.len()));
+        out.push_str(&warning(undone));
         out.push('\n');
     }
     out
 }
 
-fn warning(skipped: usize) -> String {
-    if skipped == 0 {
-        "Some files were left as they are (see above); your next paper command will record \
-         them as edits, and that clears what you can redo."
-            .to_owned()
-    } else if skipped == 1 {
-        "1 file was left as it is (see above); your next paper command will record it as an \
-         edit, and that clears what you can redo."
-            .to_owned()
-    } else {
-        format!(
-            "{skipped} files were left as they are (see above); your next paper command will \
-             record them as edits, and that clears what you can redo."
+fn warning(undone: &Undone) -> String {
+    let skipped = undone.skipped.len();
+    let (head, records) = if skipped > 0 {
+        let head = if skipped == 1 {
+            "1 file was left as it is (see above).".to_owned()
+        } else {
+            format!("{skipped} files were left as they are (see above).")
+        };
+        (
+            head,
+            if skipped == 1 {
+                "it as an edit"
+            } else {
+                "them as edits"
+            },
         )
-    }
+    } else {
+        (
+            "Some files were left as they are.".to_owned(),
+            "them as edits",
+        )
+    };
+    format!(
+        "{head} `paper undo` and `paper redo` go on from here; any other paper command that \
+         looks at your files (`paper status`, `paper save`, ...) records {records}, which \
+         clears what you can redo."
+    )
 }
 
 #[derive(Serialize)]
@@ -123,5 +135,47 @@ fn nothing(outcome: &'static str) -> UndoOut {
         changed: Vec::new(),
         skipped: Vec::new(),
         files_match: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use paper_core::activity::OpKind;
+    use paper_core::project::ActivityEntry;
+
+    use super::*;
+
+    fn undone(skipped: usize) -> Undone {
+        Undone {
+            entry: ActivityEntry {
+                id: "0".repeat(32).parse().unwrap(),
+                short_id: "0000".to_owned(),
+                time: String::new(),
+                kind: OpKind::Save,
+                description: "save \"one\"".to_owned(),
+            },
+            changed: Vec::new(),
+            skipped: (0..skipped)
+                .map(|n| paper_core::project::SkippedPath {
+                    path: format!("s{n}"),
+                    reason: paper_core::project::RestoreSkip::Blocked,
+                })
+                .collect(),
+            files_match: false,
+        }
+    }
+
+    #[test]
+    fn skipped_files_are_listed_above_so_the_warning_points_there() {
+        let text = warning(&undone(2));
+        assert!(
+            text.starts_with("2 files were left as they are (see above). "),
+            "{text}"
+        );
+        let text = warning(&undone(1));
+        assert!(
+            text.starts_with("1 file was left as it is (see above). "),
+            "{text}"
+        );
     }
 }

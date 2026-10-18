@@ -336,9 +336,14 @@ inside a separate git repository, a file paper doesn't track in the way, …). I
   rewrote (listed as `restore` lists them), then `Skipped (left as they are):` with one
   `path  (reason)` line per file paper does not record that it left alone (the reasons of
   `restore`). If the working files don't match the state undo went to (skipped files keep
-  different content), a last line warns: `2 files were left as they are (see
-  above); your next paper command will record them as edits, and that clears what you can
-  redo.` (`1 file was left as it is ... record it as an edit ...` for a single file.) When
+  different content), a last line warns: "2 files were left as they are (see
+  above). `paper undo` and `paper redo` go on from here; any other paper command that looks at
+  your files (`paper status`, `paper save`, ...) records them as edits, which clears what you
+  can redo." ("1 file was left as it is ... records it as an edit ..." for a single file.)
+  JSON is unchanged. Repeated `undo` (and `redo`) is not held back by such files: the
+  leftovers are remembered, and the next undo-family command does not record them as an edit,
+  so it walks one entry further. Any other paper command (`status`, `save`, ...) records them
+  as an edits entry, and a leftover or any other file edited again is a real edit. When
   there is nothing to take back or bring back, the output is `Nothing to undo.` or `Nothing to
   redo.` and the exit code is 0.
 - After a plain `git commit` or `git switch`, `undo`, `redo` and `undo --to` refuse with the

@@ -8,4 +8,4 @@ Skipped (left as they are):
   chap  (a file paper doesn't track is in the way)
   chap/one.tex  (kept because chap can't be restored)
 
-2 files were left as they are (see above); your next paper command will record them as edits, and that clears what you can redo.
+2 files were left as they are (see above). `paper undo` and `paper redo` go on from here; any other paper command that looks at your files (`paper status`, `paper save`, ...) records them as edits, which clears what you can redo.

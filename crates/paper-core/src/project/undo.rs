@@ -1,12 +1,13 @@
 //! `paper undo`, `paper redo` and `paper undo --to`: take back an activity entry, or bring it
 //! back, including the working files (03-architecture.md § Undo / redo algorithm).
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 
-use paper_git::GitError;
+use paper_git::{GitError, TreeFile};
 
 use super::checkout::PendingCheckout;
+use super::checkout_left::CheckoutLeft;
 use super::restore::SkippedPath;
 use super::save::SaveError;
 use super::{ActivityEntry, ExportError, Project};
@@ -22,9 +23,10 @@ pub struct Undone {
     pub changed: Vec<Change>,
     /// Files paper does not record that the checkout left alone, with the reason.
     pub skipped: Vec<SkippedPath>,
-    /// Whether the working files now equal the new draft. `false` when skipped paths keep
-    /// their own content: the next command records the difference as an edits entry (which
-    /// clears the redo stack).
+    /// Whether the working files now equal the new draft. `false` when files keep their own
+    /// content (`skipped`). `paper undo` and `paper redo` go on from there; any other command
+    /// that looks at the files records the difference as an edits entry (which clears the redo
+    /// stack).
     pub files_match: bool,
 }
 
@@ -155,7 +157,12 @@ impl Project {
             Aim::To(prefix) => Resolved::To(find_entry(&log, prefix)?),
         };
         // I1: edits made since the last command become their own entry first.
-        let state = self.snapshot()?;
+        // Leftovers the previous undo-family checkout remembered are not edits.
+        let before = log.head()?;
+        let left = before
+            .as_ref()
+            .and_then(|head| CheckoutLeft::load_for(&self.paper_dir, head));
+        let state = self.snapshot_ignoring(OpKind::Snapshot, None, left.as_ref())?;
         crate::fault::crash_point("after-snapshot");
         let head_id = log.head()?.ok_or_else(|| ActivityError::MissingHead {
             path: log.root().join("head"),
@@ -175,7 +182,9 @@ impl Project {
 
         let entry = entry_of(&log, &step.entry)?;
         let view = step.target.view.clone();
-        let current = self.draft_files_of(&self.view)?;
+        // Plan against what is really on disk (the I1 snapshot's files), which differs from
+        // the stored draft at remembered leftovers.
+        let current = self.repo.tree_files(&state.working)?;
         let tree = self.repo.read_commit(&view.current().draft)?.tree;
         let wanted_files = self.repo.tree_files(&tree)?;
         let targets: BTreeSet<&String> = current.keys().chain(wanted_files.keys()).collect();
@@ -196,7 +205,9 @@ impl Project {
         self.apply_checkout(&plan, "write")
             .map_err(|f| UndoError::io(f.action, &f.path, f.source))?;
         crate::fault::crash_point("after-checkout");
-        let files_match = self.refresh_stat_cache(&tree)?;
+        let now = self.refresh_stat_cache(&tree)?;
+        let files_match = now == tree;
+        self.remember_leftovers(&log, &tree, &now, &current)?;
         PendingCheckout::clear(&self.paper_dir)
             .map_err(|source| UndoError::io("remove", &marker_name, source))?;
 
@@ -208,17 +219,9 @@ impl Project {
         }))
     }
 
-    fn draft_files_of(
-        &self,
-        view: &crate::view::View,
-    ) -> Result<std::collections::BTreeMap<String, paper_git::TreeFile>, GitError> {
-        let tree = self.repo.read_commit(&view.current().draft)?.tree;
-        self.repo.tree_files(&tree)
-    }
-
     /// Re-reads the working files so the stat cache describes what the checkout wrote.
-    /// Whether the files equal `tree`.
-    fn refresh_stat_cache(&self, tree: &paper_git::TreeId) -> Result<bool, UndoError> {
+    /// Returns the tree the working files make.
+    fn refresh_stat_cache(&self, tree: &paper_git::TreeId) -> Result<paper_git::TreeId, UndoError> {
         let previous = StatCache::load(&self.paper_dir);
         let snap = snapshot(&self.repo, tree, &previous, &self.options).map_err(SaveError::from)?;
         snap.cache
@@ -227,7 +230,41 @@ impl Project {
                 path: self.paper_dir.clone(),
                 source,
             })?;
-        Ok(snap.tree == *tree)
+        Ok(snap.tree)
+    }
+
+    /// Writes `checkout-left.json` for the op just recorded when the working files differ
+    /// from `tree`, or removes it when they match. A path is remembered only if it differs
+    /// and holds what the I1 snapshot saw there (`before`): content that never entered
+    /// history (an edit that landed during the command) is left for the next I1 to record.
+    fn remember_leftovers(
+        &self,
+        log: &ActivityLog,
+        tree: &paper_git::TreeId,
+        now: &paper_git::TreeId,
+        before: &BTreeMap<String, TreeFile>,
+    ) -> Result<(), UndoError> {
+        let file = CheckoutLeft::path(&self.paper_dir).display().to_string();
+        if now == tree {
+            CheckoutLeft::remove(&self.paper_dir)
+                .map_err(|source| UndoError::io("remove", &file, source))?;
+            return Ok(());
+        }
+        let recorded = log.head()?.ok_or_else(|| ActivityError::MissingHead {
+            path: log.root().join("head"),
+        })?;
+        let wanted = self.repo.tree_files(tree)?;
+        let seen = self.repo.tree_files(now)?;
+        let differing = leftovers_to_remember(&wanted, &seen, before);
+        if differing.is_empty() {
+            CheckoutLeft::remove(&self.paper_dir)
+                .map_err(|source| UndoError::io("remove", &file, source))?;
+            return Ok(());
+        }
+        CheckoutLeft::new(&recorded, &differing, &seen)
+            .write(&self.paper_dir)
+            .map_err(|source| UndoError::io("write", &file, source))?;
+        Ok(())
     }
 }
 
@@ -239,6 +276,26 @@ impl UndoError {
             source,
         }
     }
+}
+
+/// The paths to remember after a checkout: those where the working files (`seen`) differ
+/// from the new draft (`wanted`) *and* still hold what the I1 snapshot saw (`before`). A
+/// path whose content changed since I1 (an editor autosave during the command) never entered
+/// history, so it is left for the next command's snapshot to record as an edit.
+fn leftovers_to_remember(
+    wanted: &BTreeMap<String, TreeFile>,
+    seen: &BTreeMap<String, TreeFile>,
+    before: &BTreeMap<String, TreeFile>,
+) -> Vec<String> {
+    wanted
+        .keys()
+        .chain(seen.keys())
+        .filter(|path| wanted.get(*path) != seen.get(*path))
+        .filter(|path| before.get(*path) == seen.get(*path))
+        .cloned()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 /// `undo`: back to the parent of the position; `None` at the first entry.
@@ -342,4 +399,62 @@ fn entry_of(log: &ActivityLog, op: &Op) -> Result<ActivityEntry, UndoError> {
         kind: op.kind,
         description: op.description.clone(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use paper_git::{BlobId, FileKind};
+
+    use super::*;
+
+    fn file(content: &[u8]) -> TreeFile {
+        let hash = content.iter().fold(17_u64, |acc, b| {
+            acc.wrapping_mul(31).wrapping_add(u64::from(*b))
+        });
+        let hex = format!("{hash:016x}");
+        TreeFile {
+            kind: FileKind::Regular,
+            blob: format!("{hex:0<40}").parse::<BlobId>().unwrap(),
+        }
+    }
+
+    fn files(entries: &[(&str, &[u8])]) -> BTreeMap<String, TreeFile> {
+        entries
+            .iter()
+            .map(|(path, content)| ((*path).to_owned(), file(content)))
+            .collect()
+    }
+
+    #[test]
+    fn a_path_that_still_holds_what_i1_saw_is_remembered() {
+        let before = files(&[("a", b"mine"), ("b", b"same")]);
+        let wanted = files(&[("a", b"draft"), ("b", b"same")]);
+        let seen = before.clone();
+        assert_eq!(leftovers_to_remember(&wanted, &seen, &before), ["a"]);
+    }
+
+    #[test]
+    fn a_path_with_nothing_there_before_and_after_is_remembered() {
+        let before = files(&[]);
+        let wanted = files(&[("a", b"draft")]);
+        let seen = files(&[]);
+        assert_eq!(leftovers_to_remember(&wanted, &seen, &before), ["a"]);
+    }
+
+    #[test]
+    fn an_edit_that_landed_after_the_i1_snapshot_is_not_remembered() {
+        let before = files(&[("a", b"mine"), ("b", b"old")]);
+        let wanted = files(&[("a", b"draft"), ("b", b"draft")]);
+        // `b` was autosaved between the I1 snapshot and the post-checkout snapshot.
+        let seen = files(&[("a", b"mine"), ("b", b"autosaved")]);
+        assert_eq!(leftovers_to_remember(&wanted, &seen, &before), ["a"]);
+    }
+
+    #[test]
+    fn a_file_created_after_the_i1_snapshot_is_not_remembered() {
+        let before = files(&[]);
+        let wanted = files(&[]);
+        let seen = files(&[("new", b"typed")]);
+        assert!(leftovers_to_remember(&wanted, &seen, &before).is_empty());
+    }
 }

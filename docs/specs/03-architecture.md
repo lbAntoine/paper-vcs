@@ -109,6 +109,11 @@ the immutability-first style.
                                 {"schema":1,"from":"<head op id>","tree":"<draft tree hash>"},
                                 written atomically before the op is recorded (by undo, redo and
                                 undo --to; restore does not write it)
+      checkout-left.json        what the last undo, redo or undo --to had to leave alone:
+                                {"schema":1,"op":"<op that command recorded>","paths":{"<path>":
+                                {"id","mode"} | null}}, each value being what a snapshot sees
+                                there; written atomically after the checkout, removed when the
+                                files match; stale or unreadable means ignored
   paper.toml                    project config (committed; shared with co-authors)
   .gitignore                    profile ignores merged in
 ```
@@ -305,7 +310,11 @@ Details:
 
 - **Snapshot first (I1).** `undo`, `redo` and `undo --to` snapshot before anything else, so
   edits made since the last command become an edits entry (a normal op). The first `undo`
-  takes those edits back, and they can be redone.
+  takes those edits back, and they can be redone. The exception is the leftovers of the
+  previous undo-family checkout (see Skipped paths): if `checkout-left.json` names the head op
+  and the snapshot differs from the stored draft only at remembered paths, each still exactly
+  as remembered, no edits entry is recorded. Any other difference records the normal entry,
+  covering every difference.
 - **Refusals.** If plain git moved a line ref or HEAD (it differs from `exported.json`), the
   three commands refuse with `save`'s errors (`OutOfSyncWithGit`, `HeadOnAnotherBranch`)
   before anything is written.
@@ -321,8 +330,19 @@ Details:
   that were themselves undone (`position = P.parent`).
 - **Skipped paths.** Files the checkout skips (symlinks, ignored or untracked files in the
   way) keep their on-disk content, so the working files may not equal the new draft
-  (`Undone::files_match` is false). Undo does not record an entry for that; the next command's
-  snapshot records the difference as an edits entry, which clears the redo stack.
+  (`Undone::files_match` is false). Undo does not record an entry for that. After the
+  checkout and the stat-cache refresh, before the marker is cleared, the checkout writes
+  `checkout-left.json`: every path where the files differ from the new draft *and* still hold
+  what the I1 snapshot saw at the start of the command, with what a snapshot sees there (a
+  path edited during the command never entered history, so it is not remembered and the next
+  command records it as an edit); when nothing is left it removes the file. The checkout is
+  planned against the working files (the I1 snapshot's tree), not the stored draft, so a
+  remembered path is treated as what is really on disk. The undo family's own
+  snapshot ignores those paths while they stay as remembered, so repeated `undo` keeps
+  walking back and `redo` keeps working. Every other command's snapshot records the
+  difference as an edits entry (which clears the redo stack); the next `undo` takes that
+  entry back, so undo is never stuck. A crash before the file is written leaves that same
+  behaviour; recovery does not write it.
 - **Order.** snapshot, keep-alive, op, export, checkout (§ Command lifecycle).
 
 Undo never moves remote state. If an undone operation had pushed (`sync`), undo restores
