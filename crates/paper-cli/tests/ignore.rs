@@ -98,18 +98,18 @@ fn the_next_save_records_the_removal_and_history_keeps_earlier_versions() {
 #[test]
 fn a_pattern_is_written_as_typed_and_the_output_says_it_applies_to_the_whole_project() {
     let env = project();
-    env.write("sections/x.aux", "x\n");
+    env.write("sections/x.scratch", "x\n");
     env.paper(&["status"]).assert_code(0);
 
-    let run = env.paper_in(&env.work.join("sections"), &[], &["ignore", "*.aux"]);
+    let run = env.paper_in(&env.work.join("sections"), &[], &["ignore", "*.scratch"]);
 
     run.assert_code(0);
-    assert!(env.read(".gitignore").contains("\n*.aux\n"), "{run:#?}");
+    assert!(env.read(".gitignore").contains("\n*.scratch\n"), "{run:#?}");
     assert!(
         run.stdout.to_lowercase().contains("whole project"),
         "{run:#?}"
     );
-    assert!(run.stdout.contains("sections/x.aux"), "{run:#?}");
+    assert!(run.stdout.contains("sections/x.scratch"), "{run:#?}");
 }
 
 #[test]
@@ -598,4 +598,47 @@ fn snapshot_the_listing() {
         insta::assert_snapshot!("ignore_listing_human", env.redact(&human.stdout));
         insta::assert_snapshot!("ignore_listing_json", env.redact_json(&json.stdout));
     });
+}
+
+// ---- redo of an ignore never deletes the files ----
+
+#[test]
+#[cfg_attr(
+    not(debug_assertions),
+    ignore = "PAPER_DEBUG_CRASH_AT is compiled out of release builds"
+)]
+fn a_crash_while_redoing_an_ignore_keeps_the_files_and_the_project_consistent() {
+    let env = project();
+    env.paper(&["ignore", "data/raw"]).assert_code(0);
+    env.paper(&["undo"]).assert_code(0);
+
+    let crashed = env.paper_in(
+        &env.work,
+        &[("PAPER_DEBUG_CRASH_AT", "mid-checkout")],
+        &["redo"],
+    );
+    assert_ne!(crashed.code, 0, "{crashed:#?}");
+
+    env.paper(&["status"]).assert_code(0);
+    assert_eq!(env.read("data/raw/a.csv"), "1,2\n");
+    assert_eq!(env.read("data/raw/b.csv"), "3,4\n");
+    assert!(
+        env.read(".gitignore").contains("/data/raw/"),
+        "the redo finished"
+    );
+    assert!(!draft_files(&env).iter().any(|f| f.starts_with("data/raw/")));
+    env.fsck();
+}
+
+#[test]
+fn redo_after_undoing_an_ignore_leaves_the_files_on_disk() {
+    let env = project();
+    env.paper(&["ignore", "data/raw"]).assert_code(0);
+    env.paper(&["undo"]).assert_code(0);
+
+    env.paper(&["redo"]).assert_code(0);
+
+    assert_eq!(env.read("data/raw/a.csv"), "1,2\n");
+    assert_eq!(env.read("data/raw/b.csv"), "3,4\n");
+    env.fsck();
 }

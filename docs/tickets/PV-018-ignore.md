@@ -312,3 +312,12 @@ In `project/ignore.rs`, inside `impl Project` (uses the private `Layers`):
 **BLOCKED 2: a CLI test whose premise is false.** `a_pattern_is_written_as_typed_and_the_output_says_it_applies_to_the_whole_project` writes `sections/x.aux` and expects it in the output. The test project has `main.tex`, so it gets the latex profile, which already ignores `*.aux`: the file is never tracked, nothing is untracked and nothing can be listed. Use a pattern the profile doesn't ignore (for example `*.scratch` and `sections/x.scratch`). The assertion is untouched.
 
 **Follow-ups**: `paper help large-files` still doesn't exist (out of scope). `Layers` is built per command; fine for now. Matching is case-sensitive (`core.ignorecase` is not read).
+
+### GREEN (unblocked) · rust-engineer · 2026-10-18
+
+- **Data-loss fix** in the shared planner: `plan_checkout` (`checkout.rs`) now calls `Project::ignored_in(current, wanted)` (the helper from the earlier handoff, kept in `project/ignore.rs`) and skips those paths, so they are neither deleted nor listed as skipped. `undo.rs` and `recover.rs` are unchanged; recovery and `restore` get the rule through the planner. Existing undo, restore and recover suites pass unchanged (ordinary deletes and writes are as before).
+- **Tests**: core `redo_ignores_and_untracks_again` now passes. New in `paper-cli/tests/ignore.rs`: `redo_after_undoing_an_ignore_leaves_the_files_on_disk`, and `a_crash_while_redoing_an_ignore_keeps_the_files_and_the_project_consistent` (`PAPER_DEBUG_CRASH_AT=mid-checkout` on `redo`, then `paper status`, files byte-identical, `git fsck --strict`).
+- **Fixture change**: in `a_pattern_is_written_as_typed_...` only the file name and pattern changed, `x.aux`/`*.aux` to `x.scratch`/`*.scratch` (the latex profile already ignores `*.aux`). The assertions are otherwise untouched.
+- Bare names that don't exist yet (typed without a slash) now count as patterns in `IgnoreOutcome::patterns`, so the output says the rule applies to the whole project.
+- 02-cli § `paper ignore` already says `.gitignore` files and `paper.toml` are never untracked.
+- fmt, clippy and the full `cargo test --workspace --all-targets --no-fail-fast` pass.

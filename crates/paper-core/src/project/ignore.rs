@@ -299,6 +299,33 @@ impl Project {
         })
     }
 
+    /// The files of `current` that `wanted` does not track and that the `.gitignore` in
+    /// `wanted` ignores: undo and redo leave these on disk.
+    pub(super) fn ignored_in(
+        &self,
+        current: &BTreeMap<String, paper_git::TreeFile>,
+        wanted: &BTreeMap<String, paper_git::TreeFile>,
+    ) -> Result<BTreeSet<String>, GitError> {
+        let gone: Vec<&String> = current
+            .keys()
+            .filter(|p| !wanted.contains_key(*p))
+            .collect();
+        if gone.is_empty() {
+            return Ok(BTreeSet::new());
+        }
+        let text = match wanted.get(GITIGNORE) {
+            Some(file) => String::from_utf8_lossy(&self.repo.read_blob(&file.blob)?).into_owned(),
+            None => String::new(),
+        };
+        let layers = Layers::build(&self.repo, &text);
+        let mut memo = HashMap::new();
+        Ok(gone
+            .into_iter()
+            .filter(|path| layers.decide(path, false, &mut memo).is_some())
+            .cloned()
+            .collect())
+    }
+
     /// Every ignore rule that applies, grouped by source (paper, profile, yours, local,
     /// global), each with its file and line. Comments and blank lines are skipped. Sources
     /// that can't be read are left out; [`Project::ignore_listing`] names them.
@@ -489,16 +516,18 @@ impl Arg {
                 typed_slash,
                 typed,
             } => {
+                let mut bare = false;
                 let rule = match exists(workdir, parts, draft) {
                     Some(is_dir) => path_rule(parts, is_dir),
                     // Not there yet: a bare name matches at any depth, as it does in
                     // .gitignore; with a slash in it, it is anchored.
                     None if parts.len() == 1 && !*typed_slash && !typed.contains('/') => {
+                        bare = true;
                         escape(&parts[0])
                     }
                     None => path_rule(parts, *typed_slash),
                 };
-                (rule, false)
+                (rule, bare)
             }
             Self::Maybe { parts, typed } => {
                 if let Some(parts) = parts.as_ref().filter(|p| !p.is_empty())

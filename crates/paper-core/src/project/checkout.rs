@@ -115,7 +115,13 @@ impl Project {
         let mut skipped = Vec::new();
         let mut deletes: Vec<&String> = Vec::new();
         let mut candidates = Vec::new();
+        // Untracked in the wanted state because its .gitignore ignores them (`paper ignore`):
+        // such files stay on disk. They are not "skipped": they are correctly untracked there.
+        let ignored = self.ignored_in(current, wanted)?;
         for path in targets {
+            if ignored.contains(path) {
+                continue;
+            }
             let want = wanted.get(path);
             let kept = left_alone(snapshot_skipped, path)
                 .or_else(|| self.on_disk_symlink(path))
