@@ -55,7 +55,7 @@
       "id": "e1a0c018",
       "title": "PV-018: paper ignore <path|pattern>: own .gitignore block, untrack saved matches, list rules",
       "description": "GitHub issue #36. Wave 3, parallel with PV-026. Size M. Split: unignore/--local/--why are PV-032.",
-      "status": "in_progress",
+      "status": "done",
       "priority": "medium",
       "sprint": "v0.2-b",
       "created_at": "2026-10-17T08:47:11Z",

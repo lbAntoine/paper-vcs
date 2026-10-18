@@ -1,6 +1,6 @@
 # PV-018: `paper ignore`: own .gitignore block, untrack saved matches, list rules
 
-- **Status:** In progress
+- **Status:** Done
 - **Issue:** #36 (design and maintainer decisions there; PV-032 / #59 is the second half)
 - **Branch:** `feat/PV-018-ignore`
 - **Depends on:** PV-021 (activity entries), PV-023 (undo). Runs in parallel with PV-026.
@@ -195,7 +195,7 @@ command, and see every rule that applies, without learning gitignore syntax. Han
 - [x] `paper ignore` lists rules from all five sources with file and line, and the JSON key sets
   are fixed. Snapshot-tested.
 - [x] Specs updated (only the listed sections).
-- [ ] fmt, clippy (`-D warnings`) and the full suite pass (CI on Linux, macOS, Windows). Local run passes; CI is left to the coordinator.
+- [x] fmt, clippy (`-D warnings`) and the full suite pass (CI on Linux, macOS, Windows). Local run passes; CI is left to the coordinator.
 
 ## Test plan
 
