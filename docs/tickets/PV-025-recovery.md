@@ -161,3 +161,11 @@ BLOCKED on 11 RED tests whose assertions are wrong (not changed by me); everythi
   redo the draft holds the unsaved edits (intro v3, related v3) while the tip is older, so
   `git status --porcelain` is naturally ` M ...`; the assertion `== ""` at line ~426 only holds
   for undo.
+
+### RED (fix) · test-author · 2026-10-18
+
+- Restore setup: the unsaved edit is now recorded by a plain `paper status` before `restore`, so
+  restore's snapshot finds nothing and every crash point fires in the restore's own op. The
+  `after-snapshot` case now expects no new entry. All restore points are reachable.
+- Redo: after a redo the draft holds the edits, so `git status --porcelain` is expected to be
+  ` M related.tex` and ` M sections/intro.tex`; undo keeps `""`.

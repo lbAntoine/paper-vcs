@@ -302,6 +302,9 @@ crash_tests! { save_survives_a_crash_at:
 fn restore_survives_a_crash_at(point: &str) {
     let env = project();
     env.write("sections/intro.tex", "Intro v3 unsaved\n");
+    // Record the edit first, so restore's own snapshot finds nothing and every crash point
+    // after it fires in the restore's own op.
+    env.paper(&["status"]).assert_code(0);
     let before_activity = activity(&env);
 
     crash(
@@ -334,11 +337,7 @@ fn restore_survives_a_crash_at(point: &str) {
                 b"Intro v3 unsaved\n"
             );
             assert!(env.work.join("related.tex").exists());
-            assert_eq!(
-                after.len(),
-                before_activity.len() + 1,
-                "only the edits entry"
-            );
+            assert_eq!(after, before_activity, "nothing was recorded");
         }
         "mid-checkout" => {
             // Deletions come before writes: related.tex went, intro.tex was not written yet.
@@ -423,7 +422,13 @@ fn undo_family_survives_a_crash_at(
             before_activity[..],
             "one new entry, nothing else"
         );
-        assert_eq!(env.git_work(&["status", "--porcelain"]), "");
+        // After an undo the files equal the tip; after a redo the draft holds the edits again.
+        let expected = if command == "redo" {
+            " M related.tex\n M sections/intro.tex\n"
+        } else {
+            ""
+        };
+        assert_eq!(env.git_work(&["status", "--porcelain"]), expected);
     } else {
         assert_eq!(after, before_activity, "the command never happened");
         assert_eq!(
