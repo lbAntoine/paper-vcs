@@ -69,6 +69,11 @@ catch the tests that pass locally but fail on CI or catch nothing:
   `GIT_CONFIG_GLOBAL` pointing at an empty file and `GIT_CONFIG_NOSYSTEM=1` (CI's git has no
   identity and defaults to `master`), and grep the new tests for Unix-only APIs outside
   `#[cfg(unix)]` and for platform-specific expected output without a `cfg!` branch.
+- **Expectations that can't be checked yet aren't written yet.** The test-author doesn't
+  hand-write snapshots of output that doesn't exist; GREEN accepts them after reading them.
+  Every new or changed shared test helper (one that captures repository state, redacts output
+  or builds fixtures) gets a sanity test that passes on `main` today, so a helper bug shows up
+  in RED instead of blocking GREEN.
 
 ## 4. GREEN: rust-engineer
 
