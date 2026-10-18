@@ -1,6 +1,7 @@
 //! Human and JSON rendering.
 
 pub mod diff;
+pub mod gc;
 pub mod human;
 pub mod json;
 pub mod json_diff;

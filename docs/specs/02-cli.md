@@ -358,6 +358,33 @@ b7e0  9 minutes ago   edited sections/intro.tex, main.tex
   always present; `time` is RFC 3339, `kind` is `init`, `migrate`, `snapshot`, `save`,
   `restore`, `undo` or `redo` (`go back to` entries have kind `undo`).
 
+### `paper gc [--older-than <duration>] [--dry-run]` (since v0.2)
+
+Trims the undo history to a recent window so the activity log stops growing and git can
+reclaim old objects. Nothing runs it automatically.
+
+- `--older-than` takes `<n>d` (days) or `<n>w` (weeks), at least `1d`; the default is `90d`.
+  `0d`, a missing or unknown unit, or anything else is a user error (exit 1) and changes nothing.
+- Kept: every activity entry newer than the cutoff, the current entry, and every entry you can
+  still `redo`, plus all entries between the oldest of those and now. Older entries are
+  removed, and so are crash leftovers (`.tmp*` files, orphan operation files) and the
+  `view.json.v1` file of a format 1 upgrade. The oldest kept entry is the *horizon*: `paper
+  activity` ends there, and `undo` reports `Nothing to undo.` once it gets there.
+- Afterwards `paper activity` ends with, and `Nothing to undo.` is followed by, the line
+  ``Older history was cleaned up by `paper gc`, so there is nothing further back to go to.``
+- `gc` is not undoable and records no activity entry. `--dry-run` lists what would be removed
+  and changes nothing. When no entry is old enough, nothing is trimmed (leftovers are still
+  swept). Running it twice is safe; the second run removes nothing new.
+- Paper doesn't run `git gc`: the output says to run it to reclaim the space of old saves.
+- Output: `Removed 3 entries from the activity list; kept 12 entries, back to 2026-07-01.`,
+  then `Swept N leftover files:` with one path per line (relative to `.git/paper/`) when there
+  were any, then the `git gc` line. With `--dry-run` the output starts with `Dry run: nothing
+  was changed.` and says `Would remove` / `would keep` / `Would sweep`.
+- `--json`: `{"schema":1,"dry_run","removed_entries","kept_entries","horizon","swept"}`, every key
+  always present. The counts are entries on the activity chain; `horizon` is the date
+  (`YYYY-MM-DD`) of the oldest kept entry; `swept` lists the leftovers (not the removed
+  entries' files) relative to `.git/paper/`, sorted.
+
 ### Lines: `paper try`, `keep`, `drop`, `switch`, `lines` (since v0.4)
 
 **`paper try <name> [--clean]`**

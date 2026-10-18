@@ -131,6 +131,20 @@ pub enum Command {
     },
     /// Bring back what you just undid.
     Redo,
+    /// Trim the undo history to a recent window so git can reclaim old saves.
+    Gc {
+        /// Remove entries older than this: a number of days (`30d`) or weeks (`12w`), at least `1d`.
+        #[arg(
+            long,
+            value_name = "DURATION",
+            default_value = "90d",
+            allow_hyphen_values = true
+        )]
+        older_than: String,
+        /// Show what would be removed and change nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Put files back the way they were at a point.
     Restore {
         /// The files or folders to restore (relative to where you run paper).

@@ -1,0 +1,14 @@
+---
+source: crates/paper-cli/tests/gc.rs
+expression: env.redact_json(&json.stdout)
+---
+{
+  "dry_run": true,
+  "horizon": "[TIME]",
+  "kept_entries": 2,
+  "removed_entries": 3,
+  "schema": 1,
+  "swept": [
+    "activity/ops/.tmp-op"
+  ]
+}

@@ -11,6 +11,7 @@ use crate::view::View;
 const ACTIVITY_DIR: &str = "activity";
 const OPS_DIR: &str = "ops";
 const HEAD_FILE: &str = "head";
+const HORIZON_FILE: &str = "horizon";
 
 #[derive(Debug, thiserror::Error)]
 pub enum ActivityError {
@@ -57,11 +58,15 @@ impl ActivityLog {
         self.root.join(HEAD_FILE)
     }
 
-    fn ops_dir(&self) -> PathBuf {
+    pub(crate) fn ops_dir(&self) -> PathBuf {
         self.root.join(OPS_DIR)
     }
 
-    fn op_path(&self, id: &OpId) -> PathBuf {
+    fn horizon_path(&self) -> PathBuf {
+        self.root.join(HORIZON_FILE)
+    }
+
+    pub(crate) fn op_path(&self, id: &OpId) -> PathBuf {
         self.ops_dir().join(format!("{id}.json"))
     }
 
@@ -69,7 +74,37 @@ impl ActivityLog {
     /// read with `parent: None`, so walks of the log stop there.
     #[must_use]
     pub fn has_horizon(&self) -> bool {
-        todo!("PV-027: horizon file")
+        self.horizon_path().is_file()
+    }
+
+    /// The id the `horizon` file holds; `Ok(None)` when `paper gc` never trimmed the log.
+    ///
+    /// # Errors
+    ///
+    /// [`ActivityError::Corrupt`] if the file isn't a valid id, [`ActivityError::Io`]
+    /// otherwise.
+    pub fn horizon(&self) -> Result<Option<OpId>, ActivityError> {
+        let path = self.horizon_path();
+        let text = match fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(source) => return Err(ActivityError::Io { path, source }),
+        };
+        text.trim()
+            .parse()
+            .map(Some)
+            .map_err(|error: super::InvalidOpId| ActivityError::Corrupt {
+                path,
+                reason: error.to_string(),
+            })
+    }
+
+    /// Atomically makes `id` the horizon. Used by `paper gc` only.
+    pub(crate) fn write_horizon(&self, id: &OpId) -> Result<(), ActivityError> {
+        let path = self.horizon_path();
+        fs_util::write_atomic(&path, format!("{id}\n").as_bytes())
+            .map_err(|source| ActivityError::Io { path, source })?;
+        self.make_durable()
     }
 
     /// The id `head` holds; `Ok(None)` when there is no head yet.
@@ -93,7 +128,7 @@ impl ActivityLog {
             })
     }
 
-    /// Reads one op.
+    /// Reads one op. The horizon op is returned with `parent: None`, whatever its file says.
     ///
     /// # Errors
     ///
@@ -108,15 +143,19 @@ impl ActivityLog {
             }
             Err(source) => return Err(ActivityError::Io { path, source }),
         };
-        let op: Op = serde_json::from_slice(&bytes).map_err(|error| ActivityError::Corrupt {
-            path: path.clone(),
-            reason: error.to_string(),
-        })?;
+        let mut op: Op =
+            serde_json::from_slice(&bytes).map_err(|error| ActivityError::Corrupt {
+                path: path.clone(),
+                reason: error.to_string(),
+            })?;
         if op.id != *id {
             return Err(ActivityError::Corrupt {
                 path,
                 reason: format!("it holds operation {}, not {id}", op.id),
             });
+        }
+        if self.horizon()?.as_ref() == Some(id) {
+            op.parent = None;
         }
         Ok(op)
     }

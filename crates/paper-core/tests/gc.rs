@@ -660,3 +660,16 @@ fn a_project_reopens_and_keeps_working_after_gc() {
     assert!(ops.len() > outcome.kept_entries);
     git(dir.path(), &["fsck", "--strict", "--no-progress"]);
 }
+
+#[test]
+fn a_gc_with_nothing_to_remove_leaves_ops_and_refs_byte_identical() {
+    let (dir, mut project) = history(3);
+    let before = git_dir_bytes(dir.path());
+
+    let outcome = gc(&mut project, "30d");
+
+    assert_eq!(outcome.removed_entries, 0);
+    assert!(outcome.swept.is_empty());
+    assert!(!ActivityLog::open(&paper(dir.path())).has_horizon());
+    assert_eq!(before, git_dir_bytes(dir.path()), "no horizon, no new refs");
+}

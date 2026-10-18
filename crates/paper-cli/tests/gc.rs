@@ -338,3 +338,23 @@ fn a_duration_below_one_day_or_garbage_is_a_three_part_user_error() {
     }
     assert_eq!(before, git_dir_bytes(&env.work), "nothing was touched");
 }
+
+// ---- snapshots ----
+
+#[test]
+fn gc_output_snapshots() {
+    let env = project();
+    backdate_oldest(&env, 3, 200);
+    fs::write(ops_dir(&env).join(".tmp-op"), "x").unwrap();
+    let dry = env.paper(&["gc", "--older-than", "30d", "--dry-run"]);
+    let json = env.paper(&["gc", "--older-than", "30d", "--dry-run", "--json"]);
+    let real = env.paper(&["gc", "--older-than", "30d"]);
+    for run in [&dry, &json, &real] {
+        run.assert_code(0);
+    }
+    common::settings().bind(|| {
+        insta::assert_snapshot!("gc_dry_run_human", env.redact(&dry.stdout));
+        insta::assert_snapshot!("gc_dry_run_json", env.redact_json(&json.stdout));
+        insta::assert_snapshot!("gc_human", env.redact(&real.stdout));
+    });
+}
