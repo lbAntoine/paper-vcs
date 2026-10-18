@@ -266,7 +266,11 @@ existing ignores apply, and picks the first match in this order: `quarto`, `late
 `jupyter`, `markdown`, else `generic`.
 
 Profiles only ever **add** lines to `.gitignore`, inside a marked block, so re-running is
-idempotent and user lines are never touched:
+idempotent and user lines are never touched. `.gitignore` can hold two paper blocks, told
+apart by their marker text, at most one of each: the profile block below, and a second block
+for the rules `paper ignore` adds (`# >>> paper-vcs: ignored >>>` … `# <<< paper-vcs: ignored
+<<<`, see [02-cli](02-cli.md), `paper ignore`). The profile block
+comes first.
 
 ```
 # >>> paper-vcs profile: latex >>>
@@ -279,8 +283,11 @@ idempotent and user lines are never touched:
   byte stays as it was.
 - An existing paper block (any profile name): replaced in place. Applying the same profile
   again changes nothing, byte for byte.
-- A start marker without its end marker, or two blocks: an error that says what to fix, and
-  nothing is written.
+- Paper's own ignore block is never touched by a profile. Applying a profile to a file that
+  has only that block puts the profile block right before it; changing the profile later
+  (`paper config set --project profile …`) keeps the ignore block after the profile block.
+- A start marker without its end marker, or two blocks of the same kind: an error that says
+  what to fix, and nothing is written. One block of each kind is not a duplicate.
 - Line endings follow the file: CRLF if its first line ends in CRLF, else LF.
 - Files already saved stay tracked when a new rule matches them, as in git.
 
@@ -291,8 +298,9 @@ idempotent and user lines are never touched:
 - Over `warn_mb` (10 MB): tracked, with a warning on the first snapshot:
   `data/model.ckpt (48 MB) is now tracked. Large files make the project slow to share.`
 - Over `max_mb` (100 MB): **not tracked**. It is shown under "Skipped" in `status` with
-  its own entry in `paper help large-files`, which explains the options: add it to
-  `.gitignore`, store it elsewhere (Zenodo, OSF, DVC), or raise the limit knowingly.
+  its own entry in `paper help large-files`, which explains the options: ignore it
+  with `paper ignore <path>`, store it elsewhere (Zenodo, OSF, DVC), or raise
+  the limit knowingly.
 - A file that is already tracked and then grows past `max_mb` stays tracked, and it gets
   a loud warning instead of silently disappearing from the draft.
 

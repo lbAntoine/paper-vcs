@@ -1,0 +1,5 @@
+---
+source: crates/paper-cli/tests/ignore.rs
+expression: env.redact(&human.stdout)
+---
+Nothing to do: already ignored.

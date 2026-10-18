@@ -356,3 +356,294 @@ fn adoption_with_a_malformed_block_writes_nothing() {
     assert!(!dir.path().join(".git/paper/version").exists());
     assert_eq!(git(dir.path(), &["status", "--porcelain"]), status_before);
 }
+
+// ---- PV-018: paper's own second block ----
+
+const PAPER_START: &str = "# >>> paper-vcs: ignored >>>";
+const PAPER_END: &str = "# <<< paper-vcs: ignored <<<";
+
+fn paper_block(rules: &[&str], eol: &str) -> String {
+    let mut out = format!("{PAPER_START}{eol}");
+    for rule in rules {
+        out.push_str(rule);
+        out.push_str(eol);
+    }
+    out.push_str(PAPER_END);
+    out.push_str(eol);
+    out
+}
+
+fn rules(list: &[&str]) -> Vec<String> {
+    list.iter().map(|rule| (*rule).to_owned()).collect()
+}
+
+fn latex_profile_block(eol: &str) -> String {
+    let latex = Profile::builtin("latex").unwrap();
+    let mut out = format!("# >>> paper-vcs profile: latex >>>{eol}");
+    for line in &latex.ignore {
+        out.push_str(line);
+        out.push_str(eol);
+    }
+    out.push_str("# <<< paper-vcs profile: latex <<<");
+    out.push_str(eol);
+    out
+}
+
+/// True when every line of `original` appears in `result`, unchanged and in the same order.
+fn keeps_lines_in_order(original: &str, result: &str) -> bool {
+    let mut remaining = result.split_inclusive('\n');
+    original
+        .split_inclusive('\n')
+        .all(|line| remaining.any(|candidate| candidate == line))
+}
+
+#[test]
+fn add_rules_to_a_missing_file_makes_just_paper_block() {
+    let result = gitignore::add_rules(None, &rules(&["/data/raw/", "*.aux"])).unwrap();
+    assert_eq!(result, Some(paper_block(&["/data/raw/", "*.aux"], "\n")));
+}
+
+#[test]
+fn add_rules_appends_the_block_after_a_blank_line_keeping_every_byte() {
+    let existing = "mine.txt\n  keep me  ";
+    let result = gitignore::add_rules(Some(existing), &rules(&["/x/"]))
+        .unwrap()
+        .unwrap();
+    assert!(result.starts_with(existing), "{result:?}");
+    assert!(result.ends_with(&paper_block(&["/x/"], "\n")), "{result:?}");
+    assert!(
+        result[existing.len()..].starts_with("\n\n# >>> paper-vcs: ignored >>>"),
+        "{result:?}"
+    );
+}
+
+#[test]
+fn add_rules_puts_the_block_after_the_profile_block() {
+    let existing = format!("mine.txt\n\n{}", latex_profile_block("\n"));
+    let result = gitignore::add_rules(Some(&existing), &rules(&["/x/"]))
+        .unwrap()
+        .unwrap();
+    assert!(result.starts_with(&existing), "{result:?}");
+    assert!(result.ends_with(&paper_block(&["/x/"], "\n")), "{result:?}");
+}
+
+#[test]
+fn add_rules_with_hand_written_lines_after_the_profile_block_keeps_them_all() {
+    let existing = format!("{}after-1\nafter-2\n", latex_profile_block("\n"));
+    let result = gitignore::add_rules(Some(&existing), &rules(&["/x/"]))
+        .unwrap()
+        .unwrap();
+    assert!(keeps_lines_in_order(&existing, &result), "{result:?}");
+    let profile_end = result.find("# <<< paper-vcs profile: latex <<<").unwrap();
+    assert!(
+        result.find(PAPER_START).unwrap() > profile_end,
+        "{result:?}"
+    );
+}
+
+#[test]
+fn add_rules_appends_new_rules_to_the_block_in_order_and_skips_repeats() {
+    let existing = format!("mine\n{}", paper_block(&["# note", "/a/", "*.aux"], "\n"));
+    let result = gitignore::add_rules(Some(&existing), &rules(&["/b/", "/a/", "/c/"]))
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        result,
+        format!(
+            "mine\n{}",
+            paper_block(&["# note", "/a/", "*.aux", "/b/", "/c/"], "\n")
+        )
+    );
+}
+
+#[test]
+fn add_rules_repeats_within_one_call_are_written_once() {
+    let result = gitignore::add_rules(None, &rules(&["/a/", "/a/"]))
+        .unwrap()
+        .unwrap();
+    assert_eq!(result, paper_block(&["/a/"], "\n"));
+}
+
+#[test]
+fn add_rules_that_are_all_present_change_nothing() {
+    let existing = format!("mine\n{}", paper_block(&["/a/", "*.aux"], "\n"));
+    assert_eq!(
+        gitignore::add_rules(Some(&existing), &rules(&["*.aux", "/a/"])).unwrap(),
+        None
+    );
+}
+
+#[test]
+fn add_rules_with_no_rules_never_writes_an_empty_block() {
+    assert_eq!(gitignore::add_rules(None, &[]).unwrap(), None);
+    assert_eq!(gitignore::add_rules(Some("mine\n"), &[]).unwrap(), None);
+}
+
+#[test]
+fn add_rules_in_a_crlf_file_writes_crlf_and_keeps_hand_written_bytes() {
+    let existing = format!("mine.txt\r\n*.bak\r\n\r\n{}", latex_profile_block("\r\n"));
+    let result = gitignore::add_rules(Some(&existing), &rules(&["/x/", "*.aux"]))
+        .unwrap()
+        .unwrap();
+    assert!(result.starts_with(&existing), "{result:?}");
+    assert!(
+        result.ends_with(&paper_block(&["/x/", "*.aux"], "\r\n")),
+        "{result:?}"
+    );
+    assert!(!result.replace("\r\n", "").contains('\n'), "{result:?}");
+}
+
+#[test]
+fn paper_rules_reads_the_block_skipping_comments_and_blank_lines() {
+    let existing = format!(
+        "other\n{}after\n",
+        paper_block(&["# note", "/a/", "", "*.aux"], "\n")
+    );
+    assert_eq!(
+        gitignore::paper_rules(Some(&existing)).unwrap(),
+        ["/a/", "*.aux"]
+    );
+    assert!(gitignore::paper_rules(Some("other\n")).unwrap().is_empty());
+    assert!(gitignore::paper_rules(None).unwrap().is_empty());
+}
+
+#[test]
+fn paper_rules_reads_a_crlf_block_without_the_carriage_returns() {
+    let existing = paper_block(&["/a/", "*.aux"], "\r\n");
+    assert_eq!(
+        gitignore::paper_rules(Some(&existing)).unwrap(),
+        ["/a/", "*.aux"]
+    );
+}
+
+#[test]
+fn two_paper_blocks_are_a_duplicate_block_error() {
+    let existing = format!(
+        "{}\n{}",
+        paper_block(&["/a/"], "\n"),
+        paper_block(&["/b/"], "\n")
+    );
+    assert!(matches!(
+        gitignore::add_rules(Some(&existing), &rules(&["/c/"])).unwrap_err(),
+        gitignore::GitignoreError::DuplicateBlock { .. }
+    ));
+    assert!(matches!(
+        gitignore::paper_rules(Some(&existing)).unwrap_err(),
+        gitignore::GitignoreError::DuplicateBlock { .. }
+    ));
+}
+
+#[test]
+fn a_paper_block_without_an_end_marker_is_an_unterminated_block_error() {
+    let existing = format!("mine\n{PAPER_START}\n/a/\n");
+    assert!(matches!(
+        gitignore::add_rules(Some(&existing), &rules(&["/c/"])).unwrap_err(),
+        gitignore::GitignoreError::UnterminatedBlock { line: 2 }
+    ));
+}
+
+#[test]
+fn a_profile_block_and_a_paper_block_together_are_not_a_duplicate() {
+    let existing = format!(
+        "{}\n{}",
+        latex_profile_block("\n"),
+        paper_block(&["/a/"], "\n")
+    );
+    let latex = Profile::builtin("latex").unwrap();
+    assert_eq!(gitignore::apply(Some(&existing), latex).unwrap(), None);
+    assert!(gitignore::add_rules(Some(&existing), &rules(&["/b/"])).is_ok());
+}
+
+#[test]
+fn applying_a_profile_replaces_only_the_profile_block_and_keeps_paper_block() {
+    let existing = format!(
+        "mine\n{}\n{}after\n",
+        latex_profile_block("\n"),
+        paper_block(&["/a/", "*.aux"], "\n")
+    );
+    let markdown = Profile::builtin("markdown").unwrap();
+
+    let result = gitignore::apply(Some(&existing), markdown)
+        .unwrap()
+        .unwrap();
+
+    assert!(
+        result.contains(&paper_block(&["/a/", "*.aux"], "\n")),
+        "{result:?}"
+    );
+    assert!(!result.contains("profile: latex"), "{result:?}");
+    assert!(result.starts_with("mine\n"));
+    assert!(result.ends_with("after\n"));
+    assert!(
+        result
+            .find("# >>> paper-vcs profile: markdown >>>")
+            .unwrap()
+            < result.find(PAPER_START).unwrap(),
+        "paper's block stays after the profile block: {result:?}"
+    );
+}
+
+#[test]
+fn applying_a_profile_to_a_file_with_only_paper_block_puts_the_profile_block_first() {
+    let existing = format!("mine\n\n{}", paper_block(&["/a/"], "\n"));
+    let latex = Profile::builtin("latex").unwrap();
+
+    let result = gitignore::apply(Some(&existing), latex).unwrap().unwrap();
+
+    assert!(result.contains(&paper_block(&["/a/"], "\n")), "{result:?}");
+    assert!(result.starts_with("mine\n"));
+    assert!(
+        result.find("# >>> paper-vcs profile: latex >>>").unwrap()
+            < result.find(PAPER_START).unwrap(),
+        "{result:?}"
+    );
+}
+
+#[test]
+fn applying_a_profile_to_a_crlf_file_with_paper_block_keeps_crlf() {
+    let existing = format!(
+        "mine\r\n{}{}",
+        latex_profile_block("\r\n"),
+        paper_block(&["/a/"], "\r\n")
+    );
+    let markdown = Profile::builtin("markdown").unwrap();
+
+    let result = gitignore::apply(Some(&existing), markdown)
+        .unwrap()
+        .unwrap();
+
+    assert!(
+        result.contains(&paper_block(&["/a/"], "\r\n")),
+        "{result:?}"
+    );
+    assert!(!result.replace("\r\n", "").contains('\n'), "{result:?}");
+}
+
+#[test]
+fn reapplying_a_profile_on_disk_keeps_paper_block_and_git_still_ignores_both() {
+    let dir = tempfile::tempdir().unwrap();
+    git(dir.path(), &["init", "--quiet", "-b", "main"]);
+    write(dir.path(), ".gitignore", "mine.txt\n");
+    let latex = Profile::builtin("latex").unwrap();
+    let typst = Profile::builtin("typst").unwrap();
+    assert!(gitignore::apply_to_file(dir.path(), latex).unwrap());
+    let with_profile = read(dir.path(), ".gitignore");
+    let with_block = gitignore::add_rules(Some(&with_profile), &rules(&["/data/raw/"]))
+        .unwrap()
+        .unwrap();
+    write(dir.path(), ".gitignore", &with_block);
+
+    assert!(gitignore::apply_to_file(dir.path(), typst).unwrap());
+
+    let text = read(dir.path(), ".gitignore");
+    assert!(text.starts_with("mine.txt\n"), "{text}");
+    assert!(text.contains(&paper_block(&["/data/raw/"], "\n")), "{text}");
+    assert!(text.contains(&block_start("typst")), "{text}");
+    assert!(!text.contains(&block_start("latex")), "{text}");
+    git(
+        dir.path(),
+        &["check-ignore", "--no-index", "data/raw/a.csv"],
+    );
+    git(dir.path(), &["check-ignore", "--no-index", "mine.txt"]);
+    assert!(!gitignore::apply_to_file(dir.path(), typst).unwrap());
+}

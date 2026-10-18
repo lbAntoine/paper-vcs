@@ -189,7 +189,7 @@ impl Project {
         let wanted_files = self.repo.tree_files(&tree)?;
         let targets: BTreeSet<&String> = current.keys().chain(wanted_files.keys()).collect();
         // Decided, and every blob read, before anything is written.
-        let plan = self.plan_checkout(targets, &wanted_files, &current, &state.skipped)?;
+        let plan = self.plan_checkout_to_draft(targets, &wanted_files, &current, &state.skipped)?;
 
         // The marker goes first, naming the op the project is at and the tree the files must
         // reach, so a crash anywhere below can be repaired (03-architecture.md § Command

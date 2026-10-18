@@ -1,0 +1,201 @@
+---
+source: crates/paper-cli/tests/ignore.rs
+expression: env.redact_json(&json.stdout)
+---
+{
+  "rules": [
+    {
+      "file": ".gitignore",
+      "line": 32,
+      "rule": "*.scratch",
+      "source": "paper"
+    },
+    {
+      "file": ".gitignore",
+      "line": 2,
+      "rule": "*.aux",
+      "source": "profile"
+    },
+    {
+      "file": ".gitignore",
+      "line": 3,
+      "rule": "*.log",
+      "source": "profile"
+    },
+    {
+      "file": ".gitignore",
+      "line": 4,
+      "rule": "*.out",
+      "source": "profile"
+    },
+    {
+      "file": ".gitignore",
+      "line": 5,
+      "rule": "*.toc",
+      "source": "profile"
+    },
+    {
+      "file": ".gitignore",
+      "line": 6,
+      "rule": "*.lof",
+      "source": "profile"
+    },
+    {
+      "file": ".gitignore",
+      "line": 7,
+      "rule": "*.lot",
+      "source": "profile"
+    },
+    {
+      "file": ".gitignore",
+      "line": 8,
+      "rule": "*.fls",
+      "source": "profile"
+    },
+    {
+      "file": ".gitignore",
+      "line": 9,
+      "rule": "*.fdb_latexmk",
+      "source": "profile"
+    },
+    {
+      "file": ".gitignore",
+      "line": 10,
+      "rule": "*.synctex.gz",
+      "source": "profile"
+    },
+    {
+      "file": ".gitignore",
+      "line": 11,
+      "rule": "*.bbl",
+      "source": "profile"
+    },
+    {
+      "file": ".gitignore",
+      "line": 12,
+      "rule": "*.blg",
+      "source": "profile"
+    },
+    {
+      "file": ".gitignore",
+      "line": 13,
+      "rule": "*.bcf",
+      "source": "profile"
+    },
+    {
+      "file": ".gitignore",
+      "line": 14,
+      "rule": "*.run.xml",
+      "source": "profile"
+    },
+    {
+      "file": ".gitignore",
+      "line": 15,
+      "rule": "_minted-*/",
+      "source": "profile"
+    },
+    {
+      "file": ".gitignore",
+      "line": 16,
+      "rule": "build/",
+      "source": "profile"
+    },
+    {
+      "file": ".gitignore",
+      "line": 17,
+      "rule": ".DS_Store",
+      "source": "profile"
+    },
+    {
+      "file": ".gitignore",
+      "line": 18,
+      "rule": "Thumbs.db",
+      "source": "profile"
+    },
+    {
+      "file": ".gitignore",
+      "line": 19,
+      "rule": "*.swp",
+      "source": "profile"
+    },
+    {
+      "file": ".gitignore",
+      "line": 20,
+      "rule": "*.swo",
+      "source": "profile"
+    },
+    {
+      "file": ".gitignore",
+      "line": 21,
+      "rule": "*~",
+      "source": "profile"
+    },
+    {
+      "file": ".gitignore",
+      "line": 22,
+      "rule": ".venv/",
+      "source": "profile"
+    },
+    {
+      "file": ".gitignore",
+      "line": 23,
+      "rule": "__pycache__/",
+      "source": "profile"
+    },
+    {
+      "file": ".gitignore",
+      "line": 24,
+      "rule": ".Rproj.user/",
+      "source": "profile"
+    },
+    {
+      "file": ".gitignore",
+      "line": 25,
+      "rule": "renv/library/",
+      "source": "profile"
+    },
+    {
+      "file": ".gitignore",
+      "line": 26,
+      "rule": "~$*",
+      "source": "profile"
+    },
+    {
+      "file": ".gitignore",
+      "line": 27,
+      "rule": ".~lock.*#",
+      "source": "profile"
+    },
+    {
+      "file": ".gitignore",
+      "line": 28,
+      "rule": "~WRL*.tmp",
+      "source": "profile"
+    },
+    {
+      "file": ".gitignore",
+      "line": 36,
+      "rule": "mine.txt",
+      "source": "yours"
+    },
+    {
+      "file": "docs/.gitignore",
+      "line": 1,
+      "rule": "*.nested",
+      "source": "yours"
+    },
+    {
+      "file": ".git/info/exclude",
+      "line": 6,
+      "rule": "local.tmp",
+      "source": "local"
+    },
+    {
+      "file": "[TMP]/global-ignore",
+      "line": 2,
+      "rule": "global.tmp",
+      "source": "global"
+    }
+  ],
+  "schema": 1
+}
