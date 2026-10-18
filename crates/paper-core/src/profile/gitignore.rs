@@ -109,6 +109,38 @@ pub fn apply(existing: Option<&str>, profile: &Profile) -> Result<Option<String>
     Ok((result != text).then_some(result))
 }
 
+/// The rules in paper's own block (`# >>> paper-vcs: ignored >>>`) of a `.gitignore` text, in
+/// order. Comments and blank lines are skipped; no block gives no rules.
+///
+/// # Errors
+///
+/// [`GitignoreError::UnterminatedBlock`] or [`GitignoreError::DuplicateBlock`].
+///
+/// # Panics
+///
+/// Never.
+pub fn paper_rules(_existing: Option<&str>) -> Result<Vec<String>, GitignoreError> {
+    todo!("PV-018")
+}
+
+/// Adds `rules` to paper's own block, creating it after the profile block (or, without one,
+/// after a blank line at the end). Rules already in the block are not repeated. Returns
+/// `Ok(None)` when the text would not change; an empty block is never written.
+///
+/// # Errors
+///
+/// [`GitignoreError::UnterminatedBlock`] or [`GitignoreError::DuplicateBlock`].
+///
+/// # Panics
+///
+/// Never.
+pub fn add_rules(
+    _existing: Option<&str>,
+    _rules: &[String],
+) -> Result<Option<String>, GitignoreError> {
+    todo!("PV-018")
+}
+
 /// Byte range of the existing block, from its start marker to the end of its end-marker line.
 struct Span {
     start: usize,

@@ -11,8 +11,8 @@ use crate::config::{ConfigError, Conflict, Key, Origin, Scope};
 use crate::point::ParsePointError;
 use crate::profile::gitignore::GitignoreError;
 use crate::project::{
-    DiffError, GcError, HistoryError, InitError, OpenError, ResolveError, RestoreError, SaveError,
-    ShowError, StatusError, UndoError,
+    DiffError, GcError, HistoryError, IgnoreError, InitError, OpenError, ResolveError,
+    RestoreError, SaveError, ShowError, StatusError, UndoError,
 };
 
 /// Who has to act, which decides the CLI exit code.
@@ -777,6 +777,12 @@ impl From<UndoError> for PaperError {
             | UndoError::Export(_)
             | UndoError::Io { .. } => Self::project("Paper could not undo or redo", &error),
         }
+    }
+}
+
+impl From<IgnoreError> for PaperError {
+    fn from(_error: IgnoreError) -> Self {
+        todo!("PV-018: three-part errors for paper ignore")
     }
 }
 

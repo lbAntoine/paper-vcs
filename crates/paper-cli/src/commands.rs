@@ -63,6 +63,7 @@ pub fn execute(cli: &Cli, style: Style) -> Output {
             dry_run,
         } => gc(cli, older_than, *dry_run),
         Command::Redo => undo_family(cli, Verb::Redo, Project::redo),
+        Command::Ignore { paths, yes } => ignore(cli, paths, *yes),
         Command::Restore { paths, from } => inspect::restore(cli, paths, from.as_deref()),
     }
 }
@@ -80,6 +81,10 @@ pub(crate) fn finish(
     } else {
         human_text()
     }
+}
+
+fn ignore(_cli: &Cli, _paths: &[String], _yes: bool) -> Output {
+    todo!("PV-018: paper ignore")
 }
 
 fn init(cli: &Cli, path: Option<&Path>, profile: Option<&str>) -> Output {
