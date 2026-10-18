@@ -41,6 +41,10 @@ pub enum UndoOutcome {
     /// The redo stack is empty. Nothing was recorded, besides an edits entry for unsaved
     /// changes.
     NothingToRedo,
+    /// `undo --to` named the entry the project is already at (the entry is the target).
+    /// Nothing was recorded, besides an edits entry for unsaved changes (after which the target
+    /// is no longer current), and the redo stack is kept.
+    AlreadyThere(ActivityEntry),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -131,7 +135,8 @@ impl Project {
     }
 
     /// Goes back to the state of the entry whose id starts with `prefix`, anywhere in the log,
-    /// including entries that are only on the redo stack. Clears the redo stack.
+    /// including entries that are only on the redo stack. Clears the redo stack, except when the
+    /// project is already there ([`UndoOutcome::AlreadyThere`]): then nothing changes.
     ///
     /// # Errors
     ///
@@ -168,6 +173,12 @@ impl Project {
             path: log.root().join("head"),
         })?;
         let head = log.read(&head_id)?;
+        // The head's view is its position's view, so naming either is a no-op.
+        if let Resolved::To(target) = &resolved
+            && (head.position == target.id || head.id == target.id)
+        {
+            return Ok(UndoOutcome::AlreadyThere(entry_of(&log, target)?));
+        }
         let step = match resolved {
             Resolved::Undo => step_undo(&log, &head)?,
             Resolved::Redo => step_redo(&log, &head)?,

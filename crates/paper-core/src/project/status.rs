@@ -126,7 +126,7 @@ impl Project {
 
         let outside_paper = match self.check_in_sync(self.view.current_line()) {
             Ok(()) => None,
-            Err(SaveError::OutOfSyncWithGit { line }) => Some(OutsidePaper::LineMoved { line }),
+            Err(SaveError::OutOfSyncWithGit { line, .. }) => Some(OutsidePaper::LineMoved { line }),
             Err(SaveError::HeadOnAnotherBranch { line, found }) => {
                 Some(OutsidePaper::OnAnotherBranch { line, found })
             }

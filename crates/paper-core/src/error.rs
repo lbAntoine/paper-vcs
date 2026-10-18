@@ -564,6 +564,62 @@ impl From<OpenError> for PaperError {
     }
 }
 
+/// The `OutOfSyncWithGit` refusal; `consequence` is the sentence that differs per command.
+/// The way back is in the explanation, not in `next`: git refuses to force-move the branch
+/// that is checked out, and `git reset --soft` is the command that works there.
+fn out_of_sync(line: &crate::name::LineName, last_save: &str, consequence: &str) -> PaperError {
+    PaperError::user(
+        format!("The line '{line}' was changed outside paper"),
+        format!(
+            "Commits were added to it, or it was moved, with plain git since paper last saw \
+             it. {consequence} Paper will be able to bring in changes made with plain git in \
+             v0.4. Until then, keep working with plain git on this line, or run `git reset \
+             --soft {last_save}` to go back to paper's last save: your files stay as they \
+             are, and whatever differs from that save shows as unsaved edits paper can save."
+        ),
+        vec![Suggestion::new(
+            format!("git log {line}"),
+            "see what changed",
+        )],
+    )
+}
+
+/// The `HeadOnAnotherBranch` refusal; `why` and `then` differ per command.
+fn other_branch(
+    line: &crate::name::LineName,
+    found: Option<String>,
+    why: &str,
+    then: &str,
+) -> PaperError {
+    let place = found.map_or("no branch (detached HEAD)".to_owned(), |branch| {
+        format!("the branch '{branch}'")
+    });
+    PaperError::user(
+        format!("Git is on {place}, not on the line '{line}'"),
+        why,
+        vec![Suggestion::new(format!("git switch {line}"), then)],
+    )
+}
+
+/// `undo`, `redo` and `undo --to` refuse like `save` does, in their own words.
+fn undo_save_refusal(error: SaveError) -> PaperError {
+    match error {
+        SaveError::OutOfSyncWithGit { line, last_save } => out_of_sync(
+            &line,
+            &last_save,
+            "Paper can't undo or redo across that yet, and nothing was undone or changed.",
+        ),
+        SaveError::HeadOnAnotherBranch { line, found } => other_branch(
+            &line,
+            found,
+            "Undo works on the line you are on, and paper's current line and git's branch \
+             have to agree. Nothing was undone.",
+            "go back to the line, then try again",
+        ),
+        other => other.into(),
+    }
+}
+
 impl From<SaveError> for PaperError {
     fn from(error: SaveError) -> Self {
         match error {
@@ -587,29 +643,18 @@ impl From<SaveError> for PaperError {
                     "list the files with unsaved changes",
                 )],
             ),
-            SaveError::OutOfSyncWithGit { line } => Self::user(
-                format!("The line '{line}' was changed outside paper"),
-                "Commits were added to it, or it was moved, with plain git since paper last saw \
-                 it. Paper can't save on top of that yet, and nothing was saved or changed.",
-                vec![Suggestion::new(
-                    format!("git log {line}"),
-                    "see what changed",
-                )],
+            SaveError::OutOfSyncWithGit { line, last_save } => out_of_sync(
+                &line,
+                &last_save,
+                "Paper can't save on top of that yet, and nothing was saved or changed.",
             ),
-            SaveError::HeadOnAnotherBranch { line, found } => {
-                let place = found.map_or("no branch (detached HEAD)".to_owned(), |branch| {
-                    format!("the branch '{branch}'")
-                });
-                Self::user(
-                    format!("Git is on {place}, not on the line '{line}'"),
-                    "A save is added to the line you are on, and paper's current line and git's \
-                     branch have to agree. Nothing was saved.",
-                    vec![Suggestion::new(
-                        format!("git switch {line}"),
-                        "go back to the line, then save again",
-                    )],
-                )
-            }
+            SaveError::HeadOnAnotherBranch { line, found } => other_branch(
+                &line,
+                found,
+                "A save is added to the line you are on, and paper's current line and git's \
+                 branch have to agree. Nothing was saved.",
+                "go back to the line, then save again",
+            ),
             SaveError::Git(_)
             | SaveError::Snapshot(_)
             | SaveError::Activity(_)
@@ -734,7 +779,7 @@ impl From<StatusError> for PaperError {
 impl From<UndoError> for PaperError {
     fn from(error: UndoError) -> Self {
         match error {
-            UndoError::Save(inner) => inner.into(),
+            UndoError::Save(inner) => undo_save_refusal(inner),
             UndoError::EmptyEntry => Self::user(
                 "Say which entry to go back to",
                 "`--to` needs the start of an entry id (hexadecimal, as the first column of the \
@@ -1143,7 +1188,10 @@ mod tests {
             SaveError::NoChangesAt {
                 paths: vec!["a.tex".to_owned(), "b.tex".to_owned()],
             },
-            SaveError::OutOfSyncWithGit { line: line("main") },
+            SaveError::OutOfSyncWithGit {
+                line: line("main"),
+                last_save: "abc123".to_owned(),
+            },
             SaveError::HeadOnAnotherBranch {
                 line: line("main"),
                 found: Some("other".to_owned()),
@@ -1193,7 +1241,10 @@ mod tests {
 
     #[test]
     fn an_out_of_sync_line_never_suggests_a_command_that_drops_commits() {
-        let error = PaperError::from(SaveError::OutOfSyncWithGit { line: line("main") });
+        let error = PaperError::from(SaveError::OutOfSyncWithGit {
+            line: line("main"),
+            last_save: "abc123".to_owned(),
+        });
         for suggestion in &error.next {
             assert!(!suggestion.command.contains("reset"), "{error:?}");
         }
@@ -1481,7 +1532,11 @@ mod tests {
                 paths: unknown_paths(),
             }
             .to_string(),
-            SaveError::OutOfSyncWithGit { line: line("main") }.to_string(),
+            SaveError::OutOfSyncWithGit {
+                line: line("main"),
+                last_save: "abc123".to_owned(),
+            }
+            .to_string(),
         ]
     }
 

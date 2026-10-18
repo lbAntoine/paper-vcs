@@ -126,8 +126,9 @@ line's tip and draft); `position` (the op whose state is current; the op itself 
 op); `redo` (the redo stack, a list of op ids, empty for a normal op); `description`. The
 project's view is the `view` of the op `activity/head` names. An op is appended by writing its
 file first and then moving `head`, so a crash leaves either the old head or a complete new op.
-Today every view change appends its own op (a `save` may write a `snapshot` op and then a `save`
-op); one op per command arrives with `paper activity`.
+A command appends at most two ops (invariant I4): the `snapshot` op for edits made since the
+last command, then the op for the command itself (a `save` may write both). `paper activity`
+lists them.
 
 **Crash leftovers.** A crash can leave a `.tmp*` file in `activity/` or `ops/`, or an op file
 that `head` never reached (an orphan). They are harmless: `paper activity` lists only `*.json`
@@ -321,6 +322,8 @@ undo:         P = head.position; require P.parent
 redo:         R = head.redo.first() or "nothing to redo"
               new op: view = R.view, position = R, redo = rest
 undo --to X:  new op: view = X.view, position = X, redo = []
+              (but if X is the position, or X is the head: AlreadyThere,
+              nothing is recorded and the redo stack is kept)
 ```
 
 Details:
@@ -333,10 +336,18 @@ Details:
   as remembered, no edits entry is recorded. Any other difference records the normal entry,
   covering every difference.
 - **Refusals.** If plain git moved a line ref or HEAD (it differs from `exported.json`), the
-  three commands refuse with `save`'s errors (`OutOfSyncWithGit`, `HeadOnAnotherBranch`)
-  before anything is written.
+  three commands refuse with `save`'s exit codes and suggestions, in their own wording
+  (`OutOfSyncWithGit`, `HeadOnAnotherBranch`), before anything is written. The moved-line
+  error carries the short id of the commit paper last wrote; its explanation tells the
+  researcher to run `git reset --soft <id>`, which leaves their files as they are and shows what differs
+  from paper's last save as unsaved edits. (It is not a `next` suggestion, and `git branch -f` can't do this: git
+  refuses to force-move the checked-out branch.)
 - **Nothing to do.** `undo` at the first entry and `redo` with an empty stack are friendly
   outcomes (`NothingToUndo`, `NothingToRedo`); nothing is recorded.
+- **Already there.** `undo --to X` where X is the position or the head is `AlreadyThere(X)`:
+  the head's view is its position's view, so there is nothing to check out. Nothing is
+  recorded and the redo stack is kept. If unsaved edits were just recorded, they are the new
+  head and position, so X is no longer current and the normal go-back happens.
 - **`--to` resolution.** The prefix is matched against every op file, so X can be on the head
   chain or only on a redo stack. No match is `UnknownEntry`; several is `AmbiguousEntry`,
   listing each candidate's short id and description. Nothing is changed in either case.
@@ -372,8 +383,9 @@ actual repo with `exported.json`. The table below is the target behaviour. v0.4 
 the `git checkout` and branch-creation rows (roadmap § v0.4: Safe experiments, Interop);
 full coverage of every row is v0.8 (roadmap § v0.8: Hardening).
 *Today (v0.1 to v0.3):* paper does not import external changes. When the line moved under
-it, `save` refuses and writes nothing, and the error names `git log <line>`; if git is on
-another branch, it says to run `git switch <line>`. After a `git pull`, `status` shows the
+it, `save`, `undo` and `redo` refuse and write nothing, and suggest `git log <line>` and a way
+back to paper's last save (`git reset --soft <id>`); if git is on another branch, they say to
+run `git switch <line>`. After a `git pull`, `status` shows the
 pulled edits as unsaved changes and `history` doesn't list the pulled saves. Bringing in
 co-authors' work arrives with `sync` in v0.6.
 

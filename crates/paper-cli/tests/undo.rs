@@ -374,6 +374,124 @@ fn undo_after_a_git_switch_exits_with_saves_error_and_changes_nothing() {
     assert_eq!(state(&env), before);
 }
 
+/// Stderr with runs of whitespace collapsed, so wrapping never matters.
+fn words(run: &common::Run) -> String {
+    run.stderr.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+#[test]
+fn after_a_plain_git_commit_undo_redo_and_undo_to_use_the_undo_wording() {
+    let env = project();
+    env.git_work(&["commit", "--quiet", "--allow-empty", "-m", "Plain git"]);
+    env.write("sections/intro.tex", "edit after the commit\n");
+    let before = state(&env);
+    let saved = env.paper(&["save", "Try"]);
+
+    for args in [&["undo"][..], &["redo"], &["undo", "--to", "0000"]] {
+        let run = env.paper(args);
+
+        run.assert_three_part_error(saved.code);
+        let text = words(&run);
+        for phrase in [
+            "The line 'main' was changed outside paper",
+            "Paper can't undo or redo across that yet",
+            "nothing was undone or changed",
+            "v0.4",
+            "git log main",
+        ] {
+            assert!(
+                text.contains(phrase),
+                "{args:?}: missing {phrase:?}: {text}"
+            );
+        }
+        assert!(!text.contains("can't save"), "{args:?}: {text}");
+    }
+    assert_eq!(state(&env), before);
+    env.fsck();
+}
+
+#[test]
+fn after_git_switch_undo_redo_and_undo_to_name_the_branch_and_say_nothing_was_undone() {
+    let env = project();
+    env.git_work(&["switch", "--quiet", "-c", "other"]);
+    env.write("sections/intro.tex", "edit on other\n");
+    let before = state(&env);
+    let saved = env.paper(&["save", "Try"]);
+
+    for args in [&["undo"][..], &["redo"], &["undo", "--to", "0000"]] {
+        let run = env.paper(args);
+
+        run.assert_three_part_error(saved.code);
+        let text = words(&run);
+        for phrase in [
+            "Git is on the branch 'other', not on the line 'main'",
+            "Undo works on the line you are on",
+            "Nothing was undone.",
+            "git switch main",
+        ] {
+            assert!(
+                text.contains(phrase),
+                "{args:?}: missing {phrase:?}: {text}"
+            );
+        }
+        assert!(!text.contains("Nothing was saved"), "{args:?}: {text}");
+    }
+    assert_eq!(state(&env), before);
+}
+
+// ---- undo --to twice ----
+
+#[test]
+fn undo_to_twice_says_already_there_exits_zero_and_records_nothing() {
+    let env = project();
+    let target = short_id_of(&env, "save \"Add related work\"");
+    env.paper(&["undo", "--to", &target]).assert_code(0);
+    let before = state(&env);
+    let entries_before = entries(&env);
+
+    let run = env.paper(&["undo", "--to", &target]);
+
+    run.assert_code(0);
+    assert_eq!(run.stdout, "Already there.\n", "{run:#?}");
+    assert_eq!(state(&env), before);
+    assert_eq!(entries(&env), entries_before);
+    env.fsck();
+}
+
+#[test]
+fn undo_to_twice_in_json_is_already_there_with_the_target_and_nothing_changed() {
+    let env = project();
+    let target = short_id_of(&env, "save \"Add related work\"");
+    env.paper(&["undo", "--to", &target]).assert_code(0);
+
+    let run = env.paper(&["--json", "undo", "--to", &target]);
+
+    run.assert_code(0);
+    let json = run.json();
+    assert_eq!(json["schema"], 1);
+    assert_eq!(json["outcome"], "already_there");
+    assert_eq!(json["entry"]["short_id"], target.as_str());
+    assert_eq!(json["changed"], json!([]));
+    assert_eq!(json["skipped"], json!([]));
+}
+
+#[test]
+fn undo_to_twice_with_unsaved_edits_in_between_goes_back_again() {
+    let env = project();
+    let target = short_id_of(&env, "save \"Add related work\"");
+    env.paper(&["undo", "--to", &target]).assert_code(0);
+    env.write("sections/intro.tex", "unsaved since the first go back\n");
+
+    let run = env.paper(&["undo", "--to", &target]);
+
+    run.assert_code(0);
+    assert!(
+        run.stdout.starts_with(&format!("Went back to {target}: ")),
+        "{run:#?}"
+    );
+    assert_eq!(env.read("sections/intro.tex"), "Intro v1\n");
+}
+
 // ---- skipped files ----
 
 /// A project where undoing twice cannot restore `chap` (an ignored file is in the way).
