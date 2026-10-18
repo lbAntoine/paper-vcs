@@ -38,6 +38,11 @@ Nothing inside the window is affected, and nothing is cleaned up automatically.
 - **What is kept:** every op on the head chain newer than the cutoff, plus every op on the head's
   redo stack and on the redo stacks of kept ops (so `redo` still works), plus the head op itself
   even if older. The oldest kept op on the head chain becomes the **horizon**.
+- **Undo position kept (coordinator, after GREEN):** after several undos the head op's `position`
+  names an older op, and the next `undo` targets that op's parent. gc also keeps the head's
+  `position` op, so the horizon is the oldest of: the cutoff's oldest kept op, the head's
+  `position` op, and every redo target. The chain from the horizon to the head is kept whole. No
+  change to `undo.rs`: undoing past the horizon reports `NothingToUndo`.
 - **The horizon:** `.git/paper/activity/horizon` holds that op's id (written atomically).
   `ActivityLog::read` returns the horizon op with `parent: None`, so the activity listing and
   `undo` both stop there without any change to `undo.rs` or `project/activity.rs` (undo reports
