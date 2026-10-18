@@ -4,6 +4,7 @@
 pub mod activity;
 pub mod config;
 pub mod error;
+pub mod fault;
 mod fs_util;
 pub mod name;
 pub mod point;

@@ -9,6 +9,7 @@ mod init;
 mod init_profile;
 mod lock;
 mod migrate;
+mod recover;
 mod resolve;
 mod restore;
 mod restore_plan;
@@ -153,6 +154,7 @@ impl Project {
                 path: log.root().join("head"),
             })
         })?;
+        recover::recover(&repo, &paper_dir, &head)?;
         let view = log.read(&head)?.view;
         Ok(Self {
             repo,
@@ -186,8 +188,10 @@ impl Project {
         placement: Option<(OpId, Vec<OpId>)>,
     ) -> Result<Op, ExportError> {
         let keep = export::write_keep(&self.repo, &self.identity, Some(&self.view), &view)?;
+        crate::fault::crash_point("after-keep");
         let op =
             ActivityLog::open(&self.paper_dir).append_at(kind, &view, description, placement)?;
+        crate::fault::crash_point("after-op");
         let previous = std::mem::replace(&mut self.view, view);
         export::export(
             &self.repo,

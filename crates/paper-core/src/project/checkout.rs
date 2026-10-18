@@ -157,8 +157,12 @@ impl Project {
         plan: &CheckoutPlan,
         write_action: &'static str,
     ) -> Result<(), ApplyFailure> {
+        let mut first = true;
         for path in &plan.deletes {
             self.delete_working_file(path)?;
+            if std::mem::take(&mut first) {
+                crate::fault::crash_point("mid-checkout");
+            }
         }
         for (path, kind, bytes) in &plan.writes {
             let fail = |source| ApplyFailure {
@@ -172,6 +176,9 @@ impl Project {
             }
             write_atomic(&absolute, bytes).map_err(fail)?;
             set_executable(&absolute, *kind == FileKind::Executable).map_err(fail)?;
+            if std::mem::take(&mut first) {
+                crate::fault::crash_point("mid-checkout");
+            }
         }
         Ok(())
     }

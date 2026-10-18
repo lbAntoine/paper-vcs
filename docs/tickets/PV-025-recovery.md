@@ -94,3 +94,46 @@ git and paper disagreeing: the next command repairs what was half done, silently
 ## Summary
 
 ## Handoff log
+
+### RED · test-author · 2026-10-18
+
+Tests (run with an empty `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_NOSYSTEM=1`, `INSTA_UPDATE=no`):
+
+- `crates/paper-core/tests/recover.rs` (12 tests, 10 fail RED, 2 pass today): the repair rule on
+  hand-made marker states (head == from dropped; parent == from and tree matches finished, also
+  with the first file already rewritten; unrelated `from` dropped; tree mismatch dropped), the
+  edited-after-the-crash cases (edited file and would-be-deleted file kept, then recorded as an
+  edits entry), no activity entry from recovery, re-export when refs or `exported.json` lag the
+  head op, idempotence. Pass today by design: "nothing to repair writes nothing" and "recovery
+  records no entry" (they guard the invariant; they will fail if recovery misbehaves).
+- `crates/paper-cli/tests/crash.rs` (40 tests, 33 fail RED, 7 pass today): save x6 points,
+  restore x8, undo x9, redo x9, edit-after-crash x1; plus a release-only test (compiled out in
+  debug) that the variable is ignored. Crash tests fail because the process does not abort
+  ("should abort at <point>"). Deferred checks live in the same scenarios: marker exists after
+  every undo-family point from `after-marker`, exactly one file rewritten at `mid-checkout`;
+  index ahead of refs at `after-index` (save).
+- Helper sanity tests (pass on main today): runner ignores an unknown point, `crash` demands a
+  non-success exit, `assert_consistent` accepts healthy projects and rejects a lagging ref, a
+  wrong index and a left-over marker, state readers describe a project.
+- `crates/paper-core/src/fault.rs` unit test (passes today).
+
+Design choices the implementer should know:
+- Setup for undo/redo is "three saves, edit intro.tex and related.tex, `paper status`" so the
+  undo of the edits entry rewrites two files (a save's undo changes no files). Save tests run
+  `status` first, so crashes hit the save's own op, not an edits entry.
+- Restore has no marker; its tests assert consistency, nothing lost (the unsaved edit stays
+  reachable from refs), earlier activity kept as a suffix, and settling (a second `status`
+  records nothing). After `mid-checkout`/`after-checkout`/`after-keep` the half-restored files
+  become an `edited ...` entry on the next command; from `after-op` on the `restore ...` entry
+  is the newest.
+- `exported.json`'s keep ref is not compared (after-keep moves it without an op).
+
+Stubs added (all no-ops, no logic): `paper_core::fault::crash_point(&str)`;
+`project/recover.rs::recover(&GitRepo, &Path, &OpId)` called from `open_with` after the head
+read; the nine `crash_point` calls placed in `record_at` (after-keep, after-op), `export`
+(after-index, after-refs, after-export), `save`/`restore`/`undo` (after-snapshot), `undo`
+(after-marker, after-checkout), `restore` (after-checkout) and `apply_checkout` (mid-checkout,
+after the first deletion or write). `recover` carries an `allow(clippy::unnecessary_wraps)`
+to remove when it gets a body.
+
+Questions: none.

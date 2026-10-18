@@ -188,6 +188,7 @@ impl Project {
         }
 
         let state = self.snapshot()?;
+        crate::fault::crash_point("after-snapshot");
         let (selected, _) = select(&request.paths, state.changes.clone())?;
         if selected.is_empty() {
             return Ok(SaveOutcome::NothingToSave);

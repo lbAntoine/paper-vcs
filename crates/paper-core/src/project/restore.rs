@@ -114,6 +114,7 @@ impl Project {
         }
         // I1: unsaved edits become a commit before anything is overwritten.
         let before = self.snapshot()?;
+        crate::fault::crash_point("after-snapshot");
         let from_point = request.from.clone().unwrap_or(Point::Last { back: 0 });
         let from = self.resolve(&from_point)?.commit;
         let from_files = self.repo.tree_files(&self.repo.read_commit(&from)?.tree)?;
@@ -142,6 +143,7 @@ impl Project {
             .collect();
         let plan = self.plan_checkout(targets, &from_files, &draft_files, &before.skipped)?;
         self.apply_checkout(&plan, "restore").map_err(restore_io)?;
+        crate::fault::crash_point("after-checkout");
 
         // Record the new working files so the draft and the stat cache match them.
         let description = describe::restored(&request.paths, &from_point.to_string());
