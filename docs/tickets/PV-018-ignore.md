@@ -215,6 +215,10 @@ command, and see every rule that applies, without learning gitignore syntax. Han
 
 ## Summary
 
+## Known gaps
+
+- A repository-local `core.excludesFile` is shown by the `paper ignore` listing (git honours it) but not applied by the snapshot walker or the untrack decision (the `ignore` crate reads only the user's global config). Predates this ticket; follow-up ticket.
+
 ## Handoff log
 
 ### RED · test-author · 2026-10-18
@@ -333,3 +337,10 @@ In `project/ignore.rs`, inside `impl Project` (uses the private `Layers`):
 7. Names use the spelling found on disk (`on_disk_spelling`); the test detects a case-insensitive filesystem at runtime and returns early otherwise.
 8. The decision layers now use the `ignore` crate's `Gitignore::global()`, as the walker does. `GitRepo::global_excludes_file` is kept for the listing only: the core listing test sets `core.excludesFile` in the repository's own config, which the crate's global lookup doesn't read. Added the `USERPROFILE` fallback (Windows only).
 9. An existing file named `!bang` is ignored, not refused (test added); 02-cli refusal wording updated.
+
+### GREEN (review round 2) · rust-engineer · 2026-10-18
+
+- **Case-only rename (blocker).** The "already there" rule now runs only in `plan_checkout_to_draft` (undo, redo, `undo --to`, recovery); `plan_checkout` (restore) is as on main. Even there it is skipped when the spelling listed on disk isn't exactly the path (`spelled_exactly`) or when another path in `current` differs only in case (`has_case_twin`). Tests (file and folder, `restore` and `undo`) rename through a temporary name and assert that exactly one spelling is left with the content, `git fsck --strict` clean. They are filesystem-agnostic, so they run everywhere and bite on case-insensitive ones; with the guards removed the two `undo` tests fail on macOS.
+- **Restore spec.** Test `restoring_an_ignored_untracked_file_with_the_saved_bytes_is_still_listed_as_blocked`. 03-architecture "In every checkout" now names undo, redo, `undo --to` and recovery only; 02-cli § undo bullet updated; § restore already says ignored files are never overwritten and listed as skipped, which matches the code.
+- Doc comment of `on_disk_symlink` moved back above it.
+- Known gap (global excludes mismatch) recorded in the ticket under "Known gaps".

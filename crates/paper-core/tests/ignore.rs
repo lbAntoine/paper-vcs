@@ -1203,3 +1203,121 @@ fn a_folder_typed_in_another_case_gets_the_spelling_on_disk() {
     assert_eq!(outcome.added, ["/data/raw/"]);
     assert_eq!(outcome.untracked, ["data/raw/a.csv", "data/raw/sub/b.csv"]);
 }
+
+// ---- review round 2: case-only renames and restore ----
+
+/// Names in `dir` (top level) whose lowercase is `lower`.
+fn spellings(dir: &Path, lower: &str) -> Vec<String> {
+    fs::read_dir(dir)
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.to_lowercase() == lower)
+        .collect()
+}
+
+/// A project saved with `old` spelled one way, then renamed (same bytes) to `new` and saved.
+/// The rename goes through a temporary name, as it must on a filesystem that ignores case.
+fn project_after_case_rename(old: &str, new: &str, file: &str) -> (tempfile::TempDir, Project) {
+    let (dir, mut project) = project_with(&[(&format!("{old}/{file}"), "body\n")]);
+    let tmp = dir.path().join("t-rename");
+    fs::rename(dir.path().join(old), &tmp).unwrap();
+    fs::rename(&tmp, dir.path().join(new)).unwrap();
+    save_all(&mut project, "Renamed");
+    (dir, project)
+}
+
+fn assert_survives(dir: &Path, folder: &str, file: &str) {
+    let found = spellings(dir, folder);
+    assert_eq!(
+        found.len(),
+        1,
+        "exactly one spelling of {folder}: {found:?}"
+    );
+    assert_eq!(text(dir, &format!("{}/{file}", found[0])), "body\n");
+    git(dir, &["fsck", "--strict", "--no-progress"]);
+}
+
+#[test]
+fn restore_over_a_case_only_rename_of_a_folder_keeps_the_files() {
+    let (dir, mut project) = project_after_case_rename("Notes", "notes", "a.txt");
+
+    project
+        .restore(&RestoreRequest {
+            paths: vec!["Notes".to_owned(), "notes".to_owned()],
+            from: Some("last~1".parse().unwrap()),
+        })
+        .unwrap();
+
+    assert_survives(dir.path(), "notes", "a.txt");
+}
+
+#[test]
+fn undo_of_a_case_only_rename_of_a_folder_keeps_the_files() {
+    let (dir, mut project) = project_after_case_rename("Notes", "notes", "a.txt");
+
+    project.undo().unwrap();
+    project.undo().unwrap();
+
+    assert_survives(dir.path(), "notes", "a.txt");
+}
+
+#[test]
+fn restore_over_a_case_only_rename_of_a_file_keeps_the_file() {
+    let (dir, mut project) = project_with(&[("Notes.tex", "body\n")]);
+    let tmp = dir.path().join("t-rename");
+    fs::rename(dir.path().join("Notes.tex"), &tmp).unwrap();
+    fs::rename(&tmp, dir.path().join("notes.tex")).unwrap();
+    save_all(&mut project, "Renamed");
+
+    project
+        .restore(&RestoreRequest {
+            paths: vec!["Notes.tex".to_owned(), "notes.tex".to_owned()],
+            from: Some("last~1".parse().unwrap()),
+        })
+        .unwrap();
+
+    let found = spellings(dir.path(), "notes.tex");
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(text(dir.path(), &found[0]), "body\n");
+}
+
+#[test]
+fn undo_of_a_case_only_rename_of_a_file_keeps_the_file() {
+    let (dir, mut project) = project_with(&[("Notes.tex", "body\n")]);
+    let tmp = dir.path().join("t-rename");
+    fs::rename(dir.path().join("Notes.tex"), &tmp).unwrap();
+    fs::rename(&tmp, dir.path().join("notes.tex")).unwrap();
+    save_all(&mut project, "Renamed");
+
+    project.undo().unwrap();
+    project.undo().unwrap();
+
+    let found = spellings(dir.path(), "notes.tex");
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(text(dir.path(), &found[0]), "body\n");
+}
+
+#[test]
+fn restoring_an_ignored_untracked_file_with_the_saved_bytes_is_still_listed_as_blocked() {
+    let (dir, mut project) = raw_data_project();
+    ignore(&mut project, &["data/raw"]);
+    save_all(&mut project, "Stop tracking raw data");
+
+    let restored = project
+        .restore(&RestoreRequest {
+            paths: vec!["data/raw/a.csv".to_owned()],
+            from: Some("last~1".parse().unwrap()),
+        })
+        .unwrap();
+
+    assert!(
+        restored
+            .skipped
+            .iter()
+            .any(|s| s.path == "data/raw/a.csv" && s.reason == RestoreSkip::Blocked),
+        "{:?}",
+        restored.skipped
+    );
+    assert_eq!(text(dir.path(), "data/raw/a.csv"), "1,2\n");
+}

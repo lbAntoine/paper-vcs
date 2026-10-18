@@ -265,9 +265,13 @@ the `ignore` entry must not delete them. The rules are the target tree's own `.g
 files (root and nested, read from the tree's blobs), plus `.git/info/exclude` and git's global
 excludes as they are on disk, the layers the snapshot walker uses. `restore` does not use this
 rule: it snapshots the disk against the current draft afterwards, so a file it keeps would
-stay tracked; it plans as before. In every checkout, a path that is not in the draft but whose
-bytes and executable bit on disk already equal the wanted file counts as matching: nothing is
-written and nothing is reported as in the way.
+stay tracked; it plans as before. In `undo`, `redo`, `undo --to` and recovery (not `restore`), a path that is not in the draft
+but whose bytes and executable bit on disk already equal the wanted file counts as matching:
+nothing is written and nothing is reported as in the way. The rule is skipped when the
+spelling listed on disk isn't exactly the path, or when another path in the draft differs from
+it only in letter case (a case-only rename on a filesystem that ignores case would otherwise
+read the other spelling's file and delete the only copy). `restore` keeps listing such a file
+as `blocked`.
 
 Repair, in `Project::open_with` under the lock (`project/recover.rs`), if the marker exists, in
 this order: (1) head is `from`: the op never committed, so drop the marker; (2) otherwise, if

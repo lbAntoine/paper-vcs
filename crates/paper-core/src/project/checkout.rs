@@ -163,7 +163,13 @@ impl Project {
             } else if want != current.get(path) {
                 // Not recorded in the draft, but already on disk exactly as wanted (an
                 // ignored file that becomes tracked again): nothing to write, nothing in the way.
-                let already_there = !current.contains_key(path)
+                // Only for the commands that set the draft directly, and never where a path
+                // differing only in case is involved: a case-folding filesystem would show
+                // the other spelling's file here.
+                let already_there = leave_ignored
+                    && !current.contains_key(path)
+                    && !has_case_twin(current, path)
+                    && self.spelled_exactly(path)
                     && want.is_some_and(|file| self.on_disk_equals(path, file));
                 if !already_there {
                     candidates.push(path);
@@ -240,7 +246,20 @@ impl Project {
         Ok(())
     }
 
-    /// Whether the path, or any directory above it, is a symlink on disk.
+    /// Whether every part of `path` is listed on disk with exactly that spelling.
+    fn spelled_exactly(&self, path: &str) -> bool {
+        let mut dir = self.repo.workdir().to_owned();
+        for part in path.split('/') {
+            let listed = fs::read_dir(&dir)
+                .is_ok_and(|entries| entries.flatten().any(|e| e.file_name() == part));
+            if !listed {
+                return false;
+            }
+            dir.push(part);
+        }
+        true
+    }
+
     /// Whether the regular file at `path` has the bytes, and the executable bit, of `file`.
     fn on_disk_equals(&self, path: &str, file: &TreeFile) -> bool {
         let absolute = self.repo.workdir().join(path);
@@ -263,6 +282,7 @@ impl Project {
         }
     }
 
+    /// Whether the path, or any directory above it, is a symlink on disk.
     fn on_disk_symlink(&self, path: &str) -> Option<RestoreSkip> {
         let root = self.repo.workdir();
         let mut prefix = String::new();
@@ -308,6 +328,14 @@ impl Project {
         }
         Ok(())
     }
+}
+
+/// Whether another path in `files` differs from `path` only in letter case.
+fn has_case_twin(files: &BTreeMap<String, TreeFile>, path: &str) -> bool {
+    let lower = path.to_lowercase();
+    files
+        .keys()
+        .any(|other| other != path && other.to_lowercase() == lower)
 }
 
 /// Why the snapshot left `path` out (or something above it, like a nested repository).
