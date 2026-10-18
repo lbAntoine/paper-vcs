@@ -112,3 +112,63 @@ leftover over and over. Maintainer decision on #57: option (a).
 ## Summary
 
 ## Handoff log
+
+### RED · test-author · 2026-10-18
+
+Files: `crates/paper-core/tests/undo_skipped.rs` (new, 18 tests) and
+`crates/paper-cli/tests/undo.rs` (3 changed or new tests). **No stubs**: the tests need no new
+API (they read `.git/paper/checkout-left.json` as plain JSON and use `Project::{undo, redo,
+undo_to, status, activity}`), so GREEN adds `checkout_left.rs` from scratch. No shared helper
+changed (`tests/common/mod.rs` untouched); the local scenario builders have a sanity test
+(`the_ignored_scenario_leaves_chap_and_its_file_behind_at_the_second_undo`, passes on main).
+
+Core tests (`undo_skipped.rs`), position = `position` field of the head op:
+
+- Fail on main (undo stuck, redo stack cleared, or no `checkout-left.json`):
+  `an_ignored_file_in_the_way_does_not_stop_undo_from_walking_back_and_records_no_edit`,
+  `a_symlink_in_the_way_does_not_stop_undo_from_walking_back_and_never_gets_touched` (unix),
+  `redo_brings_every_entry_back_in_order_after_undos_that_left_a_file_alone`,
+  `redo_right_after_a_checkout_that_left_a_file_alone_records_no_edit`,
+  `undo_to_goes_on_from_a_checkout_that_left_a_file_alone_without_recording_an_edit`,
+  `the_checkout_remembers_what_it_left_alone_in_a_file_named_after_the_op_it_recorded`,
+  `the_remembered_file_is_removed_when_a_later_checkout_leaves_nothing_alone`,
+  `status_between_undos_records_the_leftovers_and_the_next_undo_still_gets_past_them`
+  (fails at the last step, "never stuck"), `an_edit_to_a_remembered_path_taken_back_by_undo_can_be_redone`,
+  `an_edit_to_another_file_taken_back_by_undo_can_be_redone`, and five stale/unreadable file
+  variants (`not json`, `empty`, `schema 2`, `foreign op`, `paths is a list`): each asserts
+  today's behaviour (no error, the leftovers recorded as one edits entry) and then that the
+  file was replaced by a valid one naming the head op.
+- Pass on main by design: the scenario sanity test, `editing_a_remembered_path_again_records_the_normal_edits_entry`
+  and `editing_another_file_before_undo_records_every_difference_and_loses_nothing` (I1 still
+  records a real edit; the redo halves are the separate tests above, which need the fix).
+  The `status` recording half of the status test also holds today.
+
+CLI tests (`paper-cli/tests/undo.rs`):
+
+- `three_undos_walk_back_past_an_ignored_file_and_redo_brings_the_entries_back` (all OS): fails
+  on main (the 3rd and 4th undo repeat `edited chap`).
+- `a_checkout_that_skips_files_prints_each_with_its_reason_and_the_warning` and
+  `a_single_skipped_file_gets_the_singular_warning` (unix): the old `WARNING_TAIL` assertions
+  were replaced by `assert_warning` (key phrases via `contains`, backticks stripped before
+  matching, old wording asserted gone). They fail on main by design: this is the wording change.
+- **GREEN must accept** `snapshots/undo__undo_blocked_human.snap`: it contains the old warning
+  and still passes on main; it will go stale with the new text. Nothing else in the existing
+  snapshots changes (JSON unchanged).
+
+Design choices GREEN should know:
+
+- Op chain semantics (found while writing): the "position" after taking back an edits entry
+  E recorded on top of head H is H's id, not an older entry. The status and edit tests assert
+  that (`position == head before the command`) and that the next undo moves to H's parent.
+- The ignored scenario has ops 0 start, 1 `edited keep.tex`, 2 save "one", 3 `edited chap,
+  chap/one.tex`, 4 save "folder"; undo 2 is the one that can't bring `chap` back, leaving the
+  remembered paths `chap` (null) and `chap/one.tex`. The test expects the value of a present
+  path to be non-null (its exact shape, blob id + mode, is not asserted).
+- The symlink scenario's first undo legitimately records one edits entry (the symlink is an
+  edit when the undo starts); the tests assert no further one.
+- Bad-file variants use full hand-written JSON (`remembered_for`) so they work on main too.
+- Snapshot differences of the new warning are asserted with `contains` only; no hand-written
+  snapshot of output that doesn't exist.
+
+Questions: none. Open point for GREEN: the 0-skipped warning ("Some files were left as they
+are ...") isn't specified by the ticket; the tests don't cover it.
