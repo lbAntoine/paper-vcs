@@ -129,3 +129,9 @@ Nothing inside the window is affected, and nothing is cleaned up automatically.
 - New `gc_keeps_the_op_the_next_undo_starts_from_and_undo_still_works`: 5 saves, 3 undos, all but the 3 undo ops backdated, gc 30d. Expects horizon = head's `position` (one op older than the oldest redo target), kept = index+1, then `undo` -> `NothingToUndo` (no `MissingOp`) and 3 redos work. FAILS on 9c01740: the horizon is the oldest redo target, not the position (wrong horizon; the position op is removed, which is what makes the next undo `MissingOp`).
 - New `undo_after_gc_walks_back_from_the_position_to_the_horizon_and_stops`: 6 saves, 3 undos, oldest 3 ops backdated (cutoff keeps more than the position needs); undo walks at least one step then `NothingToUndo`. Passes on 9c01740 (a regression guard for the cutoff-binding case).
 - Adjusted `old_redo_stack_entries_are_kept_and_redo_still_works`: the horizon is now the head's `position` op, which sits one op older than the oldest redo target, so kept = position index + 1 (one more than before) and removed one fewer. It now FAILS on 9c01740 (kept 4 vs 5). No other count expectation changed; the other 21 tests pass on 9c01740.
+
+### GREEN (fix) · rust-engineer · 2026-10-18
+
+- `crates/paper-core/src/project/gc.rs`: `horizon_index` now starts from the oldest of the cutoff's oldest kept op and the head's `position` op, then extends for redo targets as before. `undo.rs` untouched.
+- Specs: `02-cli.md` (§ `paper gc` kept list) and `03-architecture.md` (gc paragraph) name the head's position op.
+- No deviations.

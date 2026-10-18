@@ -238,8 +238,8 @@ fn walk_chain(log: &ActivityLog) -> Result<Vec<Op>, GcError> {
     }
 }
 
-/// The index of the oldest op to keep: the head, everything newer than the cutoff, and the
-/// redo stacks of what is kept (the chain between them stays whole).
+/// The index of the oldest op to keep: the head, everything newer than the cutoff, the head's
+/// `position` op (where the next undo starts) and the redo stacks of what is kept (the chain between them stays whole).
 fn horizon_index(chain: &[Op], age: GcAge) -> usize {
     let cutoff = jiff::Timestamp::now()
         .checked_sub(jiff::SignedDuration::from_hours(24 * i64::from(age.days)))
@@ -251,6 +251,13 @@ fn horizon_index(chain: &[Op], age: GcAge) -> usize {
             .map_or(true, |time| time >= cutoff)
     };
     let mut last = chain.iter().rposition(is_new).unwrap_or(0);
+    // The next undo starts from the head's `position` op, so that op stays.
+    if let Some(position) = chain
+        .first()
+        .and_then(|head| chain.iter().position(|op| op.id == head.position))
+    {
+        last = last.max(position);
+    }
     loop {
         let reach = chain[..=last]
             .iter()

@@ -162,8 +162,8 @@ did not have (the first op: all of them), an octopus merge. This
 uses one ref instead of thousands. Nothing is garbage-collected automatically before v1.0.
 
 **`paper gc [--older-than 90d] [--dry-run]`** trims the log to a recent window. It keeps every
-op on the head chain newer than the cutoff, the head, and every op on a kept op's redo stack
-(so `redo` still works); the chain from the oldest kept op (the *horizon*) to the head stays
+op on the head chain newer than the cutoff, the head, the head's `position` op (where the next
+`undo` starts) and every op on a kept op's redo stack (so `redo` still works); the chain from the oldest kept op (the *horizon*) to the head stays
 whole. Under the project lock it (1) writes a new `refs/paper/keep` whose commits name every
 commit of the kept ops' views, in groups of at most 50 parents per commit (each linked to the
 previous commit of the new chain), then (2) writes `activity/horizon`, then (3) deletes the

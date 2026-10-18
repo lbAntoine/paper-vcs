@@ -365,8 +365,8 @@ reclaim old objects. Nothing runs it automatically.
 
 - `--older-than` takes `<n>d` (days) or `<n>w` (weeks), at least `1d`; the default is `90d`.
   `0d`, a missing or unknown unit, or anything else is a user error (exit 1) and changes nothing.
-- Kept: every activity entry newer than the cutoff, the current entry, and every entry you can
-  still `redo`, plus all entries between the oldest of those and now. Older entries are
+- Kept: every activity entry newer than the cutoff, the current entry, the entry your next
+  `undo` starts from, and every entry you can still `redo`, plus all entries between the oldest of those and now. Older entries are
   removed, and so are crash leftovers (`.tmp*` files, orphan operation files) and the
   `view.json.v1` file of a format 1 upgrade. The oldest kept entry is the *horizon*: `paper
   activity` ends there, and `undo` reports `Nothing to undo.` once it gets there.
