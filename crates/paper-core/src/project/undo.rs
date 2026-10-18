@@ -156,6 +156,7 @@ impl Project {
         };
         // I1: edits made since the last command become their own entry first.
         let state = self.snapshot()?;
+        crate::fault::crash_point("after-snapshot");
         let head_id = log.head()?.ok_or_else(|| ActivityError::MissingHead {
             path: log.root().join("head"),
         })?;
@@ -189,10 +190,12 @@ impl Project {
         PendingCheckout::new(&head.id, &tree)
             .write(&self.paper_dir)
             .map_err(|source| UndoError::io("write", &marker_name, source))?;
+        crate::fault::crash_point("after-marker");
         let placement = Some((step.target.id.clone(), step.redo));
         self.record_at(step.kind, view, &step.description, placement)?;
         self.apply_checkout(&plan, "write")
             .map_err(|f| UndoError::io(f.action, &f.path, f.source))?;
+        crate::fault::crash_point("after-checkout");
         let files_match = self.refresh_stat_cache(&tree)?;
         PendingCheckout::clear(&self.paper_dir)
             .map_err(|source| UndoError::io("remove", &marker_name, source))?;
