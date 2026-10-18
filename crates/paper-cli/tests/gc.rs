@@ -62,8 +62,17 @@ fn git_dir_bytes(dir: &Path) -> BTreeMap<String, Vec<u8>> {
             if path.is_dir() {
                 walk(root, &path, out);
             } else {
-                let name = path.strip_prefix(root).unwrap().to_string_lossy();
-                out.insert(name.replace('\\', "/"), fs::read(&path).unwrap());
+                let name = path
+                    .strip_prefix(root)
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                // The project lock file is skipped: it holds no data and, while a `Project` is
+                // open, Windows refuses to read its locked range.
+                if name == "paper/lock" {
+                    continue;
+                }
+                out.insert(name, fs::read(&path).unwrap());
             }
         }
     }

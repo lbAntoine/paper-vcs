@@ -136,6 +136,11 @@ fn git_dir_bytes(dir: &Path) -> BTreeMap<String, Vec<u8>> {
                     .unwrap()
                     .to_string_lossy()
                     .replace('\\', "/");
+                // The project lock file is skipped: it holds no data and, while a `Project` is
+                // open, Windows refuses to read its locked range.
+                if name == "paper/lock" {
+                    continue;
+                }
                 out.insert(name, fs::read(&path).unwrap());
             }
         }

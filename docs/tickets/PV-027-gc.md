@@ -162,3 +162,14 @@ activity entry; `--dry-run` is byte-identical; human and JSON output, specs 02-c
 - `Project::gc` now rebuilds the keep chain when there are entries to remove or orphan ops, and writes the horizon only when entries are removed. A re-run after a crash between the horizon and the keep chain (orphans only) now finishes the rebuild. A no-op gc with no orphans still writes no keep ref or horizon; `--dry-run` changes nothing.
 - Core test `a_rerun_after_a_crash_between_horizon_and_keep_chain_rebuilds_the_chain` compares `rev-list --count refs/paper/keep` after a clean gc with a gc re-run on a project that has only the horizon file written.
 - Updated the gc doc comment and the 03-architecture gc paragraph. Rewrapped 02-cli.md (gc bullets) and the `cli.rs` gc option doc to 100 columns or fewer.
+
+### RED (CI fix) · test-author · 2026-10-18
+
+Windows CI failed in 3 `paper-core/tests/gc.rs` tests: `git_dir_bytes` read `.git/paper/lock`
+while a `Project` held the std file lock on it (mandatory on Windows, os error 33). Both
+`git_dir_bytes` helpers (`paper-core/tests/gc.rs`, `paper-cli/tests/gc.rs`) now skip
+`paper/lock` (after `\` to `/` normalisation). `lock-holder` stays in the snapshot: it is
+written and read through separate handles, never the locked one. Other helpers checked:
+`recover.rs::tree_bytes` reads the lock only after the project is dropped; `crash.rs` and
+`undo.rs` skip `.git`. The sanity test still sees a save through refs and ops files. No
+implementation touched.
