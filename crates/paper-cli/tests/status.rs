@@ -343,6 +343,7 @@ fn status_after_a_plain_commit_says_the_line_changed_outside_paper() {
     let run = env.paper(&["status"]);
 
     run.assert_code(0);
+    insta::assert_snapshot!("status_line_moved", env.redact(&run.stdout));
     assert!(run.stdout.contains("changed outside paper"), "{run:#?}");
     assert!(run.stdout.contains("git log main"), "{run:#?}");
     assert!(run.stdout.contains("see what changed"), "{run:#?}");
@@ -374,6 +375,7 @@ fn status_after_git_switch_says_git_is_on_another_branch() {
     let run = env.paper(&["status"]);
 
     run.assert_code(0);
+    insta::assert_snapshot!("status_another_branch", env.redact(&run.stdout));
     assert!(
         run.stdout
             .contains("Git is on the branch 'other', not on the line 'main'."),
@@ -394,6 +396,7 @@ fn status_on_a_detached_head_says_git_is_on_no_branch() {
     let run = env.paper(&["status"]);
 
     run.assert_code(0);
+    insta::assert_snapshot!("status_detached_head", env.redact(&run.stdout));
     assert!(
         run.stdout
             .contains("Git is on no branch (detached HEAD), not on the line 'main'."),
@@ -453,6 +456,7 @@ fn status_json_says_the_line_moved() {
     let run = env.paper(&["--json", "status"]);
 
     run.assert_code(0);
+    insta::assert_snapshot!("status_json_line_moved", env.redact_json(&run.stdout));
     assert_eq!(
         run.json()["outside_paper"],
         serde_json::json!({"kind": "line_moved", "line": "main"})
@@ -467,6 +471,7 @@ fn status_json_says_git_is_on_another_branch() {
     let run = env.paper(&["--json", "--no-snapshot", "status"]);
 
     run.assert_code(0);
+    insta::assert_snapshot!("status_json_another_branch", env.redact_json(&run.stdout));
     assert_eq!(
         run.json()["outside_paper"],
         serde_json::json!({"kind": "on_another_branch", "line": "main", "found": "other"})
@@ -481,6 +486,7 @@ fn status_json_says_found_null_for_a_detached_head() {
     let run = env.paper(&["--json", "status"]);
 
     run.assert_code(0);
+    insta::assert_snapshot!("status_json_detached_head", env.redact_json(&run.stdout));
     assert_eq!(
         run.json()["outside_paper"],
         serde_json::json!({"kind": "on_another_branch", "line": "main", "found": null})

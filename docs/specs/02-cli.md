@@ -146,13 +146,31 @@ Other states it reports:
 - conflicts in progress (exit code 2), including `.theirs` copies for non-text files;
 - a keep in progress;
 - Office files kept at their previous version because they were being written;
-- an empty draft (`Nothing unsaved.`).
+- an empty draft (`Nothing unsaved.`);
+- plain git having moved things since paper last wrote them (PV-029). A block follows the
+  header, worded like `save`'s refusal, with the suggestion formatted like an error's `next:`
+  line, and the exit code stays 0:
+
+  ```
+  The line 'main' was changed outside paper: commits were added to it, or it was moved, with plain git. Paper can't save on top of that yet.
+    next: git log main  # see what changed
+  ```
+
+  or `Git is on the branch 'other', not on the line 'main'.` (`Git is on no branch (detached
+  HEAD), …` for a detached HEAD) with `next: git switch main  # go back to the line`. When both
+  apply, only the another-branch block shows. The draft is still compared with paper's last
+  save, and nothing is written to git. Importing those commits is v0.4.
 
 Until word diffs arrive (v0.3), each change shows line counts (`+12 −3 lines`, also for a deleted
 text file: `+0 −85 lines`) for text and
 sizes for binary files (`(318 KB)` for a new or deleted one, `318 KB → 331 KB` for a changed
 one), taken from the line diff. `paper status` snapshots first (I1);
 `--no-snapshot` reads the stored draft instead and lists no skipped or large files.
+
+`paper status --json` always has an `outside_paper` key: `null` when nothing moved,
+`{"kind":"line_moved","line":"main"}`, or
+`{"kind":"on_another_branch","line":"main","found":"other"}` (`"found": null` for a detached
+HEAD). Every other key is unchanged.
 
 ### `paper save [<message>] [<paths>…] [--all-but <paths>…]` (since v0.1)
 

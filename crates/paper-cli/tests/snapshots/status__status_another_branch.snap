@@ -1,0 +1,10 @@
+---
+source: crates/paper-cli/tests/status.rs
+expression: env.redact(&run.stdout)
+---
+On main · last save [ID] "Rewrite intro" (just now)
+
+Git is on the branch 'other', not on the line 'main'.
+  next: git switch main  # go back to the line
+
+Nothing unsaved.

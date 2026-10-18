@@ -147,3 +147,18 @@ No snapshot was written.
 
 **Probe.** A detached worktree of `origin/main` with the stubs and the new tests copied in gave the same
 result as the branch: 7 of 13 core tests and 11 of 26 cli tests fail, all on the assertions. The probe was removed.
+
+### GREEN · rust-engineer · 2026-10-18
+
+- `Project::status` calls `check_in_sync` unchanged and maps `OutOfSyncWithGit` to `LineMoved` and
+  `HeadOnAnotherBranch` to `OnAnotherBranch`; other errors propagate. Works with `--no-snapshot`.
+- Human block in `render/status.rs` after the header: save's refusal wording, then
+  `  next: <command>  # <explanation>` (the error renderer's format, with `next:` lead), then a blank line.
+- JSON `outside_paper` key in `render/json_diff.rs` (null, `line_moved`, `on_another_branch` with `found`).
+- Spec 02-cli § `paper status`: the block, the JSON key, the draft-vs-last-save sentence.
+- Snapshots: `status__status_json.snap` re-accepted (only the new key). New: `status_line_moved`,
+  `status_another_branch`, `status_detached_head` and their `status_json_*` twins; each read before accepting.
+  I added the `insta::assert_snapshot!` lines to the existing RED tests (no assertion changed).
+- Deviation: the suggestion line uses the error renderer's `next: cmd  # why` shape, not the bare
+  `cmd    why` in the Decisions sketch, as the coordinator asked for the error renderer's format.
+- fmt, clippy `-D warnings` and the full suite pass.

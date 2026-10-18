@@ -1,7 +1,9 @@
 //! `--json` output for `status`, `diff` and `restore`; `show` reuses [`files`].
 //! Shapes are documented in `docs/specs/02-cli.md` (JSON output).
 
-use paper_core::project::{ChangeStat, FileDiffEntry, RestoreSkip, Restored, SkippedPath, Status};
+use paper_core::project::{
+    ChangeStat, FileDiffEntry, OutsidePaper, RestoreSkip, Restored, SkippedPath, Status,
+};
 use paper_diff::{FileDiff, LineKind};
 use serde::Serialize;
 
@@ -58,6 +60,7 @@ struct StatusOut {
     changes: Vec<StatusChange>,
     skipped: Vec<SkippedFile>,
     large: Vec<LargeFile>,
+    outside_paper: Option<serde_json::Value>,
 }
 
 #[derive(Serialize)]
@@ -176,6 +179,16 @@ pub fn status(status: &Status) -> String {
         changes,
         skipped: status.skipped.iter().map(skipped).collect(),
         large: large(&status.large),
+        outside_paper: status.outside_paper.as_ref().map(|outside| match outside {
+            OutsidePaper::LineMoved { line } => {
+                serde_json::json!({"kind": "line_moved", "line": line.to_string()})
+            }
+            OutsidePaper::OnAnotherBranch { line, found } => serde_json::json!({
+                "kind": "on_another_branch",
+                "line": line.to_string(),
+                "found": found,
+            }),
+        }),
     })
 }
 

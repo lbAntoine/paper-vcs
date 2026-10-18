@@ -124,6 +124,15 @@ impl Project {
             });
         }
 
+        let outside_paper = match self.check_in_sync(self.view.current_line()) {
+            Ok(()) => None,
+            Err(SaveError::OutOfSyncWithGit { line }) => Some(OutsidePaper::LineMoved { line }),
+            Err(SaveError::HeadOnAnotherBranch { line, found }) => {
+                Some(OutsidePaper::OnAnotherBranch { line, found })
+            }
+            Err(other) => return Err(other.into()),
+        };
+
         let known = self.known()?;
         let tip = self.repo.read_commit(&line.tip)?;
         let last = self.entry(&tip, &known);
@@ -133,8 +142,7 @@ impl Project {
             changes,
             skipped,
             large,
-            // RED placeholder: GREEN computes this from `check_in_sync`.
-            outside_paper: None,
+            outside_paper,
         })
     }
 }
