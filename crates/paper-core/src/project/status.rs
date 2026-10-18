@@ -42,6 +42,18 @@ pub struct StatusEntry {
     pub stat: ChangeStat,
 }
 
+/// How plain git left the repository out of step with paper (PV-029).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OutsidePaper {
+    /// Commits were added to the line, or it was moved, with plain git.
+    LineMoved { line: LineName },
+    /// Git's HEAD is on another branch than the line; `found` is `None` for a detached HEAD.
+    OnAnotherBranch {
+        line: LineName,
+        found: Option<String>,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Status {
     pub line: LineName,
@@ -51,6 +63,8 @@ pub struct Status {
     pub changes: Vec<StatusEntry>,
     pub skipped: Vec<Skipped>,
     pub large: Vec<(String, u64)>,
+    /// Set when plain git moved the line or HEAD since paper last wrote them.
+    pub outside_paper: Option<OutsidePaper>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -110,6 +124,15 @@ impl Project {
             });
         }
 
+        let outside_paper = match self.check_in_sync(self.view.current_line()) {
+            Ok(()) => None,
+            Err(SaveError::OutOfSyncWithGit { line }) => Some(OutsidePaper::LineMoved { line }),
+            Err(SaveError::HeadOnAnotherBranch { line, found }) => {
+                Some(OutsidePaper::OnAnotherBranch { line, found })
+            }
+            Err(other) => return Err(other.into()),
+        };
+
         let known = self.known()?;
         let tip = self.repo.read_commit(&line.tip)?;
         let last = self.entry(&tip, &known);
@@ -119,6 +142,7 @@ impl Project {
             changes,
             skipped,
             large,
+            outside_paper,
         })
     }
 }

@@ -1,0 +1,10 @@
+---
+source: crates/paper-cli/tests/status.rs
+expression: env.redact(&run.stdout)
+---
+On main · last save [ID] "Rewrite intro" (just now)
+
+The line 'main' was changed outside paper: commits were added to it, or it was moved, with plain git. Paper can't save on top of that yet.
+  next: git log main  # see what changed
+
+Nothing unsaved.

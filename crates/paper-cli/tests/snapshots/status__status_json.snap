@@ -48,6 +48,7 @@ expression: env.redact_json(&run.stdout)
     ]
   },
   "line": "main",
+  "outside_paper": null,
   "schema": 1,
   "skipped": []
 }
