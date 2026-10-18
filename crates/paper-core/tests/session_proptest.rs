@@ -519,12 +519,28 @@ fn run_session(steps: &[Step]) -> Result<(), String> {
     session.walk_back_and_forth()
 }
 
+/// How to reproduce a failure locally: the failing run prints its seed (`PROPTEST_RNG_SEED=...`)
+/// and proptest prints the minimal failing session. Re-run with the same seed, for example
+/// `PROPTEST_RNG_SEED=123 PROPTEST_CASES=3 cargo test -p paper-core --test session_proptest`.
+/// Shrinking is bounded to 16 steps (about 20 s each); `PROPTEST_MAX_SHRINK_ITERS` raises it.
 fn config() -> Config {
+    use proptest::test_runner::RngSeed;
     let mut config = Config::default();
     if std::env::var_os("PROPTEST_CASES").is_none() {
         config.cases = DEFAULT_CASES;
     }
-    config.max_shrink_iters = 64;
+    if std::env::var_os("PROPTEST_MAX_SHRINK_ITERS").is_none() {
+        config.max_shrink_iters = 16;
+    }
+    if matches!(config.rng_seed, RngSeed::Random) {
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs() ^ u64::from(d.subsec_nanos()));
+        config.rng_seed = RngSeed::Fixed(seed);
+    }
+    if let RngSeed::Fixed(seed) = config.rng_seed {
+        eprintln!("session_proptest: PROPTEST_RNG_SEED={seed}");
+    }
     config.failure_persistence = None;
     config
 }
