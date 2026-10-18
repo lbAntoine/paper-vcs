@@ -95,3 +95,16 @@ Nothing inside the window is affected, and nothing is cleaned up automatically.
 ## Summary
 
 ## Handoff log
+
+### RED · test-author · 2026-10-18
+
+- `crates/paper-core/tests/gc.rs`: 20 tests (real temp repos, op files dated by hand, cross-checked with `git rev-list/log/cat-file/fsck`). 16 fail on `todo!()`; 4 pass today: three sanity tests for the shared helpers (`backdate`, `backdate_oldest`, the byte snapshot of `.git`) and `the_default_age_is_90_days`. Covers: parse of `d`/`w` and rejects (three-part user error), removed/kept/horizon/horizon file, head kept when older, cutoff sizes, nothing old, old redo-stack ops kept and `redo` still working, undo to the horizon then `NothingToUndo`, keep chain (every kept commit reachable, removed-only commits not, at most 51 parents, after `reflog expire` + `git gc --prune=now` + `fsck --strict`, undo to the horizon still works), sweep of `.tmp*`/orphan/`view.json.v1`, `--dry-run` byte-identical `.git` and same outcome as the real run, second run, finishing an interrupted run, no activity entry, reopen after gc.
+- `crates/paper-cli/tests/gc.rs`: 13 tests through the binary. 11 fail (`unrecognized subcommand 'gc'`); 2 pass today: helper sanity (`backdating_shows_in_activity...`) and `without_a_gc_activity_and_undo_carry_no_note`. Covers JSON key set and counts, human output, default 90d, weeks, activity and `Nothing to undo.` notes, no activity entry, second run, sweep, `--dry-run` byte-identical, bad durations.
+- Stubs: `project/gc.rs` (`GcAge::parse`, `GcAge::DEFAULT`/`days`/`Default`, `GcOutcome`, `GcError`, `Project::gc(&mut self, GcAge, bool)`), `ActivityLog::has_horizon()` (`todo!()`), `From<GcError> for PaperError` (`todo!()`), `mod gc;` + re-export in `project/mod.rs`. Pre-existing tests all pass; fmt and clippy clean; new tests run with an empty `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_NOSYSTEM=1`.
+- Interpretations GREEN should confirm or change (my reading of the Decisions):
+  - `removed_entries`/`kept_entries` count head-chain entries only; the chain between the horizon and the head is kept whole (old redo targets pull the horizon down to the oldest one). `swept` = `.tmp*`, orphan ops (not on the head chain) and `view.json.v1`, paths relative to `.git/paper/`, `/`-separated, sorted. Op files of removed chain entries are not listed in `swept`.
+  - `GcOutcome.horizon` is an `ActivityEntry`; JSON `"horizon"` is a string that contains the horizon entry's date (`YYYY-MM-DD` of its `time`); the CLI test only checks that. Human output must contain both counts, "git gc" and, for `--dry-run`, "dry run" (case-insensitive).
+  - Notes: `paper activity` and `Nothing to undo.` contain "older history was cleaned up by `paper gc`" (case-insensitive); `Nothing to undo.` stays the first line.
+  - A "bad duration" exits 1 with the three-part error; `--older-than ""` also.
+  - `has_horizon()` returns `bool`. Whether `gc` writes a horizon when nothing was removed is not tested.
+- No snapshots written; the human and JSON snapshots are for GREEN to add and review. The JSON `horizon` shape and the `GcAge::parse` API are the questions to settle at review.

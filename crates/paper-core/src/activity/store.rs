@@ -65,6 +65,13 @@ impl ActivityLog {
         self.ops_dir().join(format!("{id}.json"))
     }
 
+    /// Whether `paper gc` has trimmed this log: the `horizon` file exists. A horizon op is
+    /// read with `parent: None`, so walks of the log stop there.
+    #[must_use]
+    pub fn has_horizon(&self) -> bool {
+        todo!("PV-027: horizon file")
+    }
+
     /// The id `head` holds; `Ok(None)` when there is no head yet.
     ///
     /// # Errors

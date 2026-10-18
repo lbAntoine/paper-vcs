@@ -11,7 +11,7 @@ use crate::config::{ConfigError, Conflict, Key, Origin, Scope};
 use crate::point::ParsePointError;
 use crate::profile::gitignore::GitignoreError;
 use crate::project::{
-    DiffError, HistoryError, InitError, OpenError, ResolveError, RestoreError, SaveError,
+    DiffError, GcError, HistoryError, InitError, OpenError, ResolveError, RestoreError, SaveError,
     ShowError, StatusError, UndoError,
 };
 
@@ -810,6 +810,12 @@ impl From<RestoreError> for PaperError {
                 converted
             }
         }
+    }
+}
+
+impl From<GcError> for PaperError {
+    fn from(_error: GcError) -> Self {
+        todo!("PV-027: three-part errors for gc")
     }
 }
 
