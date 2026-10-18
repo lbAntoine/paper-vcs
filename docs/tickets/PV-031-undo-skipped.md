@@ -1,6 +1,6 @@
 # PV-031: undo gets stuck behind a file it had to leave alone
 
-- **Status:** In progress
+- **Status:** Done
 - **Issue:** #57
 - **Branch:** `feat/PV-031-undo-skipped`
 - **Depends on:** PV-023/024/025 (merged). Runs in parallel with PV-029 (status).
