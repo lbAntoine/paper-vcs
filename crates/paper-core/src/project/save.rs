@@ -80,7 +80,11 @@ pub enum SaveError {
     #[error(
         "the line '{line}' was changed with plain git since paper last saw it; paper can't save on top of that yet (a later version will). Nothing was saved or changed. Run `git log {line}` to see what changed"
     )]
-    OutOfSyncWithGit { line: LineName },
+    OutOfSyncWithGit {
+        line: LineName,
+        /// The short id of the commit paper last wrote on the line.
+        last_save: String,
+    },
     #[error(
         "git is on {} instead of the line '{line}'; switch back with `git switch {line}`",
         found.as_ref().map_or("no branch (detached HEAD)".to_owned(), |b| format!("branch '{b}'"))
@@ -309,7 +313,10 @@ impl Project {
             .find_ref(&line_ref(line))?
             .is_none_or(|found| found.as_str() != written)
         {
-            return Err(SaveError::OutOfSyncWithGit { line: line.clone() });
+            return Err(SaveError::OutOfSyncWithGit {
+                line: line.clone(),
+                last_save: written.chars().take(12).collect(),
+            });
         }
         Ok(())
     }

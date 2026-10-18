@@ -195,9 +195,13 @@ HEAD). Every other key is unchanged.
   a deleted branch), `save` refuses and writes nothing: saving on top of that isn't
   supported yet. Paper starts importing git changes in v0.4 (`git checkout` and
   branch creation, roadmap § v0.4: Safe experiments); every row of the interop table is
-  covered by v0.8; co-authors' work arrives with `sync` in v0.6. The error names the line
-  and points to `git log <line>` to see what changed; it never suggests a command that could drop git
-  commits. If git is on another branch (or detached), it refuses too and says to run
+  covered by v0.8; co-authors' work arrives with `sync` in v0.6. The error names the line,
+  says that paper will be able to bring in plain-git changes in v0.4 (until then: keep working
+  with plain git on this line, or run `git reset --soft <id>` to go back to paper's last save:
+  your files stay as they are, and whatever differs from that save shows as unsaved edits
+  paper can save), and suggests `git log <line>` to see what changed. The suggested next
+  commands never drop git commits, and the way back named in the explanation keeps every
+  change in your files. If git is on another branch (or detached), it refuses too and says to run
   `git switch <line>`.
 - An empty draft means a no-op: `Nothing to save.` (exit 0).
 - It prints the short change ID and message, the files saved, and the files left in the draft.
@@ -278,11 +282,11 @@ snapshots before comparing against `@`.
 
 Replaces those paths in the draft with their content at `<point>` (default `last`). Paths
 that don't exist at `<point>` are deleted. Paths follow the rule of `paper save` (a file, or
-everything under a directory), and at least one is required. Undoable from v0.2
-(`paper undo`). There is no "are you sure?": undo covers it, and until v0.2 the draft snapshot below is the safety net.
+everything under a directory), and at least one is required. Undoable
+(`paper undo`). There is no "are you sure?": undo covers it, and the draft snapshot below is a second safety net.
 
 The draft is snapshotted before anything is overwritten, so the previous content always
-exists as a commit; the activity log that `undo` reads arrives in v0.2. A path that matches
+exists as a commit, and the activity log that `undo` reads records the restore. A path that matches
 no file in the draft or at `<point>` is an error listing every such path. The draft snapshot
 stays (your unsaved edits are recorded), but no working file is changed. Files that already match are left alone, the executable bit is kept, empty
 directories are removed, and a file can be restored over a directory of the same name (and
@@ -452,13 +456,23 @@ unreadable source has no place in this fixed shape, so only the human output nam
   and nothing is listed (unless the name on disk is spelled differently, or another draft file differs only in letter
   case). `restore` is
   unchanged: such a file stays listed as `blocked`.
-- After a plain `git commit` or `git switch`, `undo`, `redo` and `undo --to` refuse with the
-  errors of `save` and change nothing.
+- After a plain `git commit` or `git switch`, `undo`, `redo` and `undo --to` refuse and change
+  nothing, with `save`'s exit code and suggestions and their own wording. A moved line reads
+  "The line 'main' was changed outside paper … Paper can't undo or redo across that yet, and
+  nothing was undone or changed", followed by the same way out `save` gives (v0.4 import; keep
+  working with plain git, or `git reset --soft <id>`, which leaves your files as they are and
+  shows what differs from paper's last save as unsaved edits). Another branch reads
+  "Git is on the branch 'other', not on the line 'main' … Nothing was undone", suggesting
+  `git switch main`.
+- `undo --to` the entry the project is already at is harmless: it prints `Already there.`
+  (exit 0) and records and checks out nothing, apart from the entry for unsaved edits, and
+  the redo stack is kept. The same holds for the id of the head entry. After such edits the
+  target is no longer current, so the normal go-back happens.
 - `--json`: `{"schema":1,"outcome","entry","changed","skipped","files_match"}`, every key
-  always present. `outcome` is `undone`, `redone`, `went_back`, `nothing_to_undo` or
-  `nothing_to_redo`. `entry` is `{"id","short_id","time","kind","description"}` (what was
-  undone, redone or gone back to) or `null`; `changed` is `[{"path","kind"}]` and `skipped` is
-  `[{"path","reason",...}]`, as in `restore --json`; `files_match` is `false` when skipped files
+  always present. `outcome` is `undone`, `redone`, `went_back`, `nothing_to_undo`,
+  `nothing_to_redo` or `already_there`. `entry` is `{"id","short_id","time","kind","description"}`
+  (what was undone, redone or gone back to; for `already_there`, the target) or `null`;
+  `changed` is `[{"path","kind"}]` and `skipped` is `[{"path","reason",...}]`, as in `restore --json`; `files_match` is `false` when skipped files
   keep their own content, `true` otherwise, and `null` when nothing happened.
 - `activity [-n <N>] [--json]` lists the entries from the current head back, newest first
   (default 20). It doesn't snapshot first, so listing the log never adds to it, but it takes
@@ -648,8 +662,9 @@ saved like any other. `ui.editor` is not a key yet.
   changes on its next run (see [03-architecture](03-architecture.md#git-interop)) starts in
   v0.4 with `git checkout` and branch creation (roadmap § v0.4: Safe experiments, Interop);
   bringing in co-authors' work arrives with `sync` in v0.6. *Today (v0.1 to v0.3):* paper
-  doesn't import them. After `git commit` or `git reset`, `save` refuses and names
-  `git log <line>`; if git is on another branch, it says to run `git switch <line>`.
+  doesn't import them. After `git commit` or `git reset`, `save`, `undo` and `redo` refuse, and
+  suggest `git log <line>` and a way back to paper's last save; if git is on another branch,
+  they say to run `git switch <line>`.
 - `git push` works today. `git pull` (or `git merge`) isn't supported yet: after a pull
   brings new commits, `status` shows their edits as your unsaved changes, `history` doesn't
   show their saves, and `paper save` refuses. Importing starts in v0.4 (see above);

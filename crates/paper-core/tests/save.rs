@@ -637,7 +637,7 @@ fn a_commit_made_with_plain_git_on_the_line_is_refused() {
         .unwrap_err();
 
     assert!(
-        matches!(&err, SaveError::OutOfSyncWithGit { line: l } if *l == line("main")),
+        matches!(&err, SaveError::OutOfSyncWithGit { line: l, .. } if *l == line("main")),
         "{err:?}"
     );
     assert_eq!(stored(dir.path(), &project), before);
@@ -963,7 +963,7 @@ fn a_git_reset_of_the_line_is_refused_without_claiming_new_commits() {
         .unwrap_err();
 
     assert!(
-        matches!(&err, SaveError::OutOfSyncWithGit { line: l } if *l == line("main")),
+        matches!(&err, SaveError::OutOfSyncWithGit { line: l, .. } if *l == line("main")),
         "{err:?}"
     );
     let message = err.to_string();
@@ -985,7 +985,7 @@ fn a_deleted_line_branch_is_out_of_sync_with_git() {
         .unwrap_err();
 
     assert!(
-        matches!(&err, SaveError::OutOfSyncWithGit { line: l } if *l == line("main")),
+        matches!(&err, SaveError::OutOfSyncWithGit { line: l, .. } if *l == line("main")),
         "{err:?}"
     );
     let message = err.to_string();

@@ -232,3 +232,58 @@ fn save_snapshots_an_edit_made_since_the_last_command() {
         "new.txt"
     );
 }
+
+#[test]
+fn save_after_a_plain_git_commit_keeps_its_wording_and_names_the_v0_4_way_out() {
+    let env = project();
+    env.git_work(&["commit", "--quiet", "--allow-empty", "-m", "Plain git"]);
+    env.write("sections/intro.tex", "edit after the commit\n");
+
+    let run = env.paper(&["save", "Try"]);
+
+    run.assert_three_part_error(1);
+    let text = run.stderr.split_whitespace().collect::<Vec<_>>().join(" ");
+    for phrase in [
+        "The line 'main' was changed outside paper",
+        "Paper can't save on top of that yet",
+        "v0.4",
+        "git log main",
+    ] {
+        assert!(text.contains(phrase), "missing {phrase:?}: {text}");
+    }
+    assert!(!text.contains("undo or redo"), "{text}");
+}
+
+#[test]
+fn the_way_out_after_a_plain_git_commit_works_with_git_reset_soft() {
+    let env = project();
+    env.write("sections/intro.tex", "made with plain git\n");
+    env.git_work(&["add", "-A"]);
+    env.git_work(&["commit", "--quiet", "-m", "Plain git"]);
+    let refused = env.paper(&["save", "Try"]);
+    refused.assert_three_part_error(1);
+    let text = refused
+        .stderr
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let start = text.find("git reset --soft ").expect(&text) + "git reset --soft ".len();
+    let id: String = text[start..]
+        .chars()
+        .take_while(char::is_ascii_hexdigit)
+        .collect();
+    assert!(id.len() >= 7, "{text}");
+
+    env.git_work(&["reset", "--soft", &id]);
+
+    let status = env.paper(&["status"]);
+    status.assert_code(0);
+    assert!(status.stdout.contains("intro.tex"), "{status:#?}");
+    env.paper(&["save", "Bring the plain git change in"])
+        .assert_code(0);
+    assert_eq!(
+        std::fs::read_to_string(env.work.join("sections/intro.tex")).unwrap(),
+        "made with plain git\n"
+    );
+    env.fsck();
+}
