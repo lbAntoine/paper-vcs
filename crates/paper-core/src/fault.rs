@@ -9,7 +9,14 @@
 
 /// Aborts the process (`std::process::abort`) if `PAPER_DEBUG_CRASH_AT` is `name`. Does
 /// nothing otherwise, and nothing at all in release builds.
-pub fn crash_point(_name: &str) {}
+pub fn crash_point(name: &str) {
+    #[cfg(debug_assertions)]
+    if std::env::var("PAPER_DEBUG_CRASH_AT").is_ok_and(|at| at == name) {
+        std::process::abort();
+    }
+    #[cfg(not(debug_assertions))]
+    let _ = name;
+}
 
 #[cfg(test)]
 mod tests {

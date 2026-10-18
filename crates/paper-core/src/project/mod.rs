@@ -81,6 +81,8 @@ pub enum OpenError {
     Activity(#[from] ActivityError),
     #[error(transparent)]
     Export(#[from] ExportError),
+    #[error(transparent)]
+    Snapshot(#[from] crate::snapshot::SnapshotError),
     #[error("could not read {path}")]
     Io {
         path: PathBuf,
@@ -154,16 +156,17 @@ impl Project {
                 path: log.root().join("head"),
             })
         })?;
-        recover::recover(&repo, &paper_dir, &head)?;
         let view = log.read(&head)?.view;
-        Ok(Self {
+        let mut project = Self {
             repo,
             paper_dir,
             view,
             identity,
             options: SnapshotOptions::default(),
             _lock: project_lock,
-        })
+        };
+        project.recover(&head)?;
+        Ok(project)
     }
 
     /// Records `view` as a new operation, then makes it the project's view: (1) the keep-alive

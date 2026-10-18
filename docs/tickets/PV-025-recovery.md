@@ -137,3 +137,27 @@ after the first deletion or write). `recover` carries an `allow(clippy::unnecess
 to remove when it gets a body.
 
 Questions: none.
+
+### GREEN · rust-engineer · 2026-10-18
+
+Implemented: `project/recover.rs` (`Project::recover`, called from `open_with` right after the
+head read, under the lock): marker repair by the three-step rule (unreadable marker dropped),
+finishing via `plan_checkout`/`apply_checkout` with targets filtered to files whose bytes equal
+their version in `from`'s or `tree`'s draft (absent counts as a version), stat-cache refresh,
+then re-export when refs, HEAD or `exported.json` lag (a ref plain git moved is not a lag, so a
+settled project writes nothing). `fault::crash_point` is debug-only and aborts. Added
+`OpenError::Snapshot` (mapped in `error.rs`), `PendingCheckout::{read, started_at, target_tree}`,
+`Exported::head`. Spec: 03-architecture § Command lifecycle and § Crash safety.
+
+BLOCKED on 11 RED tests whose assertions are wrong (not changed by me); everything else passes
+(29/40 crash tests, all of recover.rs, rest of the suite):
+- `crash.rs::restore_crashed_after_{keep,op,index,refs,export}`: restore starts with
+  `self.snapshot()`, which records the unsaved intro.tex edit as an edits entry. These five
+  points fire inside that first `record_at`, before the checkout, so `related.tex` is still
+  there and the `_` branch (`!related.tex.exists()`, intro v1) cannot hold. Fix: either save
+  the edit first in the setup so the crash hits restore's own op, or expect the pre-checkout
+  files for these points.
+- `crash.rs::redo_crashed_after_{op,index,refs,export,mid-checkout,after-checkout}`: after a
+  redo the draft holds the unsaved edits (intro v3, related v3) while the tip is older, so
+  `git status --porcelain` is naturally ` M ...`; the assertion `== ""` at line ~426 only holds
+  for undo.

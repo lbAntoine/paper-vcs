@@ -556,6 +556,7 @@ impl From<OpenError> for PaperError {
             | OpenError::View(_)
             | OpenError::Activity(_)
             | OpenError::Export(_)
+            | OpenError::Snapshot(_)
             | OpenError::Io { .. } => Self::project("Paper could not open this project", &error),
         }
     }

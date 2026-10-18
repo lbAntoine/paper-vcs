@@ -48,6 +48,11 @@ pub(super) struct Exported {
 }
 
 impl Exported {
+    /// The line HEAD was attached to at the last export.
+    pub(super) fn head(&self) -> &str {
+        &self.head
+    }
+
     /// What paper last wrote for `ref_name`, if it wrote it.
     pub(super) fn ref_value(&self, ref_name: &str) -> Option<&str> {
         self.refs.get(ref_name).map(String::as_str)

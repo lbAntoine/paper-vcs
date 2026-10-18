@@ -75,6 +75,24 @@ impl PendingCheckout {
         write_atomic(&Self::path(paper_dir), &json)
     }
 
+    /// Reads the marker. `None` when it is absent or unreadable (an unreadable marker is as
+    /// good as a stale one: recovery drops it).
+    pub(super) fn read(paper_dir: &Path) -> Option<Self> {
+        let bytes = fs::read(Self::path(paper_dir)).ok()?;
+        let marker: Self = serde_json::from_slice(&bytes).ok()?;
+        (marker.schema == PENDING_SCHEMA).then_some(marker)
+    }
+
+    /// The op the command started at, if the marker names a valid one.
+    pub(super) fn started_at(&self) -> Option<OpId> {
+        self.from.parse().ok()
+    }
+
+    /// The draft tree the checkout was heading for, if the marker names a valid one.
+    pub(super) fn target_tree(&self) -> Option<TreeId> {
+        self.tree.parse().ok()
+    }
+
     /// Removes the marker; absent is fine.
     pub(super) fn clear(paper_dir: &Path) -> io::Result<()> {
         match fs::remove_file(Self::path(paper_dir)) {
