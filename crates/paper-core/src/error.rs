@@ -877,6 +877,20 @@ impl From<IgnoreError> for PaperError {
                     "name a file or folder, or a pattern such as '*.aux'",
                 )],
             ),
+            IgnoreError::StillVisible { ref path, ref rule } => Self::user(
+                format!("{path} can't be ignored privately"),
+                format!(
+                    "`{}` ({}) brings it back, and a rule in .git/info/exclude can't override \
+                     .gitignore. Nothing was changed.",
+                    rule.rule,
+                    rule.location()
+                ),
+                vec![Suggestion::new(
+                    format!("paper ignore {}", shell_word(path)),
+                    "run it again without `--local`: the rule then goes after that exception \
+                     in .gitignore",
+                )],
+            ),
             IgnoreError::TooMany {
                 count,
                 ref first,
@@ -916,8 +930,22 @@ impl From<UnignoreError> for PaperError {
     fn from(error: UnignoreError) -> Self {
         match error {
             UnignoreError::Refused(inner) => inner.into(),
-            UnignoreError::LeadingBang { arg } => {
+            UnignoreError::LeadingBang { arg, exists } => {
                 let name = arg.trim_start_matches('!');
+                if exists {
+                    return Self::user(
+                        format!("'{arg}' starts with '!'"),
+                        format!(
+                            "`paper unignore` takes the name without a '!', and adds the \
+                             exception itself. A file called {arg} exists: write ./{arg} to \
+                             mean that file. Nothing was changed."
+                        ),
+                        vec![Suggestion::new(
+                            format!("paper unignore {}", shell_word(&format!("./{arg}"))),
+                            "name the file with ./ in front",
+                        )],
+                    );
+                }
                 Self::user(
                     format!("'{arg}' starts with '!'"),
                     "`paper unignore` already takes a rule off the list, or adds the exception \

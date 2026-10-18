@@ -2,7 +2,7 @@
 
 use std::fs;
 
-use super::args::resolve;
+use super::args::{on_disk_spelling, resolve};
 use super::layers::{Layers, Overrides};
 use super::{IgnoreError, IgnoreSource};
 use crate::project::Project;
@@ -75,7 +75,8 @@ impl Project {
             }
             Some(_) => {}
         }
-        let rel = parts.join("/");
+        // The spelling the folders list, as for `ignore`: rules written for it must match.
+        let rel = on_disk_spelling(workdir, &parts).join("/");
 
         let draft = self.repo.read_commit(&self.view.current().draft)?;
         let files = self.repo.tree_files(&draft.tree)?;

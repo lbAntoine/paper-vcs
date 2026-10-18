@@ -10,4 +10,4 @@ Now tracking 2 files:
   data/raw/b.csv
 Your next save records them.
 The rules are in .git/info/exclude: they are yours alone, and not part of your saves.
-`paper undo` takes this back.
+`paper undo` changes tracking only; the rule in .git/info/exclude stays.

@@ -1263,17 +1263,34 @@ fn undo_and_redo_of_a_local_unignore_leave_every_file_on_disk() {
     let exclude_text = exclude(dir.path());
 
     let back = undone(project.undo().unwrap());
-    assert!(back.files_match, "{back:?}");
+    assert!(
+        !back.files_match,
+        "the files are left alone, and say so: {back:?}"
+    );
     assert!(back.skipped.is_empty(), "{back:?}");
     assert_eq!(files(dir.path()), disk);
     assert_eq!(exclude(dir.path()), exclude_text);
 
-    // The next command records the files the undo left as an edit, which ends the redo stack.
-    assert!(matches!(
-        project.redo().unwrap(),
-        UndoOutcome::NothingToRedo
-    ));
+    // The files the undo left alone are remembered, so redo still works and records no edit.
+    let edited = descriptions(&project)
+        .iter()
+        .filter(|d| d.starts_with("edited"))
+        .count();
+    let redone = undone(project.redo().unwrap());
+    assert!(redone.files_match, "{redone:?}");
+    assert_eq!(redone.entry.kind, OpKind::Unignore);
     assert_eq!(files(dir.path()), disk);
+    assert_eq!(
+        descriptions(&project)
+            .iter()
+            .filter(|d| d.starts_with("edited"))
+            .count(),
+        edited
+    );
+    let draft = draft_files(dir.path());
+    for file in RAW_FILES {
+        assert!(draft.contains(&file.to_owned()), "{draft:?}");
+    }
     git(dir.path(), &["fsck", "--strict", "--no-progress"]);
 }
 
@@ -1330,4 +1347,132 @@ fn undo_to_across_ignore_entries_keeps_the_usual_rules() {
         d
     });
     assert!(check_verbose(dir.path(), "data/raw/a.csv").is_some());
+}
+
+// ---- review round 1 ----
+
+#[test]
+fn an_ignore_entry_in_the_chain_does_not_break_the_leftovers_of_an_undo() {
+    let (dir, mut project) = project_with(&[
+        (".gitignore", "*.log\n"),
+        ("chap", "a file\n"),
+        ("keep.tex", "v0\n"),
+    ]);
+    ignore(&mut project, &["scratch.tmp"]);
+    write(dir.path(), "keep.tex", "v1\n");
+    save_all(&mut project, "one");
+    fs::remove_file(dir.path().join("chap")).unwrap();
+    write(dir.path(), "chap/one.tex", "1\n");
+    save_all(&mut project, "folder");
+    write(dir.path(), "chap/cache.log", "my ignored log\n");
+    let edited = |project: &Project| {
+        descriptions(project)
+            .iter()
+            .filter(|d| d.starts_with("edited chap"))
+            .count()
+    };
+    let before = edited(&project);
+
+    for _ in 0..5 {
+        undone(project.undo().unwrap());
+    }
+    let mut kinds = Vec::new();
+    for _ in 0..5 {
+        kinds.push(undone(project.redo().unwrap()).entry.kind);
+    }
+    assert!(kinds.contains(&OpKind::Ignore), "{kinds:?}");
+    assert!(matches!(
+        project.redo().unwrap(),
+        UndoOutcome::NothingToRedo
+    ));
+    assert_eq!(edited(&project), before, "no stray edits entry");
+    assert_eq!(text(dir.path(), "chap/cache.log"), "my ignored log\n");
+}
+
+#[test]
+fn removing_paper_rule_adds_the_exception_when_another_rule_still_ignores_the_path() {
+    let (dir, mut project) = project_with(&[("main.tex", "m\n"), (".gitignore", "notes/*.log\n")]);
+    write(dir.path(), "notes/x.log", "x\n");
+    ignore(&mut project, &["notes/x.log"]);
+
+    let outcome = unignore(&mut project, &["notes/x.log"]);
+
+    assert_eq!(outcome.removed, ["/notes/x.log"]);
+    assert_eq!(outcome.negated, ["!/notes/x.log"]);
+    assert_eq!(outcome.tracked, ["notes/x.log"]);
+    let gitignore = text(dir.path(), ".gitignore");
+    assert!(
+        gitignore.contains(&paper_block(&["!/notes/x.log"])),
+        "only the negation stays: {gitignore}"
+    );
+    assert!(!check_verbose(dir.path(), "notes/x.log").unwrap().ignored);
+}
+
+#[test]
+fn why_finds_the_on_disk_spelling_on_a_case_insensitive_filesystem() {
+    let (dir, mut project) = raw_data_project();
+    ignore(&mut project, &["data/raw"]);
+    if fs::metadata(dir.path().join("DATA")).is_err() {
+        return; // a case-sensitive filesystem: nothing to resolve
+    }
+
+    let why = project.why_ignored("", "DATA/RAW/a.csv").unwrap();
+
+    assert_eq!(why.path, "data/raw/a.csv");
+    assert!(why.ignored, "{why:?}");
+    assert_eq!(why.rule.unwrap().rule, "/data/raw/");
+}
+
+#[test]
+fn ignore_local_is_refused_when_a_shared_negation_keeps_the_path_visible() {
+    let (dir, mut project) = project_with(&[("main.tex", "m\n"), (".gitignore", "*.log\n")]);
+    write(dir.path(), "notes/keep.log", "keep\n");
+    unignore(&mut project, &["notes/keep.log"]);
+    let before = stored(dir.path());
+
+    let error = project
+        .ignore(&ignore_req(&["notes/keep.log"], true))
+        .unwrap_err();
+
+    let paper = PaperError::from(error);
+    assert_eq!(paper.kind, ErrorKind::User);
+    let all = format!("{} {} {:?}", paper.message, paper.why, paper.next);
+    assert!(all.contains("!/notes/keep.log"), "{all}");
+    assert!(all.contains("without `--local`"), "{all}");
+    assert_eq!(stored(dir.path()), before);
+}
+
+#[test]
+fn a_leading_bang_on_an_existing_file_suggests_dot_slash() {
+    let (dir, mut project) = raw_data_project();
+    write(dir.path(), "!odd.txt", "odd\n");
+
+    let error = project
+        .unignore(&unignore_req("", &["!odd.txt"], false))
+        .unwrap_err();
+
+    let all = refusal_text(error);
+    assert!(all.contains("./!odd.txt"), "{all}");
+}
+
+#[test]
+fn undo_to_across_a_local_unignore_follows_the_usual_rules() {
+    let (dir, mut project) = raw_data_project();
+    ignore_local(&mut project, &["data/raw"]);
+    let ignored = project.activity(1).unwrap()[0].short_id.clone();
+    let outcome = unignore_local(&mut project, &["data/raw"]);
+    let unignored = outcome.entry.unwrap().short_id;
+
+    undone(project.undo_to(&ignored).unwrap());
+
+    for file in RAW_FILES {
+        assert!(
+            !dir.path().join(file).exists(),
+            "{file} was added after the target, so it is removed like any added file"
+        );
+    }
+    undone(project.undo_to(&unignored).unwrap());
+    for file in RAW_FILES {
+        assert!(dir.path().join(file).exists(), "{file} is still in history");
+    }
 }

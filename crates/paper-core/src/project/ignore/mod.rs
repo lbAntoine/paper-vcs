@@ -122,6 +122,10 @@ pub enum IgnoreError {
     Outside { arg: String },
     #[error("the whole project can't be ignored")]
     WholeProject,
+    /// With `--local`, a negation in the shared `.gitignore` brings the path back, and a rule in
+    /// `.git/info/exclude` can't override it.
+    #[error("{path} would still be tracked")]
+    StillVisible { path: String, rule: IgnoreMatch },
     #[error("{count} saved files would stop being tracked")]
     TooMany {
         count: usize,

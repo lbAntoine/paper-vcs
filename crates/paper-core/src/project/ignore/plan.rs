@@ -119,6 +119,9 @@ impl Project {
             .or(existing.as_deref())
             .unwrap_or_default();
         let layers = Layers::from_tree(&self.repo, &draft_files, &store.overriding(rules_text))?;
+        if request.local {
+            check_stays_ignored(&layers, &named, store)?;
+        }
         let wanted: BTreeSet<&str> = named.iter().map(|(rule, _)| rule.as_str()).collect();
         let mut memo = HashMap::new();
         let untracked: Vec<String> = draft_files
@@ -214,6 +217,28 @@ impl Project {
             description: op.description,
         })
     }
+}
+
+/// With `--local`, the new rules must really hide the paths: a shared negation beats them.
+fn check_stays_ignored(
+    layers: &Layers,
+    named: &[(String, bool)],
+    store: Store,
+) -> Result<(), IgnoreError> {
+    let mut memo = HashMap::new();
+    for (rule, is_pattern) in named {
+        let Some((path, folder)) = rule_target(rule).filter(|_| !is_pattern) else {
+            continue;
+        };
+        if layers.decide(&path, folder, &mut memo).is_none()
+            && let Some(found) = layers
+                .explain(&path, folder)
+                .filter(|found| found.negated && found.file != store.shown())
+        {
+            return Err(IgnoreError::StillVisible { path, rule: found });
+        }
+    }
+    Ok(())
 }
 
 /// Whether `path` is the target (a file) or lies inside it (a folder).

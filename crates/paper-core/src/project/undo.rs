@@ -225,15 +225,8 @@ impl Project {
             .map_err(|f| UndoError::io(f.action, &f.path, f.source))?;
         crate::fault::crash_point("after-checkout");
         let now = self.refresh_stat_cache(&tree)?;
-        let files_match = tracking_only || now == tree;
-        if tracking_only {
-            // The files left alone are not leftovers: the next command records them as edits.
-            let file = CheckoutLeft::path(&self.paper_dir).display().to_string();
-            CheckoutLeft::remove(&self.paper_dir)
-                .map_err(|source| UndoError::io("remove", &file, source))?;
-        } else {
-            self.remember_leftovers(&log, &tree, &now, &current)?;
-        }
+        let files_match = now == tree;
+        self.remember_leftovers(&log, &tree, &now, &current)?;
         PendingCheckout::clear(&self.paper_dir)
             .map_err(|source| UndoError::io("remove", &marker_name, source))?;
 

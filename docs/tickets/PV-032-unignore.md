@@ -222,3 +222,13 @@ precedence.
 - Specs: 02-cli activity list gains `unignore` and the local suffix; § `--local` says undo/redo writes only `.gitignore` files.
 - Tests (core `unignore.rs`): undo of a local unignore and of a local ignore, redo of a local ignore, and `undo --to` across ignore entries, files byte-identical; the next command re-records the left files. Shared ignore/unignore undo/redo tests are unchanged and pass.
 - fmt, clippy and the full workspace suite pass.
+
+### GREEN (review round 1) · rust-engineer · 2026-10-18
+- 1 (MAJOR): `undo.rs` keeps the `.gitignore`-only target filter but computes `files_match = now == tree` and always calls `remember_leftovers`; the `CheckoutLeft::remove` branch is gone. Earlier PV-031 leftovers carry through ignore entries, and an undone local unignore's files are remembered, so `redo` works. The assertion that pinned "unignore --local; undo; redo -> Nothing to redo" encoded the bug; I changed it (core `unignore.rs`, `undo_and_redo_of_a_local_unignore_...`): undo now reports `files_match == false`, and redo works with no edits entry. New test: the `undo_skipped` scenario chained through an `ignore` entry (five undos, five redos, no stray `edited chap...`).
+- 2, 9: 03-architecture gets a "Tracking-only entries" bullet; the 02-cli paragraph is rewrapped.
+- 3: `unignore` also adds the negation when removing paper's rule leaves the path ignored by another rule (only the negation stays). Test added.
+- 4: `why_ignored` resolves the on-disk spelling (`on_disk_spelling`); test skips itself on a case-sensitive filesystem.
+- 5: `ignore --local` simulates after the write and refuses (`IgnoreError::StillVisible`, with the "run it without `--local`" hint) when a shared negation brings the path back. Test added.
+- 6: a leading `!` on an existing file suggests `./!name`. Test added.
+- 7: local entries end with "`paper undo` changes tracking only; the rule in .git/info/exclude stays." Two snapshots re-accepted after reading the diffs (`ignore_local_human`, `unignore_local_human`).
+- 8: `undo --to` across a local unignore follows the usual rules; pinned by a test and stated in 02-cli.

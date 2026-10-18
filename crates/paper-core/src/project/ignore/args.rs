@@ -133,7 +133,7 @@ impl Arg {
 /// `parts` spelled as the folders list them: on a filesystem that ignores case, `DATA/raw`
 /// finds `data/raw`, and the rule must use the real spelling to match anything. A part that is
 /// not found keeps the spelling typed.
-fn on_disk_spelling(workdir: &Path, parts: &[String]) -> Vec<String> {
+pub(super) fn on_disk_spelling(workdir: &Path, parts: &[String]) -> Vec<String> {
     let mut dir = workdir.to_owned();
     let mut out = Vec::with_capacity(parts.len());
     for part in parts {

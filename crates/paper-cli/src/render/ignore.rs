@@ -18,6 +18,17 @@ pub const NOTHING_TO_DO: &str = "Nothing to do: already ignored.\n";
 /// What `paper unignore` prints when nothing it was given is ignored.
 pub const NOTHING_TO_UNIGNORE: &str = "Nothing to do: not ignored.\n";
 
+/// The closing line: what `paper undo` does, and for `--local` that it leaves the rule alone.
+fn undo_line(local: bool) -> String {
+    if local {
+        format!(
+            "{LOCAL_NOTE}`paper undo` changes tracking only; the rule in .git/info/exclude stays.\n"
+        )
+    } else {
+        "`paper undo` takes this back.\n".to_owned()
+    }
+}
+
 /// Said after a command that wrote to `.git/info/exclude`.
 const LOCAL_NOTE: &str =
     "The rules are in .git/info/exclude: they are yours alone, and not part of your saves.\n";
@@ -58,10 +69,7 @@ pub fn human(outcome: &IgnoreOutcome) -> String {
         }
         out.push_str("Your next save records their removal; earlier saves keep their versions.\n");
     }
-    if outcome.local {
-        out.push_str(LOCAL_NOTE);
-    }
-    out.push_str("`paper undo` takes this back.\n");
+    out.push_str(&undo_line(outcome.local));
     out
 }
 
@@ -94,10 +102,7 @@ pub fn unignore_human(outcome: &UnignoreOutcome) -> String {
         }
         out.push_str("Your next save records them.\n");
     }
-    if outcome.local {
-        out.push_str(LOCAL_NOTE);
-    }
-    out.push_str("`paper undo` takes this back.\n");
+    out.push_str(&undo_line(outcome.local));
     out
 }
 

@@ -50,7 +50,11 @@ pub enum UnignoreError {
     Refused(#[from] IgnoreError),
     /// The argument starts with `!`: `paper unignore` adds the exception itself.
     #[error("{arg} starts with '!'")]
-    LeadingBang { arg: String },
+    LeadingBang {
+        arg: String,
+        /// A file with exactly that name exists.
+        exists: bool,
+    },
     /// After the change the path would still be ignored.
     #[error("{path} would still be ignored")]
     StillIgnored {
@@ -133,10 +137,14 @@ impl Project {
             .args
             .iter()
             .map(|arg| {
+                let parsed = Arg::parse(arg, &request.from, &workdir);
                 if arg.starts_with('!') {
-                    return Err(UnignoreError::LeadingBang { arg: arg.clone() });
+                    return Err(UnignoreError::LeadingBang {
+                        arg: arg.clone(),
+                        exists: parsed.is_ok(),
+                    });
                 }
-                Ok(Arg::parse(arg, &request.from, &workdir)?)
+                Ok(parsed?)
             })
             .collect::<Result<Vec<_>, UnignoreError>>()?;
 
@@ -180,7 +188,7 @@ impl Project {
         let mut memo = HashMap::new();
 
         let (mut removed, mut negated, mut spoken) = (Vec::new(), Vec::new(), Vec::new());
-        let mut expect = Vec::new();
+        let mut expect: Vec<(String, bool, Expect)> = Vec::new();
         for (rule, is_pattern) in &named {
             let target = if *is_pattern { None } else { rule_target(rule) };
             let (hits, ignored) = if let Some((path, folder)) = &target {
@@ -200,13 +208,33 @@ impl Project {
                 negated.push(format!("!{rule}"));
             }
             spoken.push(rule.clone());
-            expect.push(match target {
-                Some((path, folder)) => Expect::Free(path, folder),
-                None => Expect::Freed(hits),
-            });
+            expect.push((
+                rule.clone(),
+                in_block,
+                match target {
+                    Some((path, folder)) => Expect::Free(path, folder),
+                    None => Expect::Freed(hits),
+                },
+            ));
         }
         if spoken.is_empty() {
             return Ok(None);
+        }
+
+        // A rule of paper's that goes away may leave the path ignored by an earlier or
+        // lower-precedence rule: then the exception is added in its place (only the
+        // negation stays in the block).
+        let without = gitignore::edit_rules(existing.as_deref(), &removed, &[])?;
+        let text = without
+            .as_deref()
+            .or(existing.as_deref())
+            .unwrap_or_default();
+        let mid = Layers::from_tree(&self.repo, &draft_files, &store.overriding(text))?;
+        let mut memo = HashMap::new();
+        for (rule, in_block, wanted) in &expect {
+            if *in_block && first_blocker(&mid, wanted, &mut memo).is_some() {
+                negated.push(format!("!{rule}"));
+            }
         }
 
         let new_text = gitignore::edit_rules(existing.as_deref(), &removed, &negated)?;
@@ -216,21 +244,15 @@ impl Project {
             .unwrap_or_default();
         let after = Layers::from_tree(&self.repo, &draft_files, &store.overriding(text))?;
         let mut memo = HashMap::new();
-        for wanted in &expect {
-            let (paths, folder) = match wanted {
-                Expect::Free(path, folder) => (vec![path.clone()], *folder),
-                Expect::Freed(paths) => (paths.clone(), false),
-            };
-            for path in paths {
-                if let Some(blocker) = after.decide(&path, folder, &mut memo) {
-                    return Err(still_ignored_by(
-                        &after,
-                        &path,
-                        folder,
-                        &blocker,
-                        request.local,
-                    ));
-                }
+        for (_, _, wanted) in &expect {
+            if let Some((path, folder, blocker)) = first_blocker(&after, wanted, &mut memo) {
+                return Err(still_ignored_by(
+                    &after,
+                    &path,
+                    folder,
+                    &blocker,
+                    request.local,
+                ));
             }
         }
         Ok(Some(UnignorePlan {
@@ -302,6 +324,23 @@ impl Project {
         hits.sort();
         hits
     }
+}
+
+/// The first path of `wanted` that `layers` still ignore, with the deciding rule's text.
+fn first_blocker(
+    layers: &Layers,
+    wanted: &Expect,
+    memo: &mut HashMap<String, Option<String>>,
+) -> Option<(String, bool, String)> {
+    let (paths, folder) = match wanted {
+        Expect::Free(path, folder) => (vec![path.clone()], *folder),
+        Expect::Freed(paths) => (paths.clone(), false),
+    };
+    paths.into_iter().find_map(|path| {
+        layers
+            .decide(&path, folder, memo)
+            .map(|blocker| (path, folder, blocker))
+    })
 }
 
 /// The error for `path` that `blocker` (the deciding rule's text) keeps ignored.

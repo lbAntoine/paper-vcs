@@ -63,4 +63,12 @@ impl Store {
             },
         }
     }
+
+    /// The name shown to the researcher.
+    pub(super) fn shown(self) -> &'static str {
+        match self {
+            Self::Gitignore => GITIGNORE,
+            Self::Exclude => ".git/info/exclude",
+        }
+    }
 }

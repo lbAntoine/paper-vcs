@@ -452,9 +452,13 @@ created if missing, and lines you wrote there stay byte-identical. Untracking an
 exactly as without `--local`, and one entry is recorded.
 
 **Local rules are outside history**, like git config. Undo and redo of a `--local` entry take
-back or bring back the tracking change only (for any single `undo` or `redo` of an `ignore` or `unignore` entry, only `.gitignore` files are written or deleted; the other files stay on disk as they are, and the next command records any difference as an edit); `.git/info/exclude` is left as it is. Such an
-entry's description ends with ` (in .git/info/exclude)`, for example
-`ignore /data/raw/ (in .git/info/exclude)`, which is how `paper activity` shows where the rule
+back or bring back the tracking change only (for any single `undo` or `redo` of an `ignore` or
+`unignore` entry, only `.gitignore` files are written or deleted; the other files stay on disk
+as they are, are remembered as left alone, and the next command records any difference as an
+edit); `.git/info/exclude` is left as it is. `undo --to` across local entries follows its usual
+rules: files tracked after the target are removed from disk like any added file, and their
+content stays in history. Such an entry's description ends with ` (in .git/info/exclude)`,
+for example `ignore /data/raw/ (in .git/info/exclude)`, which is how `paper activity` shows where the rule
 lives. `paper undo`, `redo` and `undo --to` tell the researcher so in one extra line: ``The rule
 in .git/info/exclude is unchanged; change it with `paper ignore --local` or `paper unignore
 --local`.`` (`paper-core` exposes this as `Undone::local_rules()`, true when the kind is
