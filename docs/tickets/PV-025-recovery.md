@@ -69,16 +69,16 @@ git and paper disagreeing: the next command repairs what was half done, silently
 
 ## Acceptance criteria
 
-- [ ] For every crash point during `paper save`, the next `paper status` shows a consistent project: refs, HEAD, index and `exported.json` match the head op's view (or the old state, if the crash came before the op), no work is lost, and `git fsck --strict` is clean.
-- [ ] For every crash point during `paper undo` and `paper redo`, the next command leaves the files, the draft and the refs consistent with the head op (the undo either happened completely or not at all), and the marker is gone.
-- [ ] A crash at `mid-checkout` leaves `checkout-pending` on disk (the deferred PV-023 check); the next command finishes the checkout.
-- [ ] A crash at `after-index` leaves the new index with the old refs; the next command's export completes the refs and HEAD (the deferred PV-022 ordering check).
-- [ ] An edit made after a crash and before the next command is never overwritten by the repair: it ends up as an edits entry.
-- [ ] A stale marker whose op never committed is dropped, and the working files are untouched.
-- [ ] Release builds ignore `PAPER_DEBUG_CRASH_AT` (the hook is compiled out).
-- [ ] Recovery records no activity entry; an open with nothing to repair does no extra writes.
-- [ ] Specs updated (only the listed sections).
-- [ ] fmt, clippy (`-D warnings`) and the full suite pass (CI on Linux, macOS, Windows).
+- [x] For every crash point during `paper save`, the next `paper status` shows a consistent project: refs, HEAD, index and `exported.json` match the head op's view (or the old state, if the crash came before the op), no work is lost, and `git fsck --strict` is clean.
+- [x] For every crash point during `paper undo` and `paper redo`, the next command leaves the files, the draft and the refs consistent with the head op (the undo either happened completely or not at all), and the marker is gone.
+- [x] A crash at `mid-checkout` leaves `checkout-pending` on disk (the deferred PV-023 check); the next command finishes the checkout.
+- [x] A crash at `after-index` leaves the new index with the old refs; the next command's export completes the refs and HEAD (the deferred PV-022 ordering check).
+- [x] An edit made after a crash and before the next command is never overwritten by the repair: it ends up as an edits entry.
+- [x] A stale marker whose op never committed is dropped, and the working files are untouched.
+- [x] Release builds ignore `PAPER_DEBUG_CRASH_AT` (the hook is compiled out).
+- [x] Recovery records no activity entry; an open with nothing to repair does no extra writes.
+- [x] Specs updated (only the listed sections).
+- [x] fmt, clippy (`-D warnings`) and the full suite pass (CI on Linux, macOS, Windows; run locally on macOS).
 
 ## Test plan
 
@@ -92,6 +92,19 @@ git and paper disagreeing: the next command repairs what was half done, silently
   "not success" rather than a specific code.
 
 ## Summary
+
+`Project::open_with` now repairs a crashed command under the lock: a `checkout-pending` marker is
+dropped or its checkout finished (only files still equal to their version in the two trees are
+touched), then git's refs, HEAD and `exported.json` are re-exported when they lag the head op,
+leaving alone refs that plain git moved. Recovery records no entry and writes nothing when there
+is nothing to repair. Debug builds have nine `fault::crash_point`s (`PAPER_DEBUG_CRASH_AT`) driven
+by `paper-cli/tests/crash.rs` against the real binary. Spec 03-architecture updated, including
+the `restore` exception (no marker; its half-written files become an edits entry).
+
+## Known gaps
+
+- The release-only test `release_builds_ignore_the_crash_variable` is not run in CI (it was
+  checked locally with `cargo test --release`).
 
 ## Handoff log
 
@@ -169,3 +182,18 @@ BLOCKED on 11 RED tests whose assertions are wrong (not changed by me); everythi
   `after-snapshot` case now expects no new entry. All restore points are reachable.
 - Redo: after a redo the draft holds the edits, so `git status --porcelain` is expected to be
   ` M related.tex` and ` M sections/intro.tex`; undo keeps `""`.
+
+### GREEN (review fixes) · rust-engineer · 2026-10-18
+
+- Recovery no longer refreshes the stat cache: it ran with default options (the CLI applies
+  `with_options` after open), so it could hash an over-limit untracked file into `.git`. A cache
+  entry matches only on identical size, mtime, inode and mode (and a safely old mtime), so a
+  stale or missing entry only causes a rehash, never a skipped change; the command's own
+  snapshot rebuilds it.
+- `recover` and `re_export_if_lagging` take `&self`; `open_with` no longer needs `let mut`.
+  `fault` is `pub(crate)` (nothing outside paper-core used it).
+- Spec 03-architecture: restore exception in Crash safety, "next snapshot records it as an edits
+  entry", rewrapped the Repair paragraph.
+- Tests added: crash inside the command's own edits entry (restore and undo), re-export leaves a
+  plain-git move alone (then `save` refuses), and the no-op open now compares mtimes of
+  `exported.json` and the ref files.

@@ -11,7 +11,6 @@ use super::checkout::PendingCheckout;
 use super::export::{self, Exported, KEEP_REF};
 use super::{OpenError, Project, draft_ref, line_ref};
 use crate::activity::{ActivityLog, OpId};
-use crate::snapshot::{StatCache, snapshot};
 
 impl Project {
     /// Repairs what a crashed command left half done: (1) a `checkout-pending` marker, by the
@@ -24,7 +23,7 @@ impl Project {
     /// # Errors
     ///
     /// [`OpenError`] if the marker, the log or the repository can't be read or written.
-    pub(super) fn recover(&mut self, head: &OpId) -> Result<(), OpenError> {
+    pub(super) fn recover(&self, head: &OpId) -> Result<(), OpenError> {
         self.repair_marker(head)?;
         self.re_export_if_lagging(head)
     }
@@ -70,14 +69,7 @@ impl Project {
                 path: self.repo.workdir().join(f.path),
                 source: f.source,
             })?;
-        let previous = StatCache::load(&self.paper_dir);
-        let snap = snapshot(&self.repo, tree, &previous, &self.options)?;
-        snap.cache
-            .save(&self.paper_dir)
-            .map_err(|source| OpenError::Io {
-                path: self.paper_dir.clone(),
-                source,
-            })
+        Ok(())
     }
 
     /// Whether the file at `path` still equals its version in one of the two trees (absent
@@ -116,7 +108,7 @@ impl Project {
     }
 
     /// Runs the export when git's refs, HEAD or `exported.json` are behind the head op's view.
-    fn re_export_if_lagging(&mut self, head: &OpId) -> Result<(), OpenError> {
+    fn re_export_if_lagging(&self, head: &OpId) -> Result<(), OpenError> {
         let exported = export::read_exported(&self.paper_dir);
         if !self.export_lags(exported.as_ref())? {
             return Ok(());

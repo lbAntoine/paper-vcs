@@ -338,6 +338,34 @@ fn recovery_records_no_activity_entry() {
 
 #[test]
 fn opening_a_project_with_nothing_to_repair_writes_nothing() {
+    // Modification times of exported.json and of every ref file (loose or packed).
+    fn mtimes(dir: &Path) -> Vec<(String, std::time::SystemTime)> {
+        fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
+            for entry in fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    walk(&path, out);
+                } else {
+                    out.push(path);
+                }
+            }
+        }
+        let mut paths = vec![
+            paper_dir(dir).join("exported.json"),
+            dir.join(".git/packed-refs"),
+        ];
+        walk(&dir.join(".git/refs"), &mut paths);
+        let mut found: Vec<_> = paths
+            .into_iter()
+            .filter_map(|path| {
+                let modified = fs::metadata(&path).ok()?.modified().ok()?;
+                Some((path.to_string_lossy().into_owned(), modified))
+            })
+            .collect();
+        found.sort();
+        found
+    }
+
     let crashed = crashed_after_the_undo_op();
     let dir = crashed.dir.path();
     // Bring the project to rest first: the next command snapshots and settles everything.
@@ -350,6 +378,7 @@ fn opening_a_project_with_nothing_to_repair_writes_nothing() {
         paper.retain(|name, _| name != "lock" && name != "lock-holder");
         (
             paper,
+            mtimes(dir),
             git(dir, &["for-each-ref", "--format=%(refname) %(objectname)"]),
             git(dir, &["ls-files", "--stage"]),
             fs::read(dir.join(".git/HEAD")).unwrap(),

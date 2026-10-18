@@ -500,6 +500,70 @@ crash_tests! { redo_survives_a_crash_at:
     redo_crashed_after_checkout_is_repaired => "after-checkout",
 }
 
+// ---- a crash inside a command's own edits entry ----
+
+fn crash_in_the_edits_entry_of(args: &[&str]) {
+    let env = project();
+    env.write("sections/intro.tex", "Intro v3 unsaved\n");
+    // Not recorded yet: the command's own snapshot records it, and the crash hits that op.
+    crash(&env, "after-op", args);
+
+    env.paper(&["status"]).assert_code(0);
+
+    assert_eq!(
+        bytes(&env, "sections/intro.tex").unwrap(),
+        b"Intro v3 unsaved\n",
+        "the files are as before the command"
+    );
+    assert!(env.work.join("related.tex").exists());
+    let entries = activity(&env);
+    assert_eq!(entries[0], "edited sections/intro.tex", "{entries:?}");
+    assert_consistent(&env);
+}
+
+#[test]
+#[cfg_attr(
+    not(debug_assertions),
+    ignore = "PAPER_DEBUG_CRASH_AT is compiled out of release builds"
+)]
+fn a_restore_crashed_in_its_own_edits_entry_leaves_the_files_and_an_edits_entry() {
+    crash_in_the_edits_entry_of(&["restore", "--from", "last~2", "sections", "related.tex"]);
+}
+
+#[test]
+#[cfg_attr(
+    not(debug_assertions),
+    ignore = "PAPER_DEBUG_CRASH_AT is compiled out of release builds"
+)]
+fn an_undo_crashed_in_its_own_edits_entry_leaves_the_files_and_an_edits_entry() {
+    crash_in_the_edits_entry_of(&["undo"]);
+}
+
+// ---- recovery leaves a move made with plain git alone ----
+
+#[test]
+#[cfg_attr(
+    not(debug_assertions),
+    ignore = "PAPER_DEBUG_CRASH_AT is compiled out of release builds"
+)]
+fn re_export_leaves_a_line_that_plain_git_moved_alone() {
+    let env = project();
+    env.write("main.tex", "changed\n");
+    crash(&env, "after-op", &["save", "Crashed save"]);
+    env.git_work(&["commit", "--allow-empty", "-m", "Plain commit"]);
+    let plain = env.git_work(&["rev-parse", "refs/heads/main"]);
+
+    env.paper(&["status"]).assert_code(0);
+
+    assert_eq!(env.git_work(&["rev-parse", "refs/heads/main"]), plain);
+    assert_eq!(env.subjects()[0], "Plain commit");
+    env.write("main.tex", "changed again\n");
+    let run = env.paper(&["save", "Refused"]);
+    run.assert_three_part_error(1);
+    assert!(run.stderr.contains("changed outside paper"), "{run:#?}");
+    env.fsck();
+}
+
 // ---- an edit between the crash and the next command ----
 
 #[test]

@@ -232,18 +232,18 @@ step 6 (keep-alive and op), naming `from` (the head op the command started at) a
 target draft tree); they then record, rewrite the files from the current draft to the target
 tree, refresh the stat cache, and delete the marker. `restore` does not write it.
 
-Repair, in `Project::open_with` under the lock (`project/recover.rs`), if the marker exists, in this order: (1) head is `from`: the op never
-committed, so drop the marker; (2) otherwise, if head's parent is `from` and head's draft tree
-equals `tree`: finish the checkout, rewriting from `from`'s draft tree to `tree`; (3) otherwise
-drop the marker, because the files have been snapshotted since. When finishing, a file is
-overwritten or deleted only if its content still equals its version in one of the two trees; any
-other file is left alone and reported as skipped, so an edit made after the crash is never
-overwritten. Rules 1 and 2 can both hold when the draft didn't change; rule 1 then wins,
-harmlessly. A marker that can't be read is dropped. After the marker, recovery re-exports if
-the refs, HEAD or `exported.json` differ from the head op's view, with the export's usual
-leave-alone rules (a ref plain git moved is not a lag). Recovery records no activity entry,
-prints nothing, and does no writes when there is nothing to repair. A crash anywhere in keep,
-op, export or checkout is then repairable.
+Repair, in `Project::open_with` under the lock (`project/recover.rs`), if the marker exists, in
+this order: (1) head is `from`: the op never committed, so drop the marker; (2) otherwise, if
+head's parent is `from` and head's draft tree equals `tree`: finish the checkout, rewriting from
+`from`'s draft tree to `tree`; (3) otherwise drop the marker, because the files have been
+snapshotted since. When finishing, a file is overwritten or deleted only if its content still
+equals its version in one of the two trees; any other file is left alone; the next snapshot
+records it as an edits entry, so an edit made after the crash is never overwritten. Rules 1 and 2
+can both hold when the draft didn't change; rule 1 then wins, harmlessly. A marker that can't be
+read is dropped. After the marker, recovery re-exports if the refs, HEAD or `exported.json` differ
+from the head op's view, with the export's usual leave-alone rules (a ref plain git moved is not a
+lag). Recovery records no activity entry, prints nothing, and does no writes when there is nothing
+to repair. A crash anywhere in keep, op, export or checkout is then repairable.
 
 **Crash safety.** The source of truth is `activity/head`. Steps 7 and 8 are idempotent and
 are replayed by step 2. Losing power at any point leaves either the old state or the new
@@ -256,11 +256,13 @@ The points are `after-snapshot`, `after-marker`, `after-keep`, `after-op`, `afte
 `after-refs`, `after-export`, `mid-checkout` (after the first file) and `after-checkout`; the
 crash tests (`paper-cli/tests/crash.rs`) kill the real binary at each and check the next
 command. What "repaired" means: before `after-op` the command never happened (a stale marker is
-dropped, the files are as the snapshot left them); from `after-op` on it happened completely,
-with refs, HEAD, index and `exported.json` brought in line and an unfinished checkout
-completed, except that a file edited after the crash is kept and becomes an edits entry.
-A crash at `after-index` leaves the new index with the old refs; the next open's export
-completes the refs and HEAD.
+dropped, the files are as the snapshot left them), except `restore`, which checks out before it
+records and has no marker: a crash during its checkout leaves the files it already wrote, the next
+command records them as an `edited …` entry, and `undo` takes that back, so nothing is lost. From
+`after-op` on it happened completely, with refs, HEAD, index and `exported.json` brought in line
+and an unfinished checkout completed, except that a file edited after the crash is kept and
+becomes an edits entry. A crash at `after-index` leaves the new index with the old refs; the next
+open's export completes the refs and HEAD.
 
 ### Undo / redo algorithm
 

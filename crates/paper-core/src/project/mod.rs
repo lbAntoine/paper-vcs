@@ -157,7 +157,7 @@ impl Project {
             })
         })?;
         let view = log.read(&head)?.view;
-        let mut project = Self {
+        let project = Self {
             repo,
             paper_dir,
             view,
