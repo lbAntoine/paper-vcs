@@ -110,6 +110,31 @@ precedence.
 - `{"schema":1,"removed":[…],"negated":[…],"tracked":[…],"entry":<entry or null>,"local":bool}`.
 - `ignore --json` gains `"local":bool`, the only change to its key set.
 
+### Coordinator decisions after GREEN (2026-10-18)
+
+- **Undo or redo of an ignore/unignore entry changes tracking, never files (data-loss fix).**
+  Undoing `paper unignore --local` used to delete the newly tracked files from disk. The usual
+  undo rule keeps a file only when the target's own `.gitignore` layers ignore it, and a local
+  rule lives outside history.
+  - The rule: when a single `undo` or `redo` step takes back or brings back an `Ignore` or
+    `Unignore` entry, the checkout writes or deletes only `.gitignore` files. Every other file
+    stays on disk as it is.
+  - After undoing a `--local` unignore, the files stay, and the next command records them
+    again. That follows from the maintainer's decision that local rules are outside history, and
+    the undo note tells the user how to put the rule back.
+  - `undo --to` across such entries keeps the normal rules. The files are in history either
+    way.
+  - The change goes in `project/undo.rs`. It lands **after PV-030 merges**: the coordinator
+    merges main into this branch, then PV-032 makes three small edits:
+    - the rule above, in `undo.rs`;
+    - the `--local` note, in `render/undo.rs`;
+    - `unignore` added to 02-cli's activity kind list, in PV-030's section.
+  - Tests:
+    - undo and redo of a `--local` unignore and of a `--local` ignore: files byte-identical on disk;
+    - undo and redo of a shared ignore and unignore: unchanged behaviour;
+    - the `#[ignore]`d note test, enabled.
+- RED fixes for 6 tests are routed to the test-author. Details are in the GREEN entry.
+
 ## Scope
 
 1. Split `project/ignore.rs` into a module folder (refactor commit, no behaviour change).
