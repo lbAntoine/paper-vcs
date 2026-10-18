@@ -41,6 +41,9 @@ pub enum UndoOutcome {
     /// The redo stack is empty. Nothing was recorded, besides an edits entry for unsaved
     /// changes.
     NothingToRedo,
+    /// `undo --to` named the entry the project is already at. Nothing was recorded, besides an
+    /// edits entry for unsaved changes (after which the target is no longer current).
+    AlreadyThere,
 }
 
 #[derive(Debug, thiserror::Error)]

@@ -2,6 +2,7 @@
 //! byte for byte on the working files.
 
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -756,6 +757,184 @@ fn undo_refuses_when_git_detached_head() {
             UndoError::Save(SaveError::HeadOnAnotherBranch { found: None, .. })
         )
     });
+}
+
+// ---- undo-family wording after plain git ----
+
+const V04_WAY_OUT: &str = "Paper will be able to bring in changes made with plain git in v0.4; \
+     until then, keep working with plain git on this line, or move it back to paper's last save.";
+
+/// The text of a `PaperError`, with runs of whitespace collapsed.
+fn words(error: &PaperError) -> String {
+    let mut all = format!("{} | {}", error.message, error.why);
+    for suggestion in &error.next {
+        let _ = write!(
+            all,
+            " | {} | {}",
+            suggestion.command, suggestion.explanation
+        );
+    }
+    all.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn assert_way_out(error: &PaperError) {
+    assert!(error.why.ends_with(V04_WAY_OUT), "{error:?}");
+    assert!(error.next.len() >= 2, "two suggestions: {error:?}");
+    assert_eq!(error.next[0].command, "git log main", "{error:?}");
+    let second = &error.next[1].command;
+    assert!(
+        second.starts_with("git branch -f main") || second.starts_with("git reflog main"),
+        "{error:?}"
+    );
+}
+
+#[test]
+fn undo_redo_and_undo_to_word_a_moved_line_for_undo_not_for_save() {
+    let (dir, mut project) = refusal_setup();
+    git(
+        dir.path(),
+        &["commit", "--quiet", "--allow-empty", "-m", "Plain git"],
+    );
+
+    let errors = [
+        project.undo().unwrap_err(),
+        project.redo().unwrap_err(),
+        project.undo_to("0000").unwrap_err(),
+    ];
+
+    for error in errors {
+        let shown = PaperError::from(error);
+        assert_eq!(shown.kind, ErrorKind::User);
+        assert_eq!(shown.message, "The line 'main' was changed outside paper");
+        assert!(
+            shown.why.starts_with(
+                "Commits were added to it, or it was moved, with plain git since paper last \
+                 saw it. Paper can't undo or redo across that yet, and nothing was undone or \
+                 changed."
+            ),
+            "{shown:?}"
+        );
+        assert!(!words(&shown).contains("save on top"), "{shown:?}");
+        assert_way_out(&shown);
+    }
+}
+
+#[test]
+fn undo_family_words_another_branch_for_undo_and_suggests_switching_back() {
+    let (dir, mut project) = refusal_setup();
+    git(dir.path(), &["checkout", "--quiet", "-b", "side"]);
+
+    for error in [
+        project.undo().unwrap_err(),
+        project.redo().unwrap_err(),
+        project.undo_to("0000").unwrap_err(),
+    ] {
+        let shown = PaperError::from(error);
+        assert_eq!(shown.kind, ErrorKind::User);
+        assert_eq!(
+            shown.message,
+            "Git is on the branch 'side', not on the line 'main'"
+        );
+        assert!(
+            shown.why.contains(
+                "Undo works on the line you are on, and paper's current line and git's branch \
+                 have to agree. Nothing was undone."
+            ),
+            "{shown:?}"
+        );
+        assert!(!shown.why.contains("saved"), "{shown:?}");
+        assert_eq!(shown.next[0].command, "git switch main", "{shown:?}");
+    }
+}
+
+#[test]
+fn undo_with_a_detached_head_says_nothing_was_undone() {
+    let (dir, mut project) = refusal_setup();
+    git(dir.path(), &["checkout", "--quiet", "--detach"]);
+
+    let shown = PaperError::from(project.undo().unwrap_err());
+
+    assert!(shown.why.contains("Nothing was undone."), "{shown:?}");
+    assert!(!shown.why.contains("saved"), "{shown:?}");
+}
+
+#[test]
+fn save_keeps_its_own_wording_and_gains_the_way_out_after_a_plain_git_commit() {
+    let (dir, mut project) = refusal_setup();
+    git(
+        dir.path(),
+        &["commit", "--quiet", "--allow-empty", "-m", "Plain git"],
+    );
+
+    let error = project
+        .save(&SaveRequest {
+            message: "try".to_owned(),
+            paths: PathSelection::All,
+        })
+        .unwrap_err();
+
+    let shown = PaperError::from(error);
+    assert_eq!(shown.message, "The line 'main' was changed outside paper");
+    assert!(
+        shown.why.contains("Paper can't save on top of that yet"),
+        "{shown:?}"
+    );
+    assert!(!words(&shown).contains("undo"), "{shown:?}");
+    assert_way_out(&shown);
+}
+
+// ---- undo --to the current position ----
+
+#[test]
+fn undo_to_the_entry_the_project_is_at_records_nothing() {
+    let (dir, mut project) = three_saves();
+    let latest = entry(&project, "save \"three\"");
+    let before = stored(dir.path());
+    let ops = op_count(dir.path());
+
+    let outcome = project.undo_to(&latest.short_id).unwrap();
+
+    assert_eq!(outcome, UndoOutcome::AlreadyThere);
+    assert_eq!(stored(dir.path()), before);
+    assert_eq!(op_count(dir.path()), ops);
+    assert_git_consistent(dir.path());
+}
+
+#[test]
+fn repeating_undo_to_records_one_go_back_entry_and_the_second_is_already_there() {
+    let (dir, mut project) = three_saves();
+    let target = entry(&project, "save \"one\"");
+    let first = undone(project.undo_to(&target.short_id).unwrap());
+    assert_eq!(first.entry.short_id, target.short_id);
+    let before = stored(dir.path());
+    let ops = op_count(dir.path());
+    let listed = descriptions(&project);
+
+    let second = project.undo_to(&target.short_id).unwrap();
+
+    assert_eq!(second, UndoOutcome::AlreadyThere);
+    assert_eq!(stored(dir.path()), before);
+    assert_eq!(op_count(dir.path()), ops);
+    assert_eq!(descriptions(&project), listed, "no second go-back entry");
+    assert_eq!(text(dir.path(), "a.tex"), "v1\n");
+    assert_git_consistent(dir.path());
+}
+
+#[test]
+fn undo_to_the_same_entry_with_unsaved_edits_in_between_goes_back_again() {
+    let (dir, mut project) = three_saves();
+    let target = entry(&project, "save \"one\"");
+    project.undo_to(&target.short_id).unwrap();
+    write(dir.path(), "a.tex", "unsaved since\n");
+
+    let outcome = project.undo_to(&target.short_id).unwrap();
+
+    let done = undone(outcome);
+    assert_eq!(done.entry.short_id, target.short_id);
+    assert_eq!(text(dir.path(), "a.tex"), "v1\n");
+    // The edits were recorded first, so they stay reachable.
+    entry(&project, "edited a.tex");
+    assert_git_consistent(dir.path());
 }
 
 // ---- files paper does not record ----

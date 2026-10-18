@@ -117,3 +117,33 @@ specs stop describing v0.2 work as future or as already present when it isn't.
 ## Summary
 
 ## Handoff log
+
+### RED · test-author · 2026-10-18
+
+Tests added (11 new, all fail for the stated reason; 2 pass by design):
+
+- `crates/paper-core/tests/undo.rs` (+8; 6 fail): moved-line undo wording for undo/redo/undo --to
+  (`undo_redo_and_undo_to_word_a_moved_line_for_undo_not_for_save`), another-branch wording
+  (`undo_family_words_another_branch_...`), detached HEAD says "Nothing was undone.", save keeps its
+  wording and gains the v0.4 way out, `undo_to_the_entry_the_project_is_at_records_nothing`,
+  `repeating_undo_to_...second_is_already_there`. Fail on message/why assertions or
+  `assert_eq!(.., AlreadyThere)`. Passes by design on main: `undo_to_the_same_entry_with_unsaved_edits_in_between_goes_back_again`
+  (the normal go-back; guards GREEN against over-reaching).
+- `crates/paper-cli/tests/undo.rs` (+4; 3 fail): plain-commit wording for undo/redo/undo --to,
+  `git switch -c other` wording, repeated `--to` human (`Already there.\n`, exit 0, state and
+  activity unchanged) and JSON (`already_there`, entry.short_id = target, changed/skipped `[]`;
+  `files_match` deliberately not asserted). Passes by design: the unsaved-edits go-back.
+- `crates/paper-cli/tests/save.rs` (+1, fails): save still says "can't save on top of that yet", has "v0.4" and "git log main", no "undo or redo".
+- The way-out assertion in core is strict: `why` ends with the exact v0.4 sentence; `next[0]` is
+  `git log main`; `next[1]` starts with `git branch -f main` or `git reflog main` (GREEN chooses).
+- Probe: copied tests and stubs onto a detached `origin/main` worktree (removed); same result as on
+  the branch: 11 failures, assertion failures only, pre-existing tests all pass.
+
+Stubs: `UndoOutcome::AlreadyThere` (never returned); `render/undo.rs` arms are `todo!()`.
+Outside the Touches list: `crates/paper-core/tests/session_proptest.rs` got three match arms for the
+new variant (needed to compile). `variant_ok` treats `AlreadyThere` as a model mismatch, so GREEN must
+model `Aim::To(current position)` as `AlreadyThere` (no change) there, or the proptest will fail.
+Existing tests `undo_after_a_plain_git_commit_exits_with_saves_error...` and the git-switch one
+compare only the first stderr line and the exit code, which stay equal, so they still pass.
+
+Questions: none.

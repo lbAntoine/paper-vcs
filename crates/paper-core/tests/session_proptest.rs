@@ -528,6 +528,9 @@ impl Session {
             UndoOutcome::Undone(_) => expect_change,
             UndoOutcome::NothingToUndo => !expect_change && !matches!(aim, Aim::Redo),
             UndoOutcome::NothingToRedo => !expect_change && matches!(aim, Aim::Redo),
+            // Not modelled yet: PV-030 GREEN decides how the model treats `undo --to` at the
+            // current position.
+            UndoOutcome::AlreadyThere => false,
         };
         if !variant_ok {
             return Err(format!(
@@ -707,6 +710,7 @@ impl Session {
                 UndoOutcome::NothingToUndo => break,
                 UndoOutcome::NothingToRedo => return Err("undo said NothingToRedo".to_owned()),
                 UndoOutcome::Undone(_) => back.push(self.position()),
+                UndoOutcome::AlreadyThere => return Err("undo said AlreadyThere".to_owned()),
             }
             if back.len() > bound {
                 return Err(format!(
@@ -731,6 +735,7 @@ impl Session {
                 }
                 UndoOutcome::NothingToUndo => return Err("redo said NothingToUndo".to_owned()),
                 UndoOutcome::Undone(_) => forward.push(self.position()),
+                UndoOutcome::AlreadyThere => return Err("redo said AlreadyThere".to_owned()),
             }
             if forward.len() > bound {
                 return Err(format!("redo did not stop in {bound} steps"));

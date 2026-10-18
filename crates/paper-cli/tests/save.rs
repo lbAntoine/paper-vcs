@@ -232,3 +232,24 @@ fn save_snapshots_an_edit_made_since_the_last_command() {
         "new.txt"
     );
 }
+
+#[test]
+fn save_after_a_plain_git_commit_keeps_its_wording_and_names_the_v0_4_way_out() {
+    let env = project();
+    env.git_work(&["commit", "--quiet", "--allow-empty", "-m", "Plain git"]);
+    env.write("sections/intro.tex", "edit after the commit\n");
+
+    let run = env.paper(&["save", "Try"]);
+
+    run.assert_three_part_error(1);
+    let text = run.stderr.split_whitespace().collect::<Vec<_>>().join(" ");
+    for phrase in [
+        "The line 'main' was changed outside paper",
+        "Paper can't save on top of that yet",
+        "v0.4",
+        "git log main",
+    ] {
+        assert!(text.contains(phrase), "missing {phrase:?}: {text}");
+    }
+    assert!(!text.contains("undo or redo"), "{text}");
+}

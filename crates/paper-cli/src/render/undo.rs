@@ -25,6 +25,7 @@ pub fn human(verb: Verb, outcome: &UndoOutcome) -> String {
         UndoOutcome::NothingToUndo => "Nothing to undo.\n".to_owned(),
         UndoOutcome::NothingToRedo => "Nothing to redo.\n".to_owned(),
         UndoOutcome::Undone(undone) => undone_text(verb, undone),
+        UndoOutcome::AlreadyThere => todo!("PV-030: print `Already there.`"),
     }
 }
 
@@ -105,6 +106,7 @@ pub fn json(verb: Verb, outcome: &UndoOutcome) -> String {
     let out = match outcome {
         UndoOutcome::NothingToUndo => nothing("nothing_to_undo"),
         UndoOutcome::NothingToRedo => nothing("nothing_to_redo"),
+        UndoOutcome::AlreadyThere => todo!("PV-030: JSON outcome `already_there`"),
         UndoOutcome::Undone(undone) => UndoOut {
             schema: SCHEMA,
             outcome: match verb {
