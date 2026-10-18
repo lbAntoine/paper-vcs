@@ -574,8 +574,8 @@ fn out_of_sync(line: &crate::name::LineName, last_save: &str, consequence: &str)
             "Commits were added to it, or it was moved, with plain git since paper last saw \
              it. {consequence} Paper will be able to bring in changes made with plain git in \
              v0.4. Until then, keep working with plain git on this line, or run `git reset \
-             --soft {last_save}` to go back to paper's last save: the changes of your git \
-             commits stay in your files, as unsaved edits paper can save."
+             --soft {last_save}` to go back to paper's last save: your files stay as they \
+             are, and whatever differs from that save shows as unsaved edits paper can save."
         ),
         vec![Suggestion::new(
             format!("git log {line}"),

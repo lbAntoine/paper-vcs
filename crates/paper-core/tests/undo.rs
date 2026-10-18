@@ -781,8 +781,8 @@ fn assert_way_out(error: &PaperError) {
     assert!(error.why.contains(V04_WAY_OUT), "{error:?}");
     assert!(
         error.why.ends_with(
-            "` to go back to paper's last save: the changes of your git commits stay in your \
-             files, as unsaved edits paper can save."
+            "` to go back to paper's last save: your files stay as they are, and whatever \
+             differs from that save shows as unsaved edits paper can save."
         ),
         "{error:?}"
     );

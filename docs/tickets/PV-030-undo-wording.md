@@ -98,13 +98,13 @@ specs stop describing v0.2 work as future or as already present when it isn't.
 
 ## Acceptance criteria
 
-- [ ] After a plain `git commit`, `paper undo` and `paper redo` show the undo wording. Exit codes and `next` are unchanged, and `paper save` keeps save's wording.
-- [ ] The `OutOfSyncWithGit` explanation, for save and undo, ends with the v0.4 sentence, followed by the two suggestions.
-- [ ] `git switch -c other`, then `paper undo`, gives the another-branch undo wording.
-- [ ] Running `paper undo --to <id>` twice: the second prints `Already there.`, exits 0 and records nothing. JSON is `"outcome":"already_there"`. With unsaved edits in between, the normal go-back happens.
-- [ ] No spec sentence describes v0.2 features as future, or describes a missing feature as present. The listed sentences are fixed.
-- [ ] Bookkeeping done (PV-035 sprint, PV-026 box).
-- [ ] Specs updated (only the listed sections). Snapshots reviewed.
+- [x] After a plain `git commit`, `paper undo` and `paper redo` show the undo wording. Exit codes and `next` are unchanged, and `paper save` keeps save's wording.
+- [x] The `OutOfSyncWithGit` explanation, for save and undo, ends with the v0.4 sentence, followed by the two suggestions.
+- [x] `git switch -c other`, then `paper undo`, gives the another-branch undo wording.
+- [x] Running `paper undo --to <id>` twice: the second prints `Already there.`, exits 0 and records nothing. JSON is `"outcome":"already_there"`. With unsaved edits in between, the normal go-back happens.
+- [x] No spec sentence describes v0.2 features as future, or describes a missing feature as present. The listed sentences are fixed.
+- [x] Bookkeeping done (PV-035 sprint, PV-026 box).
+- [x] Specs updated (only the listed sections). Snapshots reviewed.
 - [ ] fmt, clippy (`-D warnings`) and the full suite pass (CI on Linux, macOS, Windows).
 
 ## Test plan
@@ -115,6 +115,14 @@ specs stop describing v0.2 work as future or as already present when it isn't.
 - Tests must fail on `origin/main`. No hand-written snapshots. Assert key phrases with `contains`.
 
 ## Summary
+
+`undo`, `redo` and `undo --to` now refuse after plain git in their own words (a moved line, or
+another branch), and every `OutOfSyncWithGit` refusal names the v0.4 import and a way back:
+`git reset --soft <paper's last save id>`, in the explanation (`next` stays `git log <line>`).
+`git branch -f` could not work on the checked-out branch. `undo --to` the position or the head
+is `AlreadyThere` (`Already there.`, JSON `already_there`): nothing recorded, redo stack kept.
+Stale v0.2 sentences in the specs are fixed; PV-035 moved to v0.3 and the PV-026 CI-time box is
+ticked.
 
 ## Handoff log
 
@@ -172,3 +180,7 @@ Checks: fmt, clippy -D warnings and `cargo test --workspace --all-targets --no-f
 - 5: `target.id == head.id` is also AlreadyThere; core test added; the proptest model treats `To(head)` the same (when no edits entry was just recorded).
 - 8: proptest runs `check_position` for `AlreadyThere`.
 - 6 NOT done: "Nothing was undone or redone." would break the RED assertions that the another-branch and detached-HEAD text contains "Nothing was undone." (and the mapping has no verb to branch on). Say if you want those assertions loosened.
+
+### GREEN (post-approval) · rust-engineer · 2026-10-18
+
+Wording fixes only: the way-out sentence now reads "your files stay as they are, and whatever differs from that save shows as unsaved edits paper can save" (error.rs, `assert_way_out`, 02-cli § save and § undo, 03-architecture Refusals); 02-cli says only the suggested next commands never drop git commits; reflowed 02-cli, 03-architecture and PV-026 lines; "names" the way back in 03-architecture; Summary filled; acceptance boxes ticked except the CI one.

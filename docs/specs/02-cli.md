@@ -197,10 +197,11 @@ HEAD). Every other key is unchanged.
   branch creation, roadmap § v0.4: Safe experiments); every row of the interop table is
   covered by v0.8; co-authors' work arrives with `sync` in v0.6. The error names the line,
   says that paper will be able to bring in plain-git changes in v0.4 (until then: keep working
-  with plain git on this line, or run `git reset --soft <id>` to go back to paper's last save,
-  keeping the changes of your git commits as unsaved edits paper can save), and suggests
-  `git log <line>` to see what changed; it never suggests a command that could drop git
-  commits. If git is on another branch (or detached), it refuses too and says to run
+  with plain git on this line, or run `git reset --soft <id>` to go back to paper's last save:
+  your files stay as they are, and whatever differs from that save shows as unsaved edits
+  paper can save), and suggests `git log <line>` to see what changed. The suggested next
+  commands never drop git commits, and the way back named in the explanation keeps every
+  change in your files. If git is on another branch (or detached), it refuses too and says to run
   `git switch <line>`.
 - An empty draft means a no-op: `Nothing to save.` (exit 0).
 - It prints the short change ID and message, the files saved, and the files left in the draft.
@@ -459,18 +460,19 @@ unreadable source has no place in this fixed shape, so only the human output nam
   nothing, with `save`'s exit code and suggestions and their own wording. A moved line reads
   "The line 'main' was changed outside paper … Paper can't undo or redo across that yet, and
   nothing was undone or changed", followed by the same way out `save` gives (v0.4 import; keep
-  working with plain git, or `git reset --soft <id>`). Another branch reads
+  working with plain git, or `git reset --soft <id>`, which leaves your files as they are and
+  shows what differs from paper's last save as unsaved edits). Another branch reads
   "Git is on the branch 'other', not on the line 'main' … Nothing was undone", suggesting
   `git switch main`.
 - `undo --to` the entry the project is already at is harmless: it prints `Already there.`
-  (exit 0) and records and checks out nothing, apart from the entry for unsaved edits, and the redo stack
-  is kept. The same holds for the id of the head entry. After
-  such edits the target is no longer current, so the normal go-back happens.
+  (exit 0) and records and checks out nothing, apart from the entry for unsaved edits, and
+  the redo stack is kept. The same holds for the id of the head entry. After such edits the
+  target is no longer current, so the normal go-back happens.
 - `--json`: `{"schema":1,"outcome","entry","changed","skipped","files_match"}`, every key
   always present. `outcome` is `undone`, `redone`, `went_back`, `nothing_to_undo`,
   `nothing_to_redo` or `already_there`. `entry` is `{"id","short_id","time","kind","description"}`
-  (what was undone, redone or gone back to; for `already_there`, the target) or `null`; `changed` is `[{"path","kind"}]` and `skipped` is
-  `[{"path","reason",...}]`, as in `restore --json`; `files_match` is `false` when skipped files
+  (what was undone, redone or gone back to; for `already_there`, the target) or `null`;
+  `changed` is `[{"path","kind"}]` and `skipped` is `[{"path","reason",...}]`, as in `restore --json`; `files_match` is `false` when skipped files
   keep their own content, `true` otherwise, and `null` when nothing happened.
 - `activity [-n <N>] [--json]` lists the entries from the current head back, newest first
   (default 20). It doesn't snapshot first, so listing the log never adds to it, but it takes

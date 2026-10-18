@@ -339,8 +339,8 @@ Details:
   three commands refuse with `save`'s exit codes and suggestions, in their own wording
   (`OutOfSyncWithGit`, `HeadOnAnotherBranch`), before anything is written. The moved-line
   error carries the short id of the commit paper last wrote; its explanation tells the
-  researcher to run `git reset --soft <id>`, which keeps the changes of their git commits
-  as unsaved edits. (It is not a `next` suggestion, and `git branch -f` can't do this: git
+  researcher to run `git reset --soft <id>`, which leaves their files as they are and shows what differs
+  from paper's last save as unsaved edits. (It is not a `next` suggestion, and `git branch -f` can't do this: git
   refuses to force-move the checked-out branch.)
 - **Nothing to do.** `undo` at the first entry and `redo` with an empty stack are friendly
   outcomes (`NothingToUndo`, `NothingToRedo`); nothing is recorded.
