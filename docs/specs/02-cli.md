@@ -317,6 +317,101 @@ inside a separate git repository, a file paper doesn't track in the way, …). I
 `non_utf8_path`, `blocked`, `case_alias` (plus `other`, the draft's spelling) and
 `kept_for_swap` (plus `target`, the path that couldn't be restored).
 
+### `paper ignore [<path|pattern>…] [--yes]` (since v0.2)
+
+Stops tracking files and folders, including ones already saved, without learning gitignore
+syntax. Hand-editing `.gitignore` stays fully supported. With no arguments it lists the ignore
+rules instead (below). `unignore`, `--local` and `--why` are planned (v0.2, PV-032).
+
+**Rules.** Paper keeps what it adds in its own block of the root `.gitignore`:
+
+```
+# >>> paper-vcs: ignored >>>
+/data/raw/
+*.aux
+# <<< paper-vcs: ignored <<<
+```
+
+The block goes at the end of the file after a blank line, so it comes after the profile block
+(and after your own lines: later lines win in gitignore). Each rule appears once, in the order
+added, and an empty block is never written. Your own lines stay byte-identical and the file
+keeps its line endings (CRLF if the first line ends in CRLF). A damaged paper block (a start
+marker without its end, or two blocks) is a user error, and nothing is written.
+
+**Arguments** are resolved from where paper runs, like `save`:
+
+1. A name that is an existing file or folder (on disk or in the draft) becomes an anchored
+   rule: `/data/raw/` for a folder, `/notes/a.log` for a file, typed with or without a
+   trailing slash. Gitignore characters in the name (`\`, `*`, `?`, `[`, `]`, trailing spaces)
+   are escaped with `\`, so `a[1].log` is written `/a\[1\].log`.
+2. Otherwise an argument with `*`, `?` or `[` is a pattern, written exactly as typed. It
+   applies to the whole project wherever paper runs, and the output says so.
+3. Otherwise it is a name for something that doesn't exist yet. With a slash in it (`build/out`,
+   `cache/`) it is anchored (`/build/out`, `/cache/`, a trailing slash only if typed). A bare
+   name (`scratch.txt`) is written as typed and matches at any depth, as it does in
+   `.gitignore`.
+
+Refused with a user error, writing nothing (one refused argument stops the whole command): an
+empty argument; a leading `!` (taking a file back off the list is `paper unignore`, coming in
+v0.2; until then edit `.gitignore`); `.gitignore` and `paper.toml` themselves; anything under
+`.git`; the whole project folder; a path outside the project.
+
+A rule already in paper's block is not added again: it is reported as already ignored, and its
+matches are still untracked.
+
+**Untracking.** Every file in the draft (after the snapshot of invariant I1) that git would
+ignore *because of one of the rules this command names* stops being tracked. The deciding rule
+is computed over the whole rule set (nested `.gitignore` files, `.git/info/exclude` and git's
+global excludes included), so a later negation in your own lines still wins and keeps the
+file. `.gitignore` files and `paper.toml` are never untracked, whatever a rule matches. The
+files leave the draft and stay on disk byte-identical; earlier saves keep their versions, and
+the next `paper save` records the removal. No history is rewritten. Running the same command
+again finishes an interrupted run, because rules already present still untrack their matches.
+
+More than 20 files to untrack need `--yes`. Without it the command is a user error that gives
+the count and the first five paths, suggests the same command with `--yes`, and writes nothing.
+
+**Order.** Arguments are checked; the snapshot records unsaved edits as their own entry; then
+everything is decided (rules, untrack set, threshold) before anything is written; then
+`.gitignore` is written atomically; then one `ignore` activity entry records the new draft
+(`.gitignore` updated, matches removed). A crash after the `.gitignore` write and before the
+entry leaves the new rule on disk with the files still tracked: the next command records the
+`.gitignore` edit, and running `paper ignore` again untracks them. `ignore` writes only
+paper's draft, never the line, so it works after plain git moved the line.
+
+**Activity and undo.** The entry is described `ignore /data/raw/, *.aux` (at most three rules,
+then `and N more`) and is undoable like any other: `undo` writes the old `.gitignore` back and
+tracks the files again.
+
+**Output.** `Now ignoring:` and `Already ignored:` list the rules (a pattern is marked `(a
+pattern: applies to the whole project)`); then `Stopped tracking N files; they are still on
+your disk:` lists them (at most 20, then `and N more`) and says the next save records their
+removal while earlier saves keep their versions. When no rule is added and nothing is
+untracked, the output is `Nothing to do: already ignored.`, no entry is recorded, and the exit
+code is 0.
+
+`--json`: `{"schema":1,"added","already","untracked","entry"}`, every key always present.
+`entry` is an activity entry (`{"id","short_id","time","kind","description"}`) or `null` for the
+no-op.
+
+**Listing.** `paper ignore` with no arguments lists every ignore rule that applies, grouped by
+source, each with its file and line. It doesn't snapshot or record anything. Comments, blank
+lines and marker lines are skipped. The sources, in this order:
+
+| Source | Where |
+|---|---|
+| `paper` | paper's block in the root `.gitignore` |
+| `profile` | the profile block in the root `.gitignore` |
+| `yours` | the other lines of the root `.gitignore`, and nested `.gitignore` files (named by path, e.g. `docs/.gitignore`) |
+| `local` | `.git/info/exclude` |
+| `global` | git's `core.excludesFile`, or `$XDG_CONFIG_HOME/git/ignore` (`~/.config/git/ignore`) when unset |
+
+A source that exists but can't be read (not UTF-8 text, no permission) is not an error: the
+human output ends with a `Note:` line naming it, and its rules are left out. With no rules at
+all the output is `No ignore rules.` `--json`: `{"schema":1,"rules":[{"rule","source","file","line"}]}`,
+every key always present; `source` is one of the five words above and `line` is 1-based. An
+unreadable source has no place in this fixed shape, so only the human output names it.
+
 ### `paper undo` / `paper redo` / `paper activity [-n <N>]` (since v0.2)
 
 - `undo` takes back the last thing you or paper did. Unsaved edits go first (`Undid: edited
@@ -370,7 +465,7 @@ b7e0  9 minutes ago   edited sections/intro.tex, main.tex
 
   Descriptions: `edited a.tex, b.tex, c.tex and 2 more` (sorted, at most three paths),
   `save "<first line of the message>"`, `restore <paths> from <point in paper's spelling, or last>`, `start the project`,
-  `adopt the git repository`, `upgrade to paper format 2`, `undo: <description of what was undone>`,
+  `adopt the git repository`, `upgrade to paper format 2`, `ignore <rules>`, `undo: <description of what was undone>`,
   `redo: <description>` and `go back to <id>: <description>`. Several restored paths are listed
   in the order given, separated by `, `, at most three then `and N more`; restoring the whole
   project is `restore everything from <point>`. A point is written in paper's spelling, so
@@ -379,7 +474,7 @@ b7e0  9 minutes ago   edited sections/intro.tex, main.tex
   them is damaged or missing, the command stops with a project error and lists nothing.
   `--json`: `{"schema":1,"entries":[{"id","short_id","time","kind","description"}]}`, every key
   always present; `time` is RFC 3339, `kind` is `init`, `migrate`, `snapshot`, `save`,
-  `restore`, `undo` or `redo` (`go back to` entries have kind `undo`).
+  `restore`, `ignore`, `undo` or `redo` (`go back to` entries have kind `undo`).
 
 ### `paper gc [--older-than <duration>] [--dry-run]` (since v0.2)
 

@@ -31,6 +31,13 @@ pub fn saved(message: &str) -> String {
     format!("save \"{subject}\"")
 }
 
+/// `ignore /data/raw/, *.aux`: the rules the command named, in the order given.
+#[must_use]
+pub fn ignored(rules: &[String]) -> String {
+    let named: Vec<&str> = rules.iter().map(String::as_str).collect();
+    format!("ignore {}", path_list(&named))
+}
+
 fn path_list(paths: &[&str]) -> String {
     let named = paths[..paths.len().min(NAMED_PATHS)].join(", ");
     match paths.len().checked_sub(NAMED_PATHS) {
@@ -69,6 +76,15 @@ mod tests {
         assert_eq!(
             restored(&paths(&["", "a.tex"]), "last"),
             "restore everything from last"
+        );
+    }
+
+    #[test]
+    fn ignoring_names_the_rules_in_order_and_caps_the_list() {
+        assert_eq!(ignored(&paths(&["/b/", "*.aux"])), "ignore /b/, *.aux");
+        assert_eq!(
+            ignored(&paths(&["d", "c", "b", "a"])),
+            "ignore d, c, b and 1 more"
         );
     }
 

@@ -1,0 +1,7 @@
+---
+source: crates/paper-cli/tests/ignore.rs
+expression: env.redact(&refused.stderr)
+---
+error: 21 saved files would stop being tracked
+  why:  They would leave your draft (the files stay on your disk, and earlier saves keep their versions). The first 5: big/f00.txt, big/f01.txt, big/f02.txt, big/f03.txt, big/f04.txt. Nothing was changed.
+  next: paper ignore big --yes  # run it again to confirm that all of them should stop being tracked

@@ -76,6 +76,27 @@ impl GitRepo {
         self.repo.git_dir()
     }
 
+    /// The file git reads global ignore rules from: `core.excludesFile` when set (from the
+    /// repository's or the user's configuration), else git's default `$XDG_CONFIG_HOME/git/ignore`
+    /// (`~/.config/git/ignore`). The file may not exist. `None` when neither can be worked out.
+    pub fn global_excludes_file(&self) -> Option<PathBuf> {
+        // Read fresh: an open repository keeps the configuration it had when it was opened,
+        // and `git config core.excludesFile ...` may have run since.
+        let fresh = gix::open(self.workdir()).ok()?;
+        if let Ok(Some(path)) = fresh.config_snapshot().trusted_path("core.excludesFile") {
+            return Some(path);
+        }
+        let config_home = std::env::var_os("XDG_CONFIG_HOME")
+            .filter(|dir| !dir.is_empty())
+            .map(PathBuf::from)
+            .or_else(|| {
+                std::env::var_os("HOME")
+                    .filter(|dir| !dir.is_empty())
+                    .map(|home| PathBuf::from(home).join(".config"))
+            })?;
+        Some(config_home.join("git").join("ignore"))
+    }
+
     /// # Errors
     ///
     /// [`GitError::Gix`] if the object can't be written

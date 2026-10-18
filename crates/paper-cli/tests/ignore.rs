@@ -503,3 +503,99 @@ fn listing_changes_nothing() {
     assert_eq!(ops(&env), ops_before);
     assert_eq!(env.read(".gitignore"), gitignore);
 }
+
+// ---- snapshots (read and accepted by hand) ----
+
+/// `common::settings()` plus filters for the random activity ids in `entry`.
+fn snapshot_settings() -> insta::Settings {
+    let mut settings = common::settings();
+    settings.add_filter(r#""(id|short_id)": "[0-9a-f]{4,32}""#, r#""$1": "[ID]""#);
+    settings
+}
+
+#[test]
+fn snapshot_adding_and_untracking() {
+    let env = project();
+    let human = env.paper(&["ignore", "data/raw", "*.aux"]);
+    human.assert_code(0);
+    let env_json = project();
+    let json = env_json.paper(&["ignore", "data/raw", "*.aux", "--json"]);
+    json.assert_code(0);
+
+    snapshot_settings().bind(|| {
+        insta::assert_snapshot!("ignore_add_human", env.redact(&human.stdout));
+        insta::assert_snapshot!("ignore_add_json", env_json.redact_json(&json.stdout));
+    });
+}
+
+#[test]
+fn snapshot_a_rule_that_was_already_there() {
+    let env = project();
+    let mut gitignore = env.read(".gitignore");
+    gitignore
+        .push_str("\n# >>> paper-vcs: ignored >>>\n/data/raw/\n# <<< paper-vcs: ignored <<<\n");
+    env.write(".gitignore", &gitignore);
+    let human = env.paper(&["ignore", "data/raw"]);
+    human.assert_code(0);
+
+    snapshot_settings().bind(|| {
+        insta::assert_snapshot!("ignore_untrack_already_human", env.redact(&human.stdout));
+    });
+}
+
+#[test]
+fn snapshot_nothing_to_do() {
+    let env = project();
+    env.paper(&["ignore", "data/raw"]).assert_code(0);
+    let human = env.paper(&["ignore", "data/raw"]);
+    let json = env.paper(&["ignore", "data/raw", "--json"]);
+    human.assert_code(0);
+    json.assert_code(0);
+
+    snapshot_settings().bind(|| {
+        insta::assert_snapshot!("ignore_no_op_human", env.redact(&human.stdout));
+        insta::assert_snapshot!("ignore_no_op_json", env.redact_json(&json.stdout));
+    });
+}
+
+#[test]
+fn snapshot_the_threshold_error() {
+    let env = Env::new();
+    for i in 0..21 {
+        env.write(&format!("big/f{i:02}.txt"), &format!("file {i}\n"));
+    }
+    Project::init(&env.work, identity(), &SnapshotOptions::default()).unwrap();
+    let refused = env.paper(&["ignore", "big"]);
+    refused.assert_three_part_error(1);
+
+    snapshot_settings().bind(|| {
+        insta::assert_snapshot!("ignore_threshold_error", env.redact(&refused.stderr));
+    });
+}
+
+#[test]
+fn snapshot_a_refused_argument() {
+    let env = project();
+    let refused = env.paper(&["ignore", "!data/raw"]);
+    refused.assert_three_part_error(1);
+
+    snapshot_settings().bind(|| {
+        insta::assert_snapshot!("ignore_unignore_error", env.redact(&refused.stderr));
+    });
+}
+
+#[test]
+fn snapshot_the_listing() {
+    let env = project();
+    write_all_five_sources(&env);
+    point_global_excludes_at(&env, "global-ignore", "# g\nglobal.tmp\n");
+    let human = env.paper(&["ignore"]);
+    let json = env.paper(&["ignore", "--json"]);
+    human.assert_code(0);
+    json.assert_code(0);
+
+    snapshot_settings().bind(|| {
+        insta::assert_snapshot!("ignore_listing_human", env.redact(&human.stdout));
+        insta::assert_snapshot!("ignore_listing_json", env.redact_json(&json.stdout));
+    });
+}

@@ -1,0 +1,13 @@
+---
+source: crates/paper-cli/tests/ignore.rs
+expression: env.redact_json(&json.stdout)
+---
+{
+  "added": [],
+  "already": [
+    "/data/raw/"
+  ],
+  "entry": null,
+  "schema": 1,
+  "untracked": []
+}

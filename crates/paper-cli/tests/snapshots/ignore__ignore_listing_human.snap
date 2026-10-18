@@ -1,0 +1,45 @@
+---
+source: crates/paper-cli/tests/ignore.rs
+expression: env.redact(&human.stdout)
+---
+paper:
+  *.scratch      .gitignore, line 32
+
+profile:
+  *.aux          .gitignore, line 2
+  *.log          .gitignore, line 3
+  *.out          .gitignore, line 4
+  *.toc          .gitignore, line 5
+  *.lof          .gitignore, line 6
+  *.lot          .gitignore, line 7
+  *.fls          .gitignore, line 8
+  *.fdb_latexmk  .gitignore, line 9
+  *.synctex.gz   .gitignore, line 10
+  *.bbl          .gitignore, line 11
+  *.blg          .gitignore, line 12
+  *.bcf          .gitignore, line 13
+  *.run.xml      .gitignore, line 14
+  _minted-*/     .gitignore, line 15
+  build/         .gitignore, line 16
+  .DS_Store      .gitignore, line 17
+  Thumbs.db      .gitignore, line 18
+  *.swp          .gitignore, line 19
+  *.swo          .gitignore, line 20
+  *~             .gitignore, line 21
+  .venv/         .gitignore, line 22
+  __pycache__/   .gitignore, line 23
+  .Rproj.user/   .gitignore, line 24
+  renv/library/  .gitignore, line 25
+  ~$*            .gitignore, line 26
+  .~lock.*#      .gitignore, line 27
+  ~WRL*.tmp      .gitignore, line 28
+
+yours:
+  mine.txt       .gitignore, line 36
+  *.nested       docs/.gitignore, line 1
+
+local:
+  local.tmp      .git/info/exclude, line 6
+
+global:
+  global.tmp     [TMP]/global-ignore, line 2

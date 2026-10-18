@@ -225,3 +225,72 @@ command, and see every rule that applies, without learning gitignore syntax. Han
 10. Classification of a name that exists "in the draft" but no longer on disk is not tested (the I1 snapshot removes it from the draft first, so the ticket wording is ambiguous).
 11. Phrases the CLI tests expect: `Nothing to do: already ignored.`, `No ignore rules.` (the whole stdout), "next save" and "earlier saves" (in the untrack message), "whole project" (for patterns), "already" for a rule already present, "unignore" in the `!` refusal, `--yes` in the threshold error, source words `paper/profile/yours/local/global` and the `file` of each rule in the listing. JSON: `{"schema":1,"added","already","untracked","entry"}`; `entry` has the same keys as an `activity --json` entry and `kind: "ignore"`; listing `{"schema":1,"rules":[{rule,source,file,line}]}`.
 12. `config set --project profile <name>` after `ignore` is tested through the binary (paper's block kept after the profile block).
+
+### GREEN · rust-engineer · 2026-10-18
+
+**Status: two tests are red and cannot be fixed inside the Touches list (BLOCKED, details below).** Everything else is done: `cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings` are clean, and `cargo test --workspace --all-targets --no-fail-fast` passes except for the two tests named here (core `redo_ignores_and_untracks_again`, CLI `a_pattern_is_written_as_typed_and_the_output_says_it_applies_to_the_whole_project`).
+
+**Implemented**
+
+- `profile/gitignore.rs`: two block kinds (`Kind::{Profile, Paper}`), told apart by marker text, at most one of each. `paper_rules`, `add_rules`, `rule_lines` (lenient, for the listing). A new paper block goes at the end of the file after a blank line (so it follows the profile block and any user lines; the core test `a_negation_before_the_new_rule_loses...` needs that). `apply` keeps paper's block and, when there is no profile block yet, puts the new one right before it.
+- `project/ignore.rs`: `Project::ignore` (check args, I1 snapshot, `plan_ignore`, `write_ignore`), `ignore_rules`, and `ignore_listing` (`IgnoreListing { rules, unreadable }`). `ignore_rules` stays a `Vec` so the RED tests are unchanged; the CLI uses `ignore_listing` and prints a `Note:` line for unreadable sources. The untrack decision rebuilds git's precedence with the `ignore` crate (nested `.gitignore` deepest first, root with the new text, `.git/info/exclude`, global), takes the deciding glob's text and keeps the file when it is not one of the rules named by the command. No new dependency.
+- `OpKind::Ignore` (already in RED), `describe::ignored` in `activity/describe.rs` (not in Touches; it is where the other descriptions live), `From<IgnoreError> for PaperError`, one wording change in `from_gitignore` (the damaged-block text now names both marker pairs).
+- `paper-git/src/repo.rs`: new `GitRepo::global_excludes_file()` (not in Touches). Core cannot read `core.excludesFile` without a gix type, and rule 2 keeps gix in `paper-git`. It re-opens the repository to read the configuration fresh, because an open `gix::Repository` keeps the config it had at open (the core listing test runs `git config core.excludesFile` after the project is open). Falls back to `$XDG_CONFIG_HOME/git/ignore` or `~/.config/git/ignore`.
+- CLI: `commands::ignore` (absolute non-pattern args are turned into `from`-relative ones), `render/ignore.rs` (human and JSON), `render/mod.rs`. `render/json.rs::op_kind_name` already had `OpKind::Ignore` from RED. No other exhaustive match needed it.
+- Snapshots (read by hand before accepting): `ignore__ignore_{add_human,add_json,untrack_already_human,no_op_human,no_op_json,threshold_error,unignore_error,listing_human,listing_json}.snap`, six new tests appended to `crates/paper-cli/tests/ignore.rs` (no existing assertion touched).
+- Specs: 02-cli § `paper ignore` (new; activity descriptions and kinds updated), 04-content § Profiles (second block) and § Large files, 01-concepts I7, and one line in 03-architecture (op kinds).
+- Checked by hand: `paper config set --project profile markdown` after `paper ignore out` keeps paper's block after the new profile block.
+
+**Interpretation answers**: the extra `patterns` field, `from` in the request, `entry: None` only for the no-op, and a draft-only name treated as a path were all kept as the coordinator accepted. The `unreadable` sources got the extra `ignore_listing` instead of changing `ignore_rules`. Files named `.gitignore` (any folder) and `paper.toml` are never untracked even if a rule matches them (not in the ticket; without it `paper ignore '*.toml'` would drop paper's settings from the draft).
+
+**Deviation to decide: a bare name that does not exist yet.** The ticket says a path to something that doesn't exist yet is anchored. The core test `rules_appear_once_in_the_order_they_were_added` expects `paper ignore b.scratch` (no such file, no slash) to be written as `b.scratch`, while `a_path_that_does_not_exist_yet_is_anchored...` expects `build/out` and `cache/` to be `/build/out` and `/cache/`. I implemented the only rule that satisfies both: a single-component name typed without any slash is written as typed (matches at any depth, like gitignore itself); anything with a slash is anchored. The spec says so. If the ticket's wording is what is wanted, the test line is wrong (`"/b.scratch"`); say which.
+
+**BLOCKED 1: redo of an `ignore` deletes the files.** `redo_ignores_and_untracks_again` fails: after `undo`, the files are tracked again; `redo` then plans the checkout from the tracked set to the wanted draft, which no longer has them, so `plan_checkout` deletes them from disk (data loss, not only a failed test). The fix is in `project/undo.rs::go` (off limits): leave alone the files of `current` that the wanted state does not track and that the wanted state's `.gitignore` ignores. I wrote and tested this (with it, all 41 core ignore tests, `undo`, `undo_skipped` and `activity` pass), then took it out. The patch is two hunks.
+
+In `undo.rs` (replace the `targets` line in `go`):
+
+```rust
+        // Files `paper ignore` took out of the draft stay on disk when the wanted state's
+        // .gitignore ignores them, instead of being deleted as "no longer tracked".
+        let ignored = self.ignored_in(&current, &wanted_files)?;
+        let targets: BTreeSet<&String> = current
+            .keys()
+            .chain(wanted_files.keys())
+            .filter(|path| !ignored.contains(*path))
+            .collect();
+```
+
+In `project/ignore.rs`, inside `impl Project` (uses the private `Layers`):
+
+```rust
+    /// The files of `current` that `wanted` does not track and that the `.gitignore` in
+    /// `wanted` ignores: undo and redo leave these on disk.
+    pub(super) fn ignored_in(
+        &self,
+        current: &BTreeMap<String, paper_git::TreeFile>,
+        wanted: &BTreeMap<String, paper_git::TreeFile>,
+    ) -> Result<BTreeSet<String>, GitError> {
+        let gone: Vec<&String> = current
+            .keys()
+            .filter(|p| !wanted.contains_key(*p))
+            .collect();
+        if gone.is_empty() {
+            return Ok(BTreeSet::new());
+        }
+        let text = match wanted.get(GITIGNORE) {
+            Some(file) => String::from_utf8_lossy(&self.repo.read_blob(&file.blob)?).into_owned(),
+            None => String::new(),
+        };
+        let layers = Layers::build(&self.repo, &text);
+        let mut memo = HashMap::new();
+        Ok(gone
+            .into_iter()
+            .filter(|path| layers.decide(path, false, &mut memo).is_some())
+            .cloned()
+            .collect())
+    }
+```
+
+**BLOCKED 2: a CLI test whose premise is false.** `a_pattern_is_written_as_typed_and_the_output_says_it_applies_to_the_whole_project` writes `sections/x.aux` and expects it in the output. The test project has `main.tex`, so it gets the latex profile, which already ignores `*.aux`: the file is never tracked, nothing is untracked and nothing can be listed. Use a pattern the profile doesn't ignore (for example `*.scratch` and `sections/x.scratch`). The assertion is untouched.
+
+**Follow-ups**: `paper help large-files` still doesn't exist (out of scope). `Layers` is built per command; fine for now. Matching is case-sensitive (`core.ignorecase` is not read).

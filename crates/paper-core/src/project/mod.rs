@@ -38,7 +38,9 @@ pub use diff::{DiffError, DiffRequest, FileDiffEntry};
 pub use export::ExportError;
 pub use gc::{GcAge, GcError, GcOutcome};
 pub use history::{HistoryEntry, HistoryError, HistoryRequest, ShowError, Shown};
-pub use ignore::{IgnoreError, IgnoreOutcome, IgnoreRequest, IgnoreRule, IgnoreSource};
+pub use ignore::{
+    IgnoreError, IgnoreListing, IgnoreOutcome, IgnoreRequest, IgnoreRule, IgnoreSource,
+};
 pub use init::{InitError, Initialized, ProfileSource, has_damaged_git};
 pub use lock::{DEFAULT_LOCK_WAIT, LockError, LockOptions, ProjectLock};
 pub use resolve::{Candidate, PointKind, ResolveError, Resolved};

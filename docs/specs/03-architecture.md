@@ -120,8 +120,8 @@ the immutability-first style.
 
 **Operation files.** `<opid>` is 32 lowercase hex characters of randomness (the same source as
 change IDs), so clones never collide. An op file is JSON with these fields: `id`; `parent` (an
-op id, `null` for the first op); `kind` (`init`, `migrate`, `snapshot`, `save`, `restore`, and
-later the undo and redo kinds); `time` (RFC 3339); `view` (the full view: current line, and each
+op id, `null` for the first op); `kind` (`init`, `migrate`, `snapshot`, `save`, `restore`,
+`ignore`, and the undo and redo kinds); `time` (RFC 3339); `view` (the full view: current line, and each
 line's tip and draft); `position` (the op whose state is current; the op itself for a normal
 op); `redo` (the redo stack, a list of op ids, empty for a normal op); `description`. The
 project's view is the `view` of the op `activity/head` names. An op is appended by writing its

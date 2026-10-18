@@ -298,8 +298,10 @@ impl PaperError {
                     "The paper block in .gitignore is damaged",
                     format!(
                         "{error}. Paper keeps its lines between two marker lines, \
-                         `# >>> paper-vcs profile: <name> >>>` and `# <<< paper-vcs profile: <name> <<<`, \
-                         and needs exactly one such pair. Nothing was changed."
+                         `# >>> paper-vcs profile: <name> >>>` and `# <<< paper-vcs profile: <name> <<<` \
+                         for a profile, `# >>> paper-vcs: ignored >>>` and \
+                         `# <<< paper-vcs: ignored <<<` for `paper ignore`, and needs at most one \
+                         such pair of each. Nothing was changed."
                     ),
                     vec![Suggestion::new(
                         retry,
@@ -781,8 +783,101 @@ impl From<UndoError> for PaperError {
 }
 
 impl From<IgnoreError> for PaperError {
-    fn from(_error: IgnoreError) -> Self {
-        todo!("PV-018: three-part errors for paper ignore")
+    fn from(error: IgnoreError) -> Self {
+        let list = || {
+            Suggestion::new(
+                "paper ignore",
+                "list the ignore rules that apply, and where each is written",
+            )
+        };
+        match error {
+            IgnoreError::Empty => Self::user(
+                "Say what to ignore",
+                "An empty name matches nothing. Nothing was changed.",
+                vec![Suggestion::new(
+                    "paper ignore data/raw",
+                    "name a file or folder, or a pattern such as '*.aux'",
+                )],
+            ),
+            IgnoreError::Unignore { ref arg } => Self::user(
+                format!("'{arg}' starts with '!', which would stop ignoring something"),
+                "`paper ignore` only adds files to the ignore list. Taking a file back off it \
+                 (`paper unignore`) comes in v0.2; until then, edit the line in .gitignore by \
+                 hand. Nothing was changed.",
+                vec![list()],
+            ),
+            IgnoreError::Protected { ref path } => Self::user(
+                format!("{path} can't be ignored"),
+                "Paper needs this file: it holds the project's ignore rules or settings, and \
+                 must stay in your saves. Nothing was changed.",
+                vec![list()],
+            ),
+            IgnoreError::InsideGit { ref arg } => Self::user(
+                format!("'{arg}' is inside .git"),
+                "The .git folder is git's own storage, and paper never tracks it, so there is \
+                 nothing to ignore. Nothing was changed.",
+                vec![list()],
+            ),
+            IgnoreError::Outside { ref arg } => Self::user(
+                format!("'{arg}' is outside this project"),
+                "Paper can only ignore files and folders inside the project. Paths are \
+                 relative to where you run paper. Nothing was changed.",
+                vec![list()],
+            ),
+            IgnoreError::WholeProject => Self::user(
+                "The whole project can't be ignored",
+                "That would stop paper tracking everything. Name a file or folder inside it \
+                 instead. Nothing was changed.",
+                vec![Suggestion::new(
+                    "paper ignore data/raw",
+                    "name a file or folder, or a pattern such as '*.aux'",
+                )],
+            ),
+            IgnoreError::TooMany {
+                count,
+                ref first,
+                ref args,
+            } => {
+                let command = format!(
+                    "paper ignore {} --yes",
+                    args.iter()
+                        .map(|arg| shell_word(arg))
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                );
+                Self::user(
+                    format!("{count} saved files would stop being tracked"),
+                    format!(
+                        "They would leave your draft (the files stay on your disk, and earlier \
+                         saves keep their versions). The first {}: {}. Nothing was changed.",
+                        first.len(),
+                        first.join(", ")
+                    ),
+                    vec![Suggestion::new(
+                        command,
+                        "run it again to confirm that all of them should stop being tracked",
+                    )],
+                )
+            }
+            IgnoreError::Save(inner) => inner.into(),
+            IgnoreError::Gitignore(ref inner) => Self::from_gitignore(inner, "paper ignore"),
+            IgnoreError::Git(_) | IgnoreError::Export(_) | IgnoreError::Io { .. } => {
+                Self::project("Paper could not ignore that", &error)
+            }
+        }
+    }
+}
+
+/// `word` as one shell word: unchanged when it only holds safe characters, else single-quoted.
+fn shell_word(word: &str) -> String {
+    let safe = !word.is_empty()
+        && word
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "_-./:=+,@%".contains(c));
+    if safe {
+        word.to_owned()
+    } else {
+        format!("'{}'", word.replace('\'', "'\\''"))
     }
 }
 
