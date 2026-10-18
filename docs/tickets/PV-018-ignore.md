@@ -4,7 +4,7 @@
 - **Issue:** #36 (design and maintainer decisions there; PV-032 / #59 is the second half)
 - **Branch:** `feat/PV-018-ignore`
 - **Depends on:** PV-021 (activity entries), PV-023 (undo). Runs in parallel with PV-026.
-- **Touches:**
+- **Touches:** (plus `crates/paper-core/src/project/checkout.rs`, `crates/paper-git/src/repo.rs`, `crates/paper-core/src/activity/describe.rs`; see the decisions after GREEN)
   - `crates/paper-core/src/profile/gitignore.rs`: generalised to two blocks.
   - `crates/paper-core/src/project/ignore.rs`: new.
   - `crates/paper-core/src/project/mod.rs`: `mod`/`pub use` lines only.
@@ -133,6 +133,24 @@ command, and see every rule that applies, without learning gitignore syntax. Han
   - `paper ignore --json`: `{"schema":1,"rules":[{"rule","source","file","line"}]}`
 
   Every key is always present.
+
+### Coordinator decisions after GREEN (2026-10-18)
+
+- **Checkout leaves ignored files alone (data-loss fix).**
+  - The problem: redo of an `ignore` entry plans a checkout from the tracked set to a draft
+    without the files, so it would delete them from disk.
+  - The rule, in `plan_checkout` (`checkout.rs`, now in this ticket's Touches): a path the
+    wanted state doesn't track, and which the wanted state's `.gitignore` rules ignore, is left
+    on disk. It is not listed as skipped, because it is correctly untracked there.
+  - It lives in the shared planner so that PV-025's recovery (`finish_checkout`) gets it too.
+  - Tests: redo after undo of an `ignore`, and a crash at `mid-checkout` during that redo
+    followed by the next command. In both, the files stay on disk byte-identical.
+- **A name that doesn't exist yet, typed without a slash, is written as typed** and matches
+  anywhere (`.DS_Store`, `b.scratch`). With a slash it is anchored. Such names count as patterns
+  in the output ("applies to the whole project").
+- **`.gitignore` files and `paper.toml` are never untracked**, even when a rule matches them.
+- `paper-git` gains `GitRepo::global_excludes_file()` (no gix types), and
+  `activity/describe.rs` gains `ignored()`.
 
 ## Scope
 
