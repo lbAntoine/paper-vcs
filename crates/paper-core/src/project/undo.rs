@@ -24,13 +24,10 @@ pub struct Undone {
     /// Files paper does not record that the checkout left alone, with the reason.
     pub skipped: Vec<SkippedPath>,
     /// Whether the working files now equal the new draft. `false` when files keep their own
-    /// content (`skipped`, or `left_over`). `paper undo` and `paper redo` go on from there;
-    /// any other command that looks at the files records the difference as an edits entry
-    /// (which clears the redo stack).
+    /// content (`skipped`). `paper undo` and `paper redo` go on from there; any other command
+    /// that looks at the files records the difference as an edits entry (which clears the redo
+    /// stack).
     pub files_match: bool,
-    /// Paths that still differ from the new draft and are not in `skipped`: leftovers an
-    /// earlier undo-family checkout remembered, still as they were. Sorted.
-    pub left_over: Vec<String>,
 }
 
 /// What an undo-family command did.
@@ -210,11 +207,7 @@ impl Project {
         crate::fault::crash_point("after-checkout");
         let now = self.refresh_stat_cache(&tree)?;
         let files_match = now == tree;
-        let remembered = self.remember_leftovers(&log, &tree, &now, &current)?;
-        let left_over = remembered
-            .into_iter()
-            .filter(|path| !plan.skipped.iter().any(|s| &s.path == path))
-            .collect();
+        self.remember_leftovers(&log, &tree, &now, &current)?;
         PendingCheckout::clear(&self.paper_dir)
             .map_err(|source| UndoError::io("remove", &marker_name, source))?;
 
@@ -223,7 +216,6 @@ impl Project {
             changed: plan.changes,
             skipped: plan.skipped,
             files_match,
-            left_over,
         }))
     }
 
@@ -245,19 +237,18 @@ impl Project {
     /// from `tree`, or removes it when they match. A path is remembered only if it differs
     /// and holds what the I1 snapshot saw there (`before`): content that never entered
     /// history (an edit that landed during the command) is left for the next I1 to record.
-    /// Returns the remembered paths.
     fn remember_leftovers(
         &self,
         log: &ActivityLog,
         tree: &paper_git::TreeId,
         now: &paper_git::TreeId,
         before: &BTreeMap<String, TreeFile>,
-    ) -> Result<Vec<String>, UndoError> {
+    ) -> Result<(), UndoError> {
         let file = CheckoutLeft::path(&self.paper_dir).display().to_string();
         if now == tree {
             CheckoutLeft::remove(&self.paper_dir)
                 .map_err(|source| UndoError::io("remove", &file, source))?;
-            return Ok(Vec::new());
+            return Ok(());
         }
         let recorded = log.head()?.ok_or_else(|| ActivityError::MissingHead {
             path: log.root().join("head"),
@@ -268,12 +259,12 @@ impl Project {
         if differing.is_empty() {
             CheckoutLeft::remove(&self.paper_dir)
                 .map_err(|source| UndoError::io("remove", &file, source))?;
-            return Ok(Vec::new());
+            return Ok(());
         }
         CheckoutLeft::new(&recorded, &differing, &seen)
             .write(&self.paper_dir)
             .map_err(|source| UndoError::io("write", &file, source))?;
-        Ok(differing)
+        Ok(())
     }
 }
 

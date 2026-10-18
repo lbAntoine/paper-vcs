@@ -339,10 +339,8 @@ inside a separate git repository, a file paper doesn't track in the way, …). I
   different content), a last line warns: "2 files were left as they are (see
   above). `paper undo` and `paper redo` go on from here; any other paper command that looks at
   your files (`paper status`, `paper save`, ...) records them as edits, which clears what you
-  can redo." ("1 file was left as it is ... records it as an edit ..." for a single file. When
-  nothing was skipped this time but a file is still as an earlier undo left it, the line names
-  it instead: "chap/one.tex is still as an earlier undo left it." or "2 files are still as an
-  earlier undo left them: a, b.") JSON is unchanged. Repeated `undo` (and `redo`) is not held back by such files: the
+  can redo." ("1 file was left as it is ... records it as an edit ..." for a single file.)
+  JSON is unchanged. Repeated `undo` (and `redo`) is not held back by such files: the
   leftovers are remembered, and the next undo-family command does not record them as an edit,
   so it walks one entry further. Any other paper command (`status`, `save`, ...) records them
   as an edits entry, and a leftover or any other file edited again is a real edit. When

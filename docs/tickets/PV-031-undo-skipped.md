@@ -79,23 +79,23 @@ leftover over and over. Maintainer decision on #57: option (a).
 
 ## Acceptance criteria
 
-- [ ] A symlink in the way of a tracked file (unix), then three `paper undo`: each walks one
+- [x] A symlink in the way of a tracked file (unix), then three `paper undo`: each walks one
   entry further back (checked against `paper activity` positions), the symlink is never
   touched, and no `edited …` entry is recorded.
-- [ ] An ignored file in the way of a file undo wants back: the same, three undos walk back.
-- [ ] After those undos, `paper redo` brings the entries back in order (the redo stack wasn't
+- [x] An ignored file in the way of a file undo wants back: the same, three undos walk back.
+- [x] After those undos, `paper redo` brings the entries back in order (the redo stack wasn't
   cleared by leftovers).
-- [ ] Editing a remembered path again, or any other file, before `undo`: the normal edits entry
+- [x] Editing a remembered path again, or any other file, before `undo`: the normal edits entry
   is recorded (I1 holds), and nothing is lost.
-- [ ] `paper status` between undos records the leftovers as an edits entry (unchanged), and
+- [x] `paper status` between undos records the leftovers as an edits entry (unchanged), and
   plain `undo` still gets past them (one extra step, never stuck).
-- [ ] A stale, unreadable or foreign `checkout-left.json` changes nothing (today's behaviour) and
+- [x] A stale, unreadable or foreign `checkout-left.json` changes nothing (today's behaviour) and
   is not an error.
-- [ ] The file is written atomically after the checkout and removed when the files match;
+- [x] The file is written atomically after the checkout and removed when the files match;
   `git fsck --strict` clean; plain `git status` unaffected by it.
-- [ ] The new warning wording (both counts) is snapshot-tested.
-- [ ] Specs updated (only the listed sections).
-- [ ] fmt, clippy (`-D warnings`) and the full suite pass (CI on Linux, macOS, Windows).
+- [x] The new warning wording (both counts) is snapshot-tested.
+- [x] Specs updated (only the listed sections).
+- [x] fmt, clippy (`-D warnings`) and the full suite pass (CI on Linux, macOS, Windows).
 
 ## Test plan
 
@@ -110,6 +110,15 @@ leftover over and over. Maintainer decision on #57: option (a).
   main.
 
 ## Summary
+
+`paper undo`, `paper redo` and `paper undo --to` no longer get stuck behind a file the checkout
+had to leave alone (a symlink or an ignored file in the way). After such a checkout, paper
+remembers the leftovers in `.git/paper/checkout-left.json` (written atomically, removed when
+the files match). The undo family's own I1 snapshot ignores remembered paths that are still
+exactly as remembered, so no edits entry is recorded and each undo walks one entry further;
+redo keeps working. Every other command still records the leftovers as an edits entry. The
+warning says what happens next. A stale or unreadable file is ignored. The checkout is planned
+against the working files, so skipped paths show again at each step.
 
 ## Handoff log
 
@@ -203,18 +212,30 @@ are ...") isn't specified by the ticket; the tests don't cover it.
   they pass and stay as regression tests. The PV-025 crash sequence
   (`a_crash_after_the_checkout_of_a_blocked_undo_does_not_stop_the_undos_that_follow`) does
   fail on the old planning and passes now.
+- **Correction (post-approval):** the claim above that the reviewer's sequence did not fail on
+  the old planning is wrong. Built from bc57e1d, `four_undos_past_a_directory_swapped_for_a_file_...`
+  (core) fails with `Io { action: "remove", path: "chap", PermissionDenied }`, its CLI twin fails
+  with exit 3, and `a_crash_after_the_checkout_...` fails too. They are genuine failing-first tests.
 - Finding 2: `leftovers_to_remember` (pure, unit-tested in `undo.rs`): remembered only if the
   path differs from the new draft and holds what the I1 snapshot saw. Since a real race
   can't be timed with the binary, the rule is tested at that level; the consequence (a
   changed remembered path is recorded by the next I1) is the existing
   `editing_a_remembered_path_again_records_the_normal_edits_entry`.
-- Finding 3: `Undone::left_over`; the warning names them when `skipped` is empty. Caveat:
-  with decision 1 the plan reconsiders every differing path, so a leftover that is still in the
-  way is in `skipped` again; `left_over` is non-empty only in odd races, so the variant is
-  covered by render unit tests, not a CLI test. When both are empty the text is
-  "Some files were left as they are." (no "see above"). JSON follow-up for PV-030: expose
-  `left_over`.
+- Finding 3: added `Undone::left_over` (a warning naming leftovers when `skipped` is empty);
+  removed again in the post-approval cleanup. When both are empty the text is "Some files were
+  left as they are." (no "see above").
 - Findings 4-7: warning and 02-cli reworded (backticks, "looks at your files"), `files_match`
   doc updated, new snapshot `undo__undo_blocked_single_human.snap` (read), `undo_blocked_human`
   re-accepted (only the last line changed). 03-architecture updated for the plan and the
   remember rule. `checkout.rs` untouched.
+
+### GREEN (post-approval) · rust-engineer · 2026-10-18
+
+- Dropped `Undone::left_over`: every remembered path is a planned target (skipped, rewritten or
+  unchanged), so it was reachable only through an exec-bit filesystem quirk. Removed the field,
+  the two `left_over` branches of `warning()`, the three render unit tests that built it, and
+  the matching 02-cli sentence. `remember_leftovers` now returns `()`. "Some files were left as
+  they are." stays for `skipped == 0 && !files_match`. Removed the PV-030 follow-up about
+  exposing `left_over` in JSON (round 1 entry).
+- Rewrapped the 02-cli paragraph. Corrected the round 1 entry (see its correction line).
+  Filled in the Summary and ticked the acceptance criteria.
