@@ -11,7 +11,7 @@ use crate::config::{ConfigError, Conflict, Key, Origin, Scope};
 use crate::point::ParsePointError;
 use crate::profile::gitignore::GitignoreError;
 use crate::project::{
-    DiffError, GcError, HistoryError, IgnoreError, InitError, OpenError, ResolveError,
+    DiffError, GcError, HistoryError, IgnoreError, IgnoreMatch, InitError, OpenError, ResolveError,
     RestoreError, SaveError, ShowError, StatusError, UndoError, UnignoreError,
 };
 
@@ -877,20 +877,7 @@ impl From<IgnoreError> for PaperError {
                     "name a file or folder, or a pattern such as '*.aux'",
                 )],
             ),
-            IgnoreError::StillVisible { ref path, ref rule } => Self::user(
-                format!("{path} can't be ignored privately"),
-                format!(
-                    "`{}` ({}) brings it back, and a rule in .git/info/exclude can't override \
-                     .gitignore. Nothing was changed.",
-                    rule.rule,
-                    rule.location()
-                ),
-                vec![Suggestion::new(
-                    format!("paper ignore {}", shell_word(path)),
-                    "run it again without `--local`: the rule then goes after that exception \
-                     in .gitignore",
-                )],
-            ),
+            IgnoreError::StillVisible { ref path, ref rule } => still_visible(path, rule),
             IgnoreError::TooMany {
                 count,
                 ref first,
@@ -924,6 +911,37 @@ impl From<IgnoreError> for PaperError {
             }
         }
     }
+}
+
+/// `paper ignore --local` of a path that a shared exception keeps visible.
+fn still_visible(path: &str, rule: &IgnoreMatch) -> PaperError {
+    let why = format!(
+        "`{}` ({}) brings it back, and a rule in .git/info/exclude can't override \
+             it. Nothing was changed.",
+        rule.rule,
+        rule.location()
+    );
+    let (command, explanation) = if rule.file == ".gitignore" {
+        (
+            format!("paper ignore {}", shell_word(path)),
+            "run it again without `--local`: the rule then goes after that \
+                 exception in .gitignore"
+                .to_owned(),
+        )
+    } else {
+        (
+            format!("paper ignore --why {}", shell_word(path)),
+            format!(
+                "see what decides, then edit {} (line {}) by hand",
+                rule.file, rule.line
+            ),
+        )
+    };
+    PaperError::user(
+        format!("{path} can't be ignored privately"),
+        why,
+        vec![Suggestion::new(command, explanation)],
+    )
 }
 
 impl From<UnignoreError> for PaperError {

@@ -151,17 +151,17 @@ precedence.
 
 ## Acceptance criteria
 
-- [ ] `paper unignore data/raw` after `paper ignore data/raw` removes the rule and tracks the files again in one entry. `git check-ignore` agrees, and undo takes it back.
-- [ ] `paper unignore notes/keep.log`, where your own `*.log` line ignores it, adds `!/notes/keep.log` to paper's block, and the file is tracked.
-- [ ] Unignoring a file whose parent folder is excluded by another rule is refused with a three-part error naming that rule, and nothing is written.
-- [ ] A path that isn't ignored gives `Nothing to do: not ignored.` and no entry.
-- [ ] `ignore` and `unignore` with `--local` write paper's block in `.git/info/exclude`. Co-authors' `.gitignore` is unchanged, and tracking changes as without `--local`.
-- [ ] Undo of a `--local` entry reverts tracking and leaves `.git/info/exclude` unchanged. The data for the undo note is exposed and specified.
-- [ ] `unignore --local` of a path ignored by `.gitignore` is refused with the "run it without `--local`" hint.
-- [ ] `--why` reports the rule, source, file and line, or "not ignored" (including a deciding negation), plus the tracked-anyway case, and matches `git check-ignore -v`.
-- [ ] JSON key sets are fixed, and snapshot-tested.
-- [ ] `project/ignore/` files are each under 800 lines.
-- [ ] Specs updated (only the listed sections).
+- [x] `paper unignore data/raw` after `paper ignore data/raw` removes the rule and tracks the files again in one entry. `git check-ignore` agrees, and undo takes it back.
+- [x] `paper unignore notes/keep.log`, where your own `*.log` line ignores it, adds `!/notes/keep.log` to paper's block, and the file is tracked.
+- [x] Unignoring a file whose parent folder is excluded by another rule is refused with a three-part error naming that rule, and nothing is written.
+- [x] A path that isn't ignored gives `Nothing to do: not ignored.` and no entry.
+- [x] `ignore` and `unignore` with `--local` write paper's block in `.git/info/exclude`. Co-authors' `.gitignore` is unchanged, and tracking changes as without `--local`.
+- [x] Undo of a `--local` entry reverts tracking and leaves `.git/info/exclude` unchanged. The data for the undo note is exposed and specified.
+- [x] `unignore --local` of a path ignored by `.gitignore` is refused with the "run it without `--local`" hint.
+- [x] `--why` reports the rule, source, file and line, or "not ignored" (including a deciding negation), plus the tracked-anyway case, and matches `git check-ignore -v`.
+- [x] JSON key sets are fixed, and snapshot-tested.
+- [x] `project/ignore/` files are each under 800 lines.
+- [x] Specs updated (only the listed sections).
 - [ ] fmt, clippy (`-D warnings`) and the full suite pass (CI on Linux, macOS, Windows).
 
 ## Test plan
@@ -177,6 +177,19 @@ precedence.
 - Tests must fail on `origin/main`. No hand-written snapshots.
 
 ## Summary
+
+`paper unignore`, `--local` for `ignore` and `unignore`, and `paper ignore --why` are in
+(`project/ignore/` is split into `args`, `listing`, `layers`, `plan`, `store`, `unignore`, `why`).
+`unignore` removes paper's rule or adds an exception, simulates the result over every rule layer,
+and records one entry that holds the new `.gitignore` and the files. `--local` keeps the block in
+`.git/info/exclude`, outside history. Undo and redo of an `ignore` or `unignore` entry change
+tracking only (they write `.gitignore` files and leave other files alone, remembered as leftovers),
+and the undo note says the local rule stays.
+
+**Known gaps**
+- Shared `paper ignore` reports success when a negation in a nested `.gitignore` wins over the new
+  rule. This predates the branch; a follow-up is to be filed.
+- A damaged block in `.git/info/exclude` reports "the paper block in .gitignore is damaged".
 
 ## Handoff log
 
@@ -232,3 +245,9 @@ precedence.
 - 6: a leading `!` on an existing file suggests `./!name`. Test added.
 - 7: local entries end with "`paper undo` changes tracking only; the rule in .git/info/exclude stays." Two snapshots re-accepted after reading the diffs (`ignore_local_human`, `unignore_local_human`).
 - 8: `undo --to` across a local unignore follows the usual rules; pinned by a test and stated in 02-cli.
+
+### GREEN (review round 2) · rust-engineer · 2026-10-19
+- MAJOR: `remember_leftovers` takes `tracking_only`; for those steps a path absent from the I1 snapshot's files (it was ignored, so I1 couldn't see it) counts as unchanged since I1 and is remembered. Every other path and step keeps PV-031's rule (`leftovers_to_remember` is unchanged). Tests: ignore, edit the ignored file, undo, redo (no edits entry, file intact); the unignore mirror (redo, then undo names `unignore`, not an edit); and a real edit to a visible file is still recorded as an edits entry and can be redone.
+- `StillVisible` hint points to the nested file when the winning negation is not in the root `.gitignore`; test added.
+- Specs: 02-cli unignore list (rule removed and negation added), `./!name` hint, `--local` closing lines, the `ignore --local` refusal; rewrapped. Ticket: Summary, Known gaps (nested-negation `ignore` success, predates the branch; exclude-block error wording) and acceptance criteria ticked except the CI one.
+- No snapshots changed this round.

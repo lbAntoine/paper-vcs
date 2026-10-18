@@ -1476,3 +1476,80 @@ fn undo_to_across_a_local_unignore_follows_the_usual_rules() {
         assert!(dir.path().join(file).exists(), "{file} is still in history");
     }
 }
+
+// ---- review round 2 ----
+
+fn edited_entries(project: &Project) -> usize {
+    descriptions(project)
+        .iter()
+        .filter(|d| d.starts_with("edited"))
+        .count()
+}
+
+#[test]
+fn a_file_edited_while_ignored_is_remembered_so_redo_still_works() {
+    let (dir, mut project) = raw_data_project();
+    ignore(&mut project, &["data/raw"]);
+    write(dir.path(), "data/raw/a.csv", "edited while ignored\n");
+    let edited = edited_entries(&project);
+
+    let back = undone(project.undo().unwrap());
+    assert_eq!(back.entry.kind, OpKind::Ignore);
+    assert_eq!(text(dir.path(), "data/raw/a.csv"), "edited while ignored\n");
+    let redone = undone(project.redo().unwrap());
+
+    assert_eq!(redone.entry.kind, OpKind::Ignore);
+    assert_eq!(edited_entries(&project), edited, "no edits entry");
+    assert_eq!(text(dir.path(), "data/raw/a.csv"), "edited while ignored\n");
+}
+
+#[test]
+fn the_mirror_for_unignore_does_not_turn_the_edit_into_an_entry() {
+    let (dir, mut project) = project_with(&[("main.tex", "m\n"), (".gitignore", "*.tmp\n")]);
+    write(dir.path(), "s.tmp", "first\n");
+    unignore(&mut project, &["s.tmp"]);
+    undone(project.undo().unwrap());
+    write(dir.path(), "s.tmp", "edited\n");
+    let edited = edited_entries(&project);
+
+    undone(project.redo().unwrap());
+    let back = undone(project.undo().unwrap());
+
+    assert_eq!(back.entry.kind, OpKind::Unignore, "{back:?}");
+    assert_eq!(edited_entries(&project), edited);
+    assert_eq!(text(dir.path(), "s.tmp"), "edited\n");
+}
+
+#[test]
+fn a_real_edit_to_a_visible_file_is_still_recorded_as_an_edits_entry() {
+    let (dir, mut project) = raw_data_project();
+    ignore(&mut project, &["data/raw"]);
+    write(dir.path(), "main.tex", "real edit\n");
+    let edited = edited_entries(&project);
+
+    let back = undone(project.undo().unwrap());
+
+    assert_eq!(edited_entries(&project), edited + 1);
+    assert_eq!(back.entry.kind, OpKind::Snapshot);
+    assert_eq!(text(dir.path(), "main.tex"), "\\documentclass{article}\n");
+    undone(project.redo().unwrap());
+    assert_eq!(text(dir.path(), "main.tex"), "real edit\n");
+}
+
+#[test]
+fn ignore_local_blocked_by_a_nested_negation_points_to_that_file() {
+    let (dir, mut project) = project_with(&[
+        ("main.tex", "t\n"),
+        (".gitignore", "*.log\n"),
+        ("sub/.gitignore", "!keep.log\n"),
+    ]);
+    write(dir.path(), "sub/keep.log", "k\n");
+    let error = project
+        .ignore(&ignore_req(&["sub/keep.log"], true))
+        .unwrap_err();
+
+    let paper = PaperError::from(error);
+    let all = format!("{} {} {:?}", paper.message, paper.why, paper.next);
+    assert!(all.contains("sub/.gitignore"), "{all}");
+    assert!(!all.contains("without `--local`"), "{all}");
+}

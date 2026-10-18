@@ -410,11 +410,14 @@ for the no-op; `local` is `true` with `--local`.
 Takes a rule back and tracks the files again. Arguments are classified like `ignore`'s, with the
 same refusals (an empty argument, `.git/...`, a path outside the project, `.gitignore`,
 `paper.toml`); a leading `!` is also refused, because `unignore !x` is meaningless (paper adds
-the exception itself).
+the exception itself). If a file whose name really starts with `!` exists, the error suggests
+`paper unignore ./!name`.
 
 For each argument:
 
-1. If paper's block has that exact rule, the rule is removed.
+1. If paper's block has that exact rule, the rule is removed. If another rule (earlier in the
+   file, or in a lower-precedence file) still ignores the path, the negation of step 2 is added
+   as well; only the negation stays in the block.
 2. Otherwise, if the path or pattern is still ignored by another rule (the profile block, your
    own lines, a nested `.gitignore`, `.git/info/exclude`, git's global excludes), paper adds a
    negation to its block: `!/notes/keep.log`, or `!<pattern>` for a pattern. The negation goes
@@ -438,7 +441,10 @@ that are no longer ignored. The new `.gitignore` and those files are recorded to
 `!`). `undo` restores the old `.gitignore` and removes the files from the draft again; they
 stay on disk.
 
-**Output.** `No longer ignoring:` lists removed rules, `Exceptions added to the ignore rules:`
+**Output.** With `--local`, the output ends with "The rules are in .git/info/exclude: they are
+yours alone, and not part of your saves." and "`paper undo` changes tracking only; the rule in
+.git/info/exclude stays." in place of "`paper undo` takes this back." `No longer ignoring:` lists
+removed rules, `Exceptions added to the ignore rules:`
 lists negations, then `Now tracking N files:` lists the files (at most 20, then `and N more`)
 and says the next save records them. `--json`:
 `{"schema":1,"removed","negated","tracked","entry","local"}`, every key always present, with
@@ -458,15 +464,18 @@ as they are, are remembered as left alone, and the next command records any diff
 edit); `.git/info/exclude` is left as it is. `undo --to` across local entries follows its usual
 rules: files tracked after the target are removed from disk like any added file, and their
 content stays in history. Such an entry's description ends with ` (in .git/info/exclude)`,
-for example `ignore /data/raw/ (in .git/info/exclude)`, which is how `paper activity` shows where the rule
-lives. `paper undo`, `redo` and `undo --to` tell the researcher so in one extra line: ``The rule
+for example `ignore /data/raw/ (in .git/info/exclude)`, which is how `paper activity` shows
+where the rule lives. `paper undo`, `redo` and `undo --to` tell the researcher so in one extra line: ``The rule
 in .git/info/exclude is unchanged; change it with `paper ignore --local` or `paper unignore
 --local`.`` (`paper-core` exposes this as `Undone::local_rules()`, true when the kind is
 `ignore` or `unignore` and the description ends with that suffix.)
 
 Git gives `.git/info/exclude` a lower precedence than `.gitignore` files, so an exception there
 can't override a `.gitignore` rule. `paper unignore --local` of a path that `.gitignore`
-ignores is refused by the simulation, with the hint to run it without `--local`.
+ignores is refused by the simulation, with the hint to run it without `--local`. Likewise
+`paper ignore --local` of a path that a negation in a shared `.gitignore` keeps visible is
+refused after the same simulation: with the hint to run it without `--local` when the winning
+negation is in the root `.gitignore`, and to edit that file when it is in a nested one.
 
 #### `paper ignore --why <path>`
 

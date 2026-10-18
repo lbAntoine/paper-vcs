@@ -226,7 +226,7 @@ impl Project {
         crate::fault::crash_point("after-checkout");
         let now = self.refresh_stat_cache(&tree)?;
         let files_match = now == tree;
-        self.remember_leftovers(&log, &tree, &now, &current)?;
+        self.remember_leftovers(&log, &tree, &now, &current, tracking_only)?;
         PendingCheckout::clear(&self.paper_dir)
             .map_err(|source| UndoError::io("remove", &marker_name, source))?;
 
@@ -262,6 +262,7 @@ impl Project {
         tree: &paper_git::TreeId,
         now: &paper_git::TreeId,
         before: &BTreeMap<String, TreeFile>,
+        tracking_only: bool,
     ) -> Result<(), UndoError> {
         let file = CheckoutLeft::path(&self.paper_dir).display().to_string();
         if now == tree {
@@ -274,7 +275,15 @@ impl Project {
         })?;
         let wanted = self.repo.tree_files(tree)?;
         let seen = self.repo.tree_files(now)?;
-        let differing = leftovers_to_remember(&wanted, &seen, before);
+        let mut before = before.clone();
+        if tracking_only {
+            // A path the I1 snapshot couldn't see (it was ignored) is unchanged since I1 by
+            // definition: it was left alone, not edited during the command.
+            for (path, file) in &seen {
+                before.entry(path.clone()).or_insert_with(|| file.clone());
+            }
+        }
+        let differing = leftovers_to_remember(&wanted, &seen, &before);
         if differing.is_empty() {
             CheckoutLeft::remove(&self.paper_dir)
                 .map_err(|source| UndoError::io("remove", &file, source))?;
