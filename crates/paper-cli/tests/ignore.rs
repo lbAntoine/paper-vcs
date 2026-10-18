@@ -670,6 +670,7 @@ fn unignoring_a_path_that_is_not_ignored_says_so_and_records_nothing() {
     let env = project();
     let gitignore = env.read(".gitignore");
     let ops_before = ops(&env);
+    let exclude_before = exclude(&env);
 
     let human = env.paper(&["unignore", "data/keep.csv"]);
     let json = env.paper(&["unignore", "data/keep.csv", "--json"]);
@@ -691,7 +692,7 @@ fn unignoring_a_path_that_is_not_ignored_says_so_and_records_nothing() {
             "local": false,
         })
     );
-    assert_unchanged(&env, &gitignore, "", ops_before);
+    assert_unchanged(&env, &gitignore, &exclude_before, ops_before);
 }
 
 #[test]
@@ -750,6 +751,7 @@ fn unignore_refuses_what_ignore_refuses_and_a_leading_bang() {
     env.paper(&["ignore", "data/raw"]).assert_code(0);
     let gitignore = env.read(".gitignore");
     let ops_before = ops(&env);
+    let exclude_before = exclude(&env);
 
     for refused in [
         "",
@@ -761,7 +763,7 @@ fn unignore_refuses_what_ignore_refuses_and_a_leading_bang() {
     ] {
         let run = env.paper(&["unignore", refused]);
         run.assert_three_part_error(1);
-        assert_unchanged(&env, &gitignore, "", ops_before);
+        assert_unchanged(&env, &gitignore, &exclude_before, ops_before);
     }
 }
 
@@ -962,8 +964,8 @@ fn why_json_has_fixed_keys_and_agrees_with_git_for_every_local_source() {
     env.write("docs/.gitignore", "# nested\n*.nested\n");
     env.write("docs/x.nested", "n\n");
     env.write("mine.txt", "mine\n");
-    env.write("local.tmp", "l\n");
     env.paper(&["ignore", "data/raw"]).assert_code(0);
+    env.write("local.tmp", "l\n");
     let mut exclude_text = exclude(&env);
     exclude_text.push_str("# private\nlocal.tmp\n");
     fs::write(env.work.join(".git/info/exclude"), exclude_text).unwrap();
@@ -1126,6 +1128,7 @@ fn why_resolves_the_path_from_where_paper_runs_and_changes_nothing() {
     env.paper(&["ignore", "data/raw"]).assert_code(0);
     env.write("main.tex", "an unsaved edit\n");
     let ops_before = ops(&env);
+    let exclude_before = exclude(&env);
     let gitignore = env.read(".gitignore");
 
     let run = env.paper_in(
@@ -1137,7 +1140,7 @@ fn why_resolves_the_path_from_where_paper_runs_and_changes_nothing() {
     run.assert_code(0);
     assert_eq!(run.json()["path"], "data/raw/a.csv");
     assert_eq!(run.json()["ignored"], true);
-    assert_unchanged(&env, &gitignore, "", ops_before);
+    assert_unchanged(&env, &gitignore, &exclude_before, ops_before);
     assert_eq!(env.read("main.tex"), "an unsaved edit\n");
 }
 
@@ -1149,6 +1152,7 @@ fn why_cannot_be_combined_with_other_arguments_or_flags() {
     assert!(control.stdout.contains("not ignored"), "{control:#?}");
     let gitignore = env.read(".gitignore");
     let ops_before = ops(&env);
+    let exclude_before = exclude(&env);
 
     for args in [
         &["ignore", "--why", "data/keep.csv", "main.tex"][..],
@@ -1162,7 +1166,7 @@ fn why_cannot_be_combined_with_other_arguments_or_flags() {
         assert!(run.stdout.is_empty(), "{args:?}: {run:#?}");
         assert!(run.stderr.starts_with("error:"), "{args:?}: {run:#?}");
         assert!(run.stderr.contains("--why"), "{args:?}: {run:#?}");
-        assert_unchanged(&env, &gitignore, "", ops_before);
+        assert_unchanged(&env, &gitignore, &exclude_before, ops_before);
     }
 }
 

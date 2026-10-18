@@ -683,10 +683,13 @@ fn unignoring_the_excluded_folder_is_the_way_out() {
 
     assert_eq!(outcome.negated, ["!/archive/"]);
     assert_eq!(outcome.tracked, ["archive/old.txt"]);
+    // Git reports the negation for the folder; the file under it has no rule of its own.
     assert_eq!(
-        check_verbose(dir.path(), "archive/old.txt").map(|r| r.ignored),
-        Some(false)
+        check_verbose(dir.path(), "archive").map(|r| (r.ignored, r.pattern)),
+        Some((false, "!/archive/".to_owned()))
     );
+    assert_eq!(check_verbose(dir.path(), "archive/old.txt"), None);
+    assert!(draft_files(dir.path()).contains(&"archive/old.txt".to_owned()));
 }
 
 #[test]

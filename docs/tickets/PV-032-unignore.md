@@ -209,3 +209,9 @@ precedence.
   With exactly those edits in a scratch copy, the CLI ignore tests (55 pass, 1 ignored) and core `unignore` (42) pass. The rest of the workspace is green.
 - Known limitation to decide: undo of a `--local` **unignore** removes the tracked files from the draft, and `ignored_in` (which keeps files on disk after undo) judges by the target's `.gitignore` plus the *current* `.git/info/exclude`, which no longer holds the rule, so those files are deleted from disk by the undo (redo restores them). Fixing it needs `checkout.rs`/`undo.rs` (off limits here), or remembering the local rule.
 - Cosmetic: a damaged block in `.git/info/exclude` reports "the paper block in .gitignore is damaged" (shared `from_gitignore` text).
+
+### RED (fix) · test-author · 2026-10-18
+- `unignoring_the_excluded_folder_is_the_way_out` (core): now checks `archive` for the `!/archive/` negation (git prints no rule for the file under it, so `None` there) and that the file is in the draft.
+- Four CLI tests (`unignore_refuses_what_ignore_refuses_and_a_leading_bang`, `unignoring_a_path_that_is_not_ignored_says_so_and_records_nothing`, `why_cannot_be_combined_with_other_arguments_or_flags`, `why_resolves_the_path_from_where_paper_runs_and_changes_nothing`): compare against `.git/info/exclude` as read before the command, not `""` (init writes a default commented file).
+- `why_json_has_fixed_keys_and_agrees_with_git_for_every_local_source`: `local.tmp` is written after `paper ignore data/raw`, so it is untracked and locally ignored.
+- Against GREEN at HEAD: core unignore 42 pass, core ignore 52 pass, CLI ignore 55 pass + 1 ignored (the undo note). Clippy clean.
