@@ -124,12 +124,19 @@ The I4 acceptance line is proven: a random 200-step session (edits, saves, resto
 `undo --to`, status) is undone step by step with the exact view and working files at every
 step, then redone to the session's end position, with `git fsck --strict` clean. The property
 passes on main, so there is no source change. `crates/paper-core/tests/session_proptest.rs`
-adds the property plus 5 oracle sanity tests; `proptest` is a dev-dependency only.
-Default is 3 cases (about 61 s on macOS in the full suite, about 64 s alone; one case about
-19 to 25 s). `PROPTEST_CASES` raises the count; 50 cases took about 19 minutes and passed.
-Shrinking is capped at 16 iterations (`PROPTEST_MAX_SHRINK_ITERS` overrides); a failure prints
-its `PROPTEST_RNG_SEED` and the shrunk session. Specs: 05-roadmap v0.2 ticked, and a sentence in
-03-architecture § Testing strategy.
+adds the property plus 7 sanity tests; `proptest` is a dev-dependency only.
+The oracle keeps an independent model of the position and the redo stack (`prev`, `model_pos`,
+`model_redo`, built from the head id read before each step) and checks I1 for undo, redo and
+`undo --to` only: unsaved edits must become exactly one entry first. Save, restore and status
+could get the same check as a follow-up.
+Mutation check: 9 planted bugs in undo, redo and `undo --to` were all caught on 3 seeds.
+Default is 1 case per CI job (three cases took about 94 s alone on an idle Mac, so 5 to 8
+minutes on Windows; each OS job seeds from its own clock, so a pull request still runs 3
+different sessions). `PROPTEST_CASES` raises the count; 50 cases took about 19 minutes and
+passed. Shrinking is capped at 16 iterations (`PROPTEST_MAX_SHRINK_ITERS`) and 120 s
+(`max_shrink_time`, `PROPTEST_MAX_SHRINK_TIME`); a failure prints its `PROPTEST_RNG_SEED` and
+the shrunk session. The test job in CI has `timeout-minutes: 30`. Specs: 05-roadmap v0.2
+ticked, and a sentence in 03-architecture § Testing strategy.
 
 ## Handoff log
 
@@ -231,3 +238,18 @@ Test file only (`crates/paper-core/tests/session_proptest.rs`) plus this ticket.
 - **Default run time:** about 90 s alone (3 cases, with the other sanity tests), 152 s inside
   the full workspace run under load, so the 3-minute budget is still tight on slow runners
   (hence the unticked box). fmt and clippy clean, full suite passes.
+
+### RED (post-approval) · test-author · 2026-10-18
+
+- `DEFAULT_CASES = 1` (comment on `config()` explains the per-OS clock seed and the
+  `PROPTEST_CASES` / `PROPTEST_RNG_SEED` knobs). 03-architecture § Testing strategy now says
+  "1 case per CI job".
+- `.github/workflows/ci.yml`: `timeout-minutes: 30` on the test job only.
+- Optional items done: a `smart` `SaveOnly` with nothing changed writes a file first (and
+  recaptures the before-files) so it makes a real selective save; an extra `UndoTo` entry with
+  `from_redo: true` (weight 3). The `mem::swap` in the model sanity test is replaced by a saved
+  clone and `Vec::new()`.
+- Ticket Summary rewritten (7 sanity tests, I1 scope note, mutation result, new default,
+  shrink limits). The "under ~3 minutes on CI" box stays unticked.
+- Results: fmt and clippy clean; `cargo test --workspace --all-targets --no-fail-fast` passes
+  (the property 28 s in the full run, 37 s alone at 1 case, including the sanity tests).

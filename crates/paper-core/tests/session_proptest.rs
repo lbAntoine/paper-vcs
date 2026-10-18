@@ -22,7 +22,7 @@ use proptest::prelude::*;
 use proptest::test_runner::Config;
 
 const SESSION_LEN: usize = 200;
-const DEFAULT_CASES: u32 = 3;
+const DEFAULT_CASES: u32 = 1;
 
 /// The paths a session writes: some at the top, some in subfolders.
 const POOL: [&str; 8] = [
@@ -129,6 +129,7 @@ fn step() -> impl Strategy<Value = Step> {
         6 => Just(Step::Redo),
         5 => (any::<usize>(), any::<bool>())
             .prop_map(|(pick, from_redo)| Step::UndoTo { pick, from_redo }),
+        3 => any::<usize>().prop_map(|pick| Step::UndoTo { pick, from_redo: true }),
         4 => (1u8..=8, 0u8..=8).prop_map(|(undos, redos)| Step::Burst { undos, redos }),
         5 => Just(Step::Status),
     ]
@@ -602,7 +603,7 @@ impl Session {
 
     fn apply(&mut self, step: &Step) -> Result<(), String> {
         let dir = self.path().to_path_buf();
-        let before = capture_files(&dir);
+        let mut before = capture_files(&dir);
         let head_before = head_id(&dir);
         self.steps_done += 1;
         let n = self.steps_done;
@@ -620,6 +621,11 @@ impl Session {
                     .map_err(|e| format!("save all failed: {e}"))?;
             }
             Step::SaveOnly { paths, smart } => {
+                if *smart && self.changed_paths().is_empty() {
+                    // Nothing changed: edit a file so the selection makes a real save.
+                    write_file(&dir, POOL[paths[0] % POOL.len()], b"selective");
+                    before = capture_files(&dir);
+                }
                 let names = Self::pick_names(paths, *smart, &self.changed_paths());
                 match self.project.save(&SaveRequest {
                     message: format!("save {n}"),
@@ -763,6 +769,10 @@ fn run_session(steps: &[Step]) -> Result<(), String> {
     session.walk_back_and_forth()
 }
 
+/// One case by default: a case is 200 steps on a real repository and takes a minute or more
+/// on a slow runner. Every CI job seeds from its own clock, so a pull request still runs one
+/// different session per OS. `PROPTEST_CASES` raises the count and `PROPTEST_RNG_SEED` replays
+/// a run (the seed is printed).
 fn config() -> Config {
     use proptest::test_runner::RngSeed;
     let mut config = Config::default();
@@ -921,11 +931,10 @@ fn the_model_flags_a_head_whose_position_or_redo_stack_disagrees() {
     session.check_head().unwrap();
     assert_eq!(session.model_redo.len(), 1);
 
-    let mut wrong_redo = session.model_redo.clone();
-    wrong_redo.clear();
-    std::mem::swap(&mut session.model_redo, &mut wrong_redo);
+    let saved_redo = session.model_redo.clone();
+    session.model_redo = Vec::new();
     assert!(session.check_head().unwrap_err().contains("redo stack"));
-    std::mem::swap(&mut session.model_redo, &mut wrong_redo);
+    session.model_redo = saved_redo;
 
     let start = session.model_pos.clone();
     session.model_pos = session.model_redo[0].clone();
