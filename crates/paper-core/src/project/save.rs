@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 use paper_git::{ChangeId, CommitId, FileKind, GitError, NewCommit, TreeEdit};
 
+use super::checkout_left::CheckoutLeft;
 use super::export::{ExportError, read_exported};
 use super::{Project, line_ref, signature_now, write_draft};
 use crate::activity::{ActivityError, OpKind, describe};
@@ -122,13 +123,32 @@ impl Project {
         kind: OpKind,
         description: Option<&str>,
     ) -> Result<DraftState, SaveError> {
+        self.snapshot_ignoring(kind, description, None)
+    }
+
+    /// [`Project::snapshot_as`] for the undo family: differences confined to the leftovers a
+    /// previous undo-family checkout remembered (each still as remembered) are not edits.
+    pub(super) fn snapshot_ignoring(
+        &mut self,
+        kind: OpKind,
+        description: Option<&str>,
+        left: Option<&CheckoutLeft>,
+    ) -> Result<DraftState, SaveError> {
         let line_name = self.view.current_line().clone();
         let line = self.view.current().clone();
         let draft = self.repo.read_commit(&line.draft)?;
         let previous = StatCache::load(&self.paper_dir);
         let snap = snapshot(&self.repo, &draft.tree, &previous, &self.options)?;
 
-        if snap.tree != draft.tree {
+        let only_leftovers = snap.tree != draft.tree
+            && match left {
+                Some(left) => left.explains(
+                    &self.repo.tree_files(&draft.tree)?,
+                    &self.repo.tree_files(&snap.tree)?,
+                ),
+                None => false,
+            };
+        if snap.tree != draft.tree && !only_leftovers {
             let signature = signature_now(&self.identity);
             let rewritten = self.repo.write_commit(&NewCommit {
                 tree: snap.tree.clone(),

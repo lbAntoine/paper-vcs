@@ -7,6 +7,7 @@ use std::io;
 use paper_git::GitError;
 
 use super::checkout::PendingCheckout;
+use super::checkout_left::CheckoutLeft;
 use super::restore::SkippedPath;
 use super::save::SaveError;
 use super::{ActivityEntry, ExportError, Project};
@@ -155,7 +156,12 @@ impl Project {
             Aim::To(prefix) => Resolved::To(find_entry(&log, prefix)?),
         };
         // I1: edits made since the last command become their own entry first.
-        let state = self.snapshot()?;
+        // Leftovers the previous undo-family checkout remembered are not edits.
+        let before = log.head()?;
+        let left = before
+            .as_ref()
+            .and_then(|head| CheckoutLeft::load_for(&self.paper_dir, head));
+        let state = self.snapshot_ignoring(OpKind::Snapshot, None, left.as_ref())?;
         crate::fault::crash_point("after-snapshot");
         let head_id = log.head()?.ok_or_else(|| ActivityError::MissingHead {
             path: log.root().join("head"),
@@ -196,7 +202,9 @@ impl Project {
         self.apply_checkout(&plan, "write")
             .map_err(|f| UndoError::io(f.action, &f.path, f.source))?;
         crate::fault::crash_point("after-checkout");
-        let files_match = self.refresh_stat_cache(&tree)?;
+        let now = self.refresh_stat_cache(&tree)?;
+        let files_match = now == tree;
+        self.remember_leftovers(&log, &tree, &now)?;
         PendingCheckout::clear(&self.paper_dir)
             .map_err(|source| UndoError::io("remove", &marker_name, source))?;
 
@@ -217,8 +225,8 @@ impl Project {
     }
 
     /// Re-reads the working files so the stat cache describes what the checkout wrote.
-    /// Whether the files equal `tree`.
-    fn refresh_stat_cache(&self, tree: &paper_git::TreeId) -> Result<bool, UndoError> {
+    /// Returns the tree the working files make.
+    fn refresh_stat_cache(&self, tree: &paper_git::TreeId) -> Result<paper_git::TreeId, UndoError> {
         let previous = StatCache::load(&self.paper_dir);
         let snap = snapshot(&self.repo, tree, &previous, &self.options).map_err(SaveError::from)?;
         snap.cache
@@ -227,7 +235,37 @@ impl Project {
                 path: self.paper_dir.clone(),
                 source,
             })?;
-        Ok(snap.tree == *tree)
+        Ok(snap.tree)
+    }
+
+    /// Writes `checkout-left.json` for the op just recorded when the working files differ
+    /// from `tree`, or removes it when they match.
+    fn remember_leftovers(
+        &self,
+        log: &ActivityLog,
+        tree: &paper_git::TreeId,
+        now: &paper_git::TreeId,
+    ) -> Result<(), UndoError> {
+        let file = CheckoutLeft::path(&self.paper_dir).display().to_string();
+        if now == tree {
+            return CheckoutLeft::remove(&self.paper_dir)
+                .map_err(|source| UndoError::io("remove", &file, source));
+        }
+        let recorded = log.head()?.ok_or_else(|| ActivityError::MissingHead {
+            path: log.root().join("head"),
+        })?;
+        let wanted = self.repo.tree_files(tree)?;
+        let seen = self.repo.tree_files(now)?;
+        let differing: Vec<&String> = wanted
+            .keys()
+            .chain(seen.keys())
+            .filter(|path| wanted.get(*path) != seen.get(*path))
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        CheckoutLeft::new(&recorded, differing, &seen)
+            .write(&self.paper_dir)
+            .map_err(|source| UndoError::io("write", &file, source))
     }
 }
 

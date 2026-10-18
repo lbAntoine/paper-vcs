@@ -52,20 +52,18 @@ fn undone_text(verb: Verb, undone: &Undone) -> String {
 }
 
 fn warning(skipped: usize) -> String {
-    if skipped == 0 {
-        "Some files were left as they are (see above); your next paper command will record \
-         them as edits, and that clears what you can redo."
-            .to_owned()
-    } else if skipped == 1 {
-        "1 file was left as it is (see above); your next paper command will record it as an \
-         edit, and that clears what you can redo."
-            .to_owned()
-    } else {
-        format!(
-            "{skipped} files were left as they are (see above); your next paper command will \
-             record them as edits, and that clears what you can redo."
-        )
-    }
+    let (left, records) = match skipped {
+        0 => (
+            "Some files were left as they are".to_owned(),
+            "them as edits",
+        ),
+        1 => ("1 file was left as it is".to_owned(), "it as an edit"),
+        n => (format!("{n} files were left as they are"), "them as edits"),
+    };
+    format!(
+        "{left} (see above). paper undo and paper redo go on from here; any other paper \
+         command records {records}, which clears what you can redo."
+    )
 }
 
 #[derive(Serialize)]

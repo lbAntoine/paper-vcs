@@ -2,6 +2,7 @@
 
 mod activity;
 mod checkout;
+mod checkout_left;
 mod diff;
 mod export;
 mod gc;

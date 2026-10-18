@@ -172,3 +172,22 @@ Design choices GREEN should know:
 
 Questions: none. Open point for GREEN: the 0-skipped warning ("Some files were left as they
 are ...") isn't specified by the ticket; the tests don't cover it.
+
+### GREEN · rust-engineer · 2026-10-18
+
+- `project/checkout_left.rs` (new): `CheckoutLeft` reads (`load_for(head)`: None when absent,
+  bad JSON, unknown schema, other op), writes atomically (`write_atomic`), removes, and
+  `explains(draft, now)` (differences confined to remembered paths, each still as remembered).
+  Value of a path is `{"id","mode"}` or `null`.
+- `save.rs`: `snapshot_ignoring` (the old `snapshot_as` delegates with `None`); no edits
+  entry when the leftovers explain the whole difference. The stat cache is saved either way.
+- `undo.rs`: loads the file for the head op before the I1 snapshot; after checkout and
+  stat-cache refresh (now returns the working tree) writes the file for the op just recorded
+  (paths = every path where the working files differ from the new draft, not only the
+  `skipped` list, so it stays stable) or removes it, then clears the marker.
+- CLI: new warning in `render/undo.rs` (no backticks, as the existing text had none; the 0
+  skipped variant gets the same new tail). Re-accepted `undo__undo_blocked_human.snap` after
+  reading the diff (only the last line changed).
+- Specs: 02-cli § `paper undo`, 03-architecture § On-disk layout and § Undo / redo algorithm.
+- No test assertions changed. Not covered: `gc` and the new file (gc.rs off limits; it
+  ignores unknown files in `.git/paper/` as far as the tests show).
