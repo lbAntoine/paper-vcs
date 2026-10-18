@@ -100,7 +100,7 @@ every step exactly.
 - [x] A random 200-step session is fully undone step by step, with each state exact (view and
   working files), then fully redone back to the session's final state, for every generated case.
 - [x] `files_match` is true at every undo and redo. `git fsck --strict` is clean.
-- [x] With the default case count the test finishes in under about 3 minutes on CI, and
+- [ ] With the default case count the test finishes in under about 3 minutes on CI, and
   `PROPTEST_CASES` raises the count.
 - [x] The oracle sanity tests pass, and a deliberately wrong expectation is detected.
 - [x] No files are written to the source tree by a failing run.
@@ -185,3 +185,49 @@ which libtest shows on failure. A comment on `config()` explains how to reproduc
 deviation (redo stops at the session's end position) recorded as accepted. Checks: fmt, clippy,
 full suite pass; default run about 61 s, `PROPTEST_CASES=1` about 25 s. Follow-up idea: the
 3-minute CI budget is fine on macOS, watch Windows timing.
+
+### RED (review round 1) · test-author · 2026-10-18
+
+Test file only (`crates/paper-core/tests/session_proptest.rs`) plus this ticket. No `src/`.
+
+- **Independent model (MAJOR).** `prev` (op to the head read from the head file *before* the
+  step, never the op's `parent`), `model_pos`, `model_redo`. Normal op: pos = newest, redo
+  empty. Undo: `NothingToUndo` exactly when `prev[pos]` is `None`, else push pos on the redo
+  stack and go to `prev[pos]`. Redo: `NothingToRedo` exactly when the stack is empty, else pop.
+  `undo --to x`: pos = x, redo empty. After every step the head's `position` and `redo` must
+  equal the model and the outcome variant must match (`check_head`). The end walk goes through
+  the same `undo_family` path, so each step is checked, and the redo stack at the session's end
+  must equal the model's and the one before the walk (NIT 5).
+- **I1 (MAJOR).** In `undo_family`, if the tracked files before the step differ from
+  `states[model_pos]` (empty folders ignored, the snapshot never sees them), exactly one edits op
+  must be recorded before the transition. This is the first assertion after the call, then the
+  model takes the edits op as position with an empty redo stack.
+- **Coverage (MINOR).** `UndoTo { pick, from_redo }` picks from the redo stack when it is not
+  empty. New `Burst { undos 1..=8, redos 0..=8 }` step. File/folder swaps also target `sec`
+  and `sec/deep`. `SaveOnly` and `Restore` take `smart: bool`: half the time the names come from
+  the files that really differ from the current state (save) or from `git ls-tree` of the save
+  being restored. Weights: write 28, delete 6, file-to-folder 4, folder-to-file 4, save all 10,
+  save selection 5, restore 6, undo 10, redo 6, undo-to 5, burst 4, status 5.
+- **Time (MINOR).** `max_shrink_time` is 120000 ms unless `PROPTEST_MAX_SHRINK_TIME` is set (read
+  by proptest 1.12 `Config::default`, checked in the source). The "under about 3 minutes on CI"
+  box is unticked. The recorder now asks `activity` for a small window instead of the whole log
+  at every step (it was quadratic).
+- **Sanity tests (8 total, all pass on main):** added the model flagging a head whose
+  position or redo disagrees, and undo after unsaved edits (edits entry first, redo cleared,
+  undo-to from the redo stack, burst). The tamper test now goes through `undo_family`.
+- **Mutation check** (scratch export of HEAD with the new test copied in, own target dir,
+  `PROPTEST_CASES=3 PROPTEST_RNG_SEED=1557516784 PROPTEST_MAX_SHRINK_ITERS=0`). The scratch dir
+  was deleted. m1/m2 are not described in the ticket, so I used my own:
+
+  | Mutant | Result | Failure |
+  |---|---|---|
+  | none (unmodified) | passes | 102 s while also compiling |
+  | m5 `undo --to` keeps the redo stack | caught | step 126, head redo stack differs from model `[]` |
+  | m6 I1 snapshot not recorded in undo-family | caught | step 3, "I1: Undo recorded 0 op(s), expected 1" |
+  | m8 undo goes to the grandparent | caught | step 3, head position differs from model |
+  | m1' undo does not write the working files | caught | step 3, `files_match` false |
+  | m2' redo pops the last redo entry instead of the first | caught | step 12 (Burst), position differs from model |
+
+- **Default run time:** about 90 s alone (3 cases, with the other sanity tests), 152 s inside
+  the full workspace run under load, so the 3-minute budget is still tight on slow runners
+  (hence the unticked box). fmt and clippy clean, full suite passes.

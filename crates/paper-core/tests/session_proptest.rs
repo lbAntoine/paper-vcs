@@ -50,18 +50,59 @@ const NAMEABLE: [&str; 10] = [
     "ghost.txt",
 ];
 
+/// What a file-to-folder or folder-to-file swap may target: the pool and two folders.
+const SWAPPABLE: [&str; 10] = [
+    "a.txt",
+    "b.txt",
+    "notes.md",
+    "data.bin",
+    "top.tex",
+    "sec/one.tex",
+    "sec/two.tex",
+    "sec/deep/x.txt",
+    "sec",
+    "sec/deep",
+];
+
 #[derive(Debug, Clone)]
 enum Step {
-    Write { path: usize, content: Vec<u8> },
-    Delete { path: usize },
-    FileToFolder { path: usize },
-    FolderToFile { path: usize },
+    Write {
+        path: usize,
+        content: Vec<u8>,
+    },
+    Delete {
+        path: usize,
+    },
+    FileToFolder {
+        path: usize,
+    },
+    FolderToFile {
+        path: usize,
+    },
     SaveAll,
-    SaveOnly { paths: Vec<usize> },
-    Restore { paths: Vec<usize>, back: u8 },
+    /// `smart`: name files that really changed instead of names from the fixed list.
+    SaveOnly {
+        paths: Vec<usize>,
+        smart: bool,
+    },
+    /// `smart`: name files of the save being restored.
+    Restore {
+        paths: Vec<usize>,
+        back: u8,
+        smart: bool,
+    },
     Undo,
     Redo,
-    UndoTo { pick: usize },
+    /// `from_redo`: pick from the redo stack when it is not empty.
+    UndoTo {
+        pick: usize,
+        from_redo: bool,
+    },
+    /// Undo `undos` times, then redo `redos` times.
+    Burst {
+        undos: u8,
+        redos: u8,
+    },
     Status,
 }
 
@@ -75,17 +116,20 @@ fn content() -> impl Strategy<Value = Vec<u8>> {
 
 fn step() -> impl Strategy<Value = Step> {
     prop_oneof![
-        30 => (0..POOL.len(), content()).prop_map(|(path, content)| Step::Write { path, content }),
+        28 => (0..POOL.len(), content()).prop_map(|(path, content)| Step::Write { path, content }),
         6 => (0..POOL.len()).prop_map(|path| Step::Delete { path }),
-        4 => (0..POOL.len()).prop_map(|path| Step::FileToFolder { path }),
-        4 => (0..POOL.len()).prop_map(|path| Step::FolderToFile { path }),
+        4 => (0..SWAPPABLE.len()).prop_map(|path| Step::FileToFolder { path }),
+        4 => (0..SWAPPABLE.len()).prop_map(|path| Step::FolderToFile { path }),
         10 => Just(Step::SaveAll),
-        5 => vec(0..NAMEABLE.len(), 1..3).prop_map(|paths| Step::SaveOnly { paths }),
-        6 => (vec(0..NAMEABLE.len(), 1..3), 0u8..4)
-            .prop_map(|(paths, back)| Step::Restore { paths, back }),
-        12 => Just(Step::Undo),
-        8 => Just(Step::Redo),
-        5 => any::<usize>().prop_map(|pick| Step::UndoTo { pick }),
+        5 => (vec(0..NAMEABLE.len(), 1..3), any::<bool>())
+            .prop_map(|(paths, smart)| Step::SaveOnly { paths, smart }),
+        6 => (vec(0..NAMEABLE.len(), 1..3), 0u8..4, any::<bool>())
+            .prop_map(|(paths, back, smart)| Step::Restore { paths, back, smart }),
+        10 => Just(Step::Undo),
+        6 => Just(Step::Redo),
+        5 => (any::<usize>(), any::<bool>())
+            .prop_map(|(pick, from_redo)| Step::UndoTo { pick, from_redo }),
+        4 => (1u8..=8, 0u8..=8).prop_map(|(undos, redos)| Step::Burst { undos, redos }),
         5 => Just(Step::Status),
     ]
 }
@@ -271,16 +315,36 @@ fn folder_to_file(dir: &Path, path: &str) {
     }
 }
 
-fn names(indices: &[usize]) -> Vec<String> {
-    indices.iter().map(|i| NAMEABLE[*i].to_owned()).collect()
+/// What an undo-family command asks for.
+#[derive(Debug, Clone)]
+enum Aim {
+    Undo,
+    Redo,
+    To(String),
 }
 
-/// A project in a temp folder, with the state every op produced.
+/// The file nodes of a capture, without the empty folders (the snapshot never sees those).
+fn tracked(files: &BTreeMap<String, Node>) -> BTreeMap<&String, &Node> {
+    files
+        .iter()
+        .filter(|(_, node)| matches!(node, Node::File(_)))
+        .collect()
+}
+
+/// A project in a temp folder, with the state every op produced, and an independent model of
+/// where undo and redo should be.
 struct Session {
     dir: tempfile::TempDir,
     project: Project,
     /// Op id to the state it produced.
     states: HashMap<String, State>,
+    /// Op id to the head that was current right before it was recorded (read from the head
+    /// file, never from the op's own `parent` field).
+    prev: HashMap<String, Option<String>>,
+    /// The op the project should be at.
+    model_pos: String,
+    /// The redo stack the head should hold, next entry first.
+    model_redo: Vec<String>,
     steps_done: usize,
 }
 
@@ -294,10 +358,16 @@ impl Session {
             dir,
             project,
             states: HashMap::new(),
+            prev: HashMap::new(),
+            model_pos: String::new(),
+            model_redo: Vec::new(),
             steps_done: 0,
         };
         let before = capture_files(session.dir.path());
-        session.record(&before);
+        let fresh = session.record(&before, None);
+        session
+            .model_pos
+            .clone_from(fresh.last().expect("init records an op"));
         session
     }
 
@@ -305,11 +375,30 @@ impl Session {
         self.dir.path()
     }
 
-    /// Records the state of every op added since the last call. The newest op is the head,
-    /// so its state is the project as it stands. An older new op is an edits entry recorded
-    /// at the start of the command: the new draft, with the files as they were before it.
-    fn record(&mut self, files_before: &BTreeMap<String, Node>) {
-        let entries = self.project.activity(1_000_000).unwrap();
+    /// Records the state of every op added since the last call, oldest first, and returns
+    /// their ids. The newest op is the head, so its state is the project as it stands. An
+    /// older new op is an edits entry recorded at the start of the command: the new draft,
+    /// with the files as they were before it. `head_before` is the head the command started
+    /// from.
+    fn record(
+        &mut self,
+        files_before: &BTreeMap<String, Node>,
+        head_before: Option<String>,
+    ) -> Vec<String> {
+        // Only the newest few entries can be new: widen the window until it reaches an op
+        // already recorded.
+        let mut limit = 8;
+        let entries = loop {
+            let entries = self.project.activity(limit).unwrap();
+            let reached_known = entries
+                .iter()
+                .any(|entry| self.states.contains_key(&entry.id.to_string()));
+            if reached_known || entries.len() < limit {
+                break entries;
+            }
+            limit *= 4;
+        };
+        let mut fresh = Vec::new();
         for (index, entry) in entries.iter().enumerate() {
             let id = entry.id.to_string();
             if self.states.contains_key(&id) {
@@ -323,29 +412,16 @@ impl Session {
                     files: files_before.clone(),
                 }
             };
-            self.states.insert(id, state);
+            self.states.insert(id.clone(), state);
+            fresh.push(id);
         }
-    }
-
-    /// The working files and view must equal the state of the op the head's position names.
-    fn check_position(&self) -> Result<(), String> {
-        let position = op_json(self.path(), &head_id(self.path()))["position"]
-            .as_str()
-            .unwrap()
-            .to_owned();
-        let expected = self
-            .states
-            .get(&position)
-            .ok_or_else(|| format!("the head's position {position} is an op nobody recorded"))?;
-        compare(expected, &capture(&self.project, self.path()))
-            .map_err(|e| format!("state differs from op {position}:\n{e}"))
-    }
-
-    fn check_undone(&self, undone: &Undone) -> Result<(), String> {
-        if !undone.files_match {
-            return Err(format!("files_match is false after {:?}", undone.entry));
+        fresh.reverse();
+        let mut before = head_before;
+        for id in &fresh {
+            self.prev.insert(id.clone(), before);
+            before = Some(id.clone());
         }
-        self.check_position()
+        fresh
     }
 
     fn position(&self) -> String {
@@ -355,16 +431,186 @@ impl Session {
             .to_owned()
     }
 
+    fn head_redo(&self) -> Vec<String> {
+        op_json(self.path(), &head_id(self.path()))["redo"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_owned())
+            .collect()
+    }
+
+    /// The head's `position` and `redo` must be what the model says.
+    fn check_head(&self) -> Result<(), String> {
+        let position = self.position();
+        if position != self.model_pos {
+            return Err(format!(
+                "the head's position is {position}, the model expects {}",
+                self.model_pos
+            ));
+        }
+        let redo = self.head_redo();
+        if redo != self.model_redo {
+            return Err(format!(
+                "the head's redo stack is {redo:?}, the model expects {:?}",
+                self.model_redo
+            ));
+        }
+        Ok(())
+    }
+
+    /// The working files and view must equal the state of the op the head's position names.
+    fn check_position(&self) -> Result<(), String> {
+        let position = self.position();
+        let expected = self
+            .states
+            .get(&position)
+            .ok_or_else(|| format!("the head's position {position} is an op nobody recorded"))?;
+        compare(expected, &capture(&self.project, self.path()))
+            .map_err(|e| format!("state differs from op {position}:\n{e}"))
+    }
+
+    /// Runs undo, redo or `undo --to`, and checks it against the model: I1 (edits made since
+    /// the last command become exactly one entry first, which clears the redo stack), the
+    /// outcome variant, the head's position and redo stack, `files_match`, and the state.
+    fn undo_family(&mut self, aim: &Aim) -> Result<UndoOutcome, String> {
+        let dir = self.path().to_path_buf();
+        let before = capture_files(&dir);
+        let head_before = head_id(&dir);
+        let expected_edits = tracked(&before) != tracked(&self.states[&self.model_pos].files);
+        let outcome = match aim {
+            Aim::Undo => self.project.undo(),
+            Aim::Redo => self.project.redo(),
+            Aim::To(id) => self.project.undo_to(id),
+        }
+        .map_err(|e| format!("{aim:?} failed: {e}"))?;
+        let fresh = self.record(&before, Some(head_before));
+
+        // I1 first: unsaved edits become one entry of their own, then the transition.
+        let transitioned = matches!(outcome, UndoOutcome::Undone(_));
+        let expected_ops = usize::from(expected_edits) + usize::from(transitioned);
+        if fresh.len() != expected_ops {
+            return Err(format!(
+                "I1: {aim:?} recorded {} op(s), expected {expected_ops} (unsaved edits: {expected_edits}, state changed: {transitioned})",
+                fresh.len()
+            ));
+        }
+        if expected_edits {
+            self.model_pos.clone_from(&fresh[0]);
+            self.model_redo.clear();
+        }
+
+        let expect_change = match aim {
+            Aim::Undo => match self.prev[&self.model_pos].clone() {
+                None => false,
+                Some(parent) => {
+                    self.model_redo.insert(0, self.model_pos.clone());
+                    self.model_pos = parent;
+                    true
+                }
+            },
+            Aim::Redo => {
+                if self.model_redo.is_empty() {
+                    false
+                } else {
+                    self.model_pos = self.model_redo.remove(0);
+                    true
+                }
+            }
+            Aim::To(id) => {
+                self.model_pos.clone_from(id);
+                self.model_redo.clear();
+                true
+            }
+        };
+        let variant_ok = match &outcome {
+            UndoOutcome::Undone(_) => expect_change,
+            UndoOutcome::NothingToUndo => !expect_change && !matches!(aim, Aim::Redo),
+            UndoOutcome::NothingToRedo => !expect_change && matches!(aim, Aim::Redo),
+        };
+        if !variant_ok {
+            return Err(format!(
+                "{aim:?} answered {outcome:?}, the model expected {}",
+                if expect_change {
+                    "a change"
+                } else {
+                    "nothing to do"
+                }
+            ));
+        }
+        self.check_head()?;
+        if let UndoOutcome::Undone(undone) = &outcome {
+            if !undone.files_match {
+                return Err(format!("files_match is false after {:?}", undone.entry));
+            }
+            self.check_position()?;
+        }
+        Ok(outcome)
+    }
+
+    /// Names for a save selection or a restore: half the time from `candidates` (paths that
+    /// really changed or exist), otherwise from the fixed list.
+    fn pick_names(indices: &[usize], smart: bool, candidates: &[String]) -> Vec<String> {
+        indices
+            .iter()
+            .map(|i| {
+                if smart && !candidates.is_empty() {
+                    candidates[i % candidates.len()].clone()
+                } else {
+                    NAMEABLE[i % NAMEABLE.len()].to_owned()
+                }
+            })
+            .collect()
+    }
+
+    /// Files whose bytes differ between the working files and the state the project is at.
+    fn changed_paths(&self) -> Vec<String> {
+        let now = capture_files(self.path());
+        let at = &self.states[&self.model_pos].files;
+        let (now, at) = (tracked(&now), tracked(at));
+        let mut paths: Vec<String> = now
+            .iter()
+            .filter(|(path, node)| at.get(*path) != Some(node))
+            .map(|(path, _)| (*path).clone())
+            .chain(
+                at.keys()
+                    .filter(|p| !now.contains_key(*p))
+                    .map(|p| (*p).clone()),
+            )
+            .collect();
+        paths.sort();
+        paths
+    }
+
+    /// Files of the save `last~back` on the current line (empty when there is none).
+    fn saved_paths(&self, back: u8) -> Vec<String> {
+        let tip = self.project.view().current().tip.to_string();
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(self.path())
+            .args(["ls-tree", "-r", "--name-only", &format!("{tip}~{back}")])
+            .output()
+            .unwrap();
+        if !output.status.success() {
+            return Vec::new();
+        }
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .map(str::to_owned)
+            .collect()
+    }
+
     fn apply(&mut self, step: &Step) -> Result<(), String> {
         let dir = self.path().to_path_buf();
         let before = capture_files(&dir);
+        let head_before = head_id(&dir);
         self.steps_done += 1;
         let n = self.steps_done;
         match step {
             Step::Write { path, content } => write_file(&dir, POOL[*path], content),
             Step::Delete { path } => delete_file(&dir, POOL[*path]),
-            Step::FileToFolder { path } => file_to_folder(&dir, POOL[*path]),
-            Step::FolderToFile { path } => folder_to_file(&dir, POOL[*path]),
+            Step::FileToFolder { path } => file_to_folder(&dir, SWAPPABLE[*path]),
+            Step::FolderToFile { path } => folder_to_file(&dir, SWAPPABLE[*path]),
             Step::SaveAll => {
                 self.project
                     .save(&SaveRequest {
@@ -373,60 +619,54 @@ impl Session {
                     })
                     .map_err(|e| format!("save all failed: {e}"))?;
             }
-            Step::SaveOnly { paths } => {
+            Step::SaveOnly { paths, smart } => {
+                let names = Self::pick_names(paths, *smart, &self.changed_paths());
                 match self.project.save(&SaveRequest {
                     message: format!("save {n}"),
-                    paths: PathSelection::Only(names(paths)),
+                    paths: PathSelection::Only(names),
                 }) {
                     Ok(_) | Err(SaveError::NoChangesAt { .. }) => {}
                     Err(e) => return Err(format!("save of a selection failed: {e}")),
                 }
             }
-            Step::Restore { paths, back } => {
+            Step::Restore { paths, back, smart } => {
                 let from = if *back == 0 {
                     None
                 } else {
                     Some(format!("last~{back}").parse().unwrap())
                 };
-                match self.project.restore(&RestoreRequest {
-                    paths: names(paths),
-                    from,
-                }) {
+                let names = Self::pick_names(paths, *smart, &self.saved_paths(*back));
+                match self.project.restore(&RestoreRequest { paths: names, from }) {
                     Ok(_) | Err(RestoreError::UnknownPaths { .. } | RestoreError::Resolve(_)) => {}
                     Err(e) => return Err(format!("restore failed: {e}")),
                 }
             }
             Step::Undo => {
-                let outcome = self
-                    .project
-                    .undo()
-                    .map_err(|e| format!("undo failed: {e}"))?;
-                self.record(&before);
-                if let UndoOutcome::Undone(undone) = outcome {
-                    return self.check_undone(&undone);
-                }
+                self.undo_family(&Aim::Undo)?;
+                return Ok(());
             }
             Step::Redo => {
-                let outcome = self
-                    .project
-                    .redo()
-                    .map_err(|e| format!("redo failed: {e}"))?;
-                self.record(&before);
-                if let UndoOutcome::Undone(undone) = outcome {
-                    return self.check_undone(&undone);
-                }
+                self.undo_family(&Aim::Redo)?;
+                return Ok(());
             }
-            Step::UndoTo { pick } => {
-                let entries = self.project.activity(1_000_000).unwrap();
-                let id = entries[pick % entries.len()].id.to_string();
-                let outcome = self
-                    .project
-                    .undo_to(&id)
-                    .map_err(|e| format!("undo --to {id} failed: {e}"))?;
-                self.record(&before);
-                if let UndoOutcome::Undone(undone) = outcome {
-                    return self.check_undone(&undone);
+            Step::UndoTo { pick, from_redo } => {
+                let id = if *from_redo && !self.model_redo.is_empty() {
+                    self.model_redo[pick % self.model_redo.len()].clone()
+                } else {
+                    let entries = self.project.activity(1_000_000).unwrap();
+                    entries[pick % entries.len()].id.to_string()
+                };
+                self.undo_family(&Aim::To(id))?;
+                return Ok(());
+            }
+            Step::Burst { undos, redos } => {
+                for _ in 0..*undos {
+                    self.undo_family(&Aim::Undo)?;
                 }
+                for _ in 0..*redos {
+                    self.undo_family(&Aim::Redo)?;
+                }
+                return Ok(());
             }
             Step::Status => {
                 self.project
@@ -434,8 +674,14 @@ impl Session {
                     .map_err(|e| format!("status failed: {e}"))?;
             }
         }
-        self.record(&before);
-        Ok(())
+        // Any other command that recorded something: its newest op is the position, and the
+        // redo stack is empty.
+        let fresh = self.record(&before, Some(head_before));
+        if let Some(newest) = fresh.last() {
+            self.model_pos.clone_from(newest);
+            self.model_redo.clear();
+        }
+        self.check_head()
     }
 
     /// Undoes to the start, then redoes to the end, checking every state.
@@ -443,22 +689,18 @@ impl Session {
         // Record pending edits first, so the walk starts from a recorded state.
         self.apply(&Step::Status)?;
         let final_state = capture(&self.project, self.path());
+        let redo_at_end = self.model_redo.clone();
         let bound = self.states.len() + 5;
 
         let mut back = vec![self.position()];
         loop {
             match self
-                .project
-                .undo()
-                .map_err(|e| format!("undo failed: {e}"))?
+                .undo_family(&Aim::Undo)
+                .map_err(|e| format!("undo #{}: {e}", back.len()))?
             {
                 UndoOutcome::NothingToUndo => break,
                 UndoOutcome::NothingToRedo => return Err("undo said NothingToRedo".to_owned()),
-                UndoOutcome::Undone(undone) => {
-                    self.check_undone(&undone)
-                        .map_err(|e| format!("undo #{}: {e}", back.len()))?;
-                    back.push(self.position());
-                }
+                UndoOutcome::Undone(_) => back.push(self.position()),
             }
             if back.len() > bound {
                 return Err(format!(
@@ -473,9 +715,8 @@ impl Session {
         let mut forward = vec![self.position()];
         while forward.last() != Some(&end) {
             match self
-                .project
-                .redo()
-                .map_err(|e| format!("redo failed: {e}"))?
+                .undo_family(&Aim::Redo)
+                .map_err(|e| format!("redo #{}: {e}", forward.len()))?
             {
                 UndoOutcome::NothingToRedo => {
                     return Err(format!(
@@ -483,11 +724,7 @@ impl Session {
                     ));
                 }
                 UndoOutcome::NothingToUndo => return Err("redo said NothingToUndo".to_owned()),
-                UndoOutcome::Undone(undone) => {
-                    self.check_undone(&undone)
-                        .map_err(|e| format!("redo #{}: {e}", forward.len()))?;
-                    forward.push(self.position());
-                }
+                UndoOutcome::Undone(_) => forward.push(self.position()),
             }
             if forward.len() > bound {
                 return Err(format!("redo did not stop in {bound} steps"));
@@ -499,6 +736,13 @@ impl Session {
         if forward != expected_path {
             return Err(format!(
                 "redo did not retrace the undo walk\n  undo went through {back:?}\n  redo went through {forward:?}"
+            ));
+        }
+        if self.head_redo() != redo_at_end || self.model_redo != redo_at_end {
+            return Err(format!(
+                "at the session's end the redo stack is {:?} (model {:?}), it was {redo_at_end:?}",
+                self.head_redo(),
+                self.model_redo
             ));
         }
         compare(&final_state, &capture(&self.project, self.path())).map_err(|e| {
@@ -519,15 +763,14 @@ fn run_session(steps: &[Step]) -> Result<(), String> {
     session.walk_back_and_forth()
 }
 
-/// How to reproduce a failure locally: the failing run prints its seed (`PROPTEST_RNG_SEED=...`)
-/// and proptest prints the minimal failing session. Re-run with the same seed, for example
-/// `PROPTEST_RNG_SEED=123 PROPTEST_CASES=3 cargo test -p paper-core --test session_proptest`.
-/// Shrinking is bounded to 16 steps (about 20 s each); `PROPTEST_MAX_SHRINK_ITERS` raises it.
 fn config() -> Config {
     use proptest::test_runner::RngSeed;
     let mut config = Config::default();
     if std::env::var_os("PROPTEST_CASES").is_none() {
         config.cases = DEFAULT_CASES;
+    }
+    if std::env::var_os("PROPTEST_MAX_SHRINK_TIME").is_none() {
+        config.max_shrink_time = 120_000;
     }
     if std::env::var_os("PROPTEST_MAX_SHRINK_ITERS").is_none() {
         config.max_shrink_iters = 16;
@@ -655,16 +898,64 @@ fn the_position_check_flags_a_working_file_changed_behind_undos_back() {
     ] {
         session.apply(&step).unwrap();
     }
-    let UndoOutcome::Undone(undone) = session.project.undo().unwrap() else {
-        panic!("expected an undone entry");
-    };
-    let before = capture_files(session.path());
-    session.record(&before);
-    session.check_undone(&undone).unwrap();
+    session.undo_family(&Aim::Undo).unwrap();
 
     fs::write(session.path().join("b.txt"), b"tampered").unwrap();
     let error = session.check_position().unwrap_err();
     assert!(error.contains("b.txt"), "{error}");
+}
+
+#[test]
+fn the_model_flags_a_head_whose_position_or_redo_stack_disagrees() {
+    let mut session = Session::new();
+    for step in [
+        Step::Write {
+            path: 1,
+            content: b"one".to_vec(),
+        },
+        Step::SaveAll,
+        Step::Undo,
+    ] {
+        session.apply(&step).unwrap();
+    }
+    session.check_head().unwrap();
+    assert_eq!(session.model_redo.len(), 1);
+
+    let mut wrong_redo = session.model_redo.clone();
+    wrong_redo.clear();
+    std::mem::swap(&mut session.model_redo, &mut wrong_redo);
+    assert!(session.check_head().unwrap_err().contains("redo stack"));
+    std::mem::swap(&mut session.model_redo, &mut wrong_redo);
+
+    let start = session.model_pos.clone();
+    session.model_pos = session.model_redo[0].clone();
+    assert!(session.check_head().unwrap_err().contains("position"));
+    session.model_pos = start;
+    session.check_head().unwrap();
+}
+
+#[test]
+fn undo_after_unsaved_edits_records_them_first_and_clears_the_redo_stack() {
+    let steps = [
+        Step::Write {
+            path: 1,
+            content: b"one".to_vec(),
+        },
+        Step::SaveAll,
+        Step::Undo,
+        Step::Write {
+            path: 2,
+            content: b"unsaved".to_vec(),
+        },
+        Step::Redo,
+        Step::Undo,
+        Step::UndoTo {
+            pick: 0,
+            from_redo: true,
+        },
+        Step::Burst { undos: 3, redos: 2 },
+    ];
+    run_session(&steps).unwrap();
 }
 
 #[test]
