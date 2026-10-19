@@ -1,0 +1,5 @@
+---
+source: crates/paper-cli/tests/ignore.rs
+expression: paper_env.redact(&ignored.stdout)
+---
+data/raw/a.csv is ignored by `/data/raw/` (paper's block, .gitignore line 32).

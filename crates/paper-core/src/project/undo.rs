@@ -28,6 +28,10 @@ pub struct Undone {
     /// that looks at the files records the difference as an edits entry (which clears the redo
     /// stack).
     pub files_match: bool,
+    /// Whether every file left as it is is remembered in `checkout-left.json`, so `paper undo`
+    /// and `paper redo` go on from there. When `files_match` is false and this is false too,
+    /// the next command records the difference as an edit.
+    pub remembered: bool,
 }
 
 /// What an undo-family command did.
@@ -198,7 +202,15 @@ impl Project {
         let current = self.repo.tree_files(&state.working)?;
         let tree = self.repo.read_commit(&view.current().draft)?.tree;
         let wanted_files = self.repo.tree_files(&tree)?;
-        let targets: BTreeSet<&String> = current.keys().chain(wanted_files.keys()).collect();
+        // Taking back or bringing back an ignore or unignore changes what is tracked, never
+        // the files: only `.gitignore` files are written or deleted.
+        let tracking_only = !matches!(aim, Aim::To(_))
+            && matches!(step.entry.kind, OpKind::Ignore | OpKind::Unignore);
+        let targets: BTreeSet<&String> = current
+            .keys()
+            .chain(wanted_files.keys())
+            .filter(|path| !tracking_only || *path == ".gitignore" || path.ends_with("/.gitignore"))
+            .collect();
         // Decided, and every blob read, before anything is written.
         let plan = self.plan_checkout_to_draft(targets, &wanted_files, &current, &state.skipped)?;
 
@@ -218,7 +230,7 @@ impl Project {
         crate::fault::crash_point("after-checkout");
         let now = self.refresh_stat_cache(&tree)?;
         let files_match = now == tree;
-        self.remember_leftovers(&log, &tree, &now, &current)?;
+        let remembered = self.remember_leftovers(&log, &tree, &now, &current)?;
         PendingCheckout::clear(&self.paper_dir)
             .map_err(|source| UndoError::io("remove", &marker_name, source))?;
 
@@ -227,6 +239,7 @@ impl Project {
             changed: plan.changes,
             skipped: plan.skipped,
             files_match,
+            remembered,
         }))
     }
 
@@ -254,12 +267,12 @@ impl Project {
         tree: &paper_git::TreeId,
         now: &paper_git::TreeId,
         before: &BTreeMap<String, TreeFile>,
-    ) -> Result<(), UndoError> {
+    ) -> Result<bool, UndoError> {
         let file = CheckoutLeft::path(&self.paper_dir).display().to_string();
         if now == tree {
             CheckoutLeft::remove(&self.paper_dir)
                 .map_err(|source| UndoError::io("remove", &file, source))?;
-            return Ok(());
+            return Ok(false);
         }
         let recorded = log.head()?.ok_or_else(|| ActivityError::MissingHead {
             path: log.root().join("head"),
@@ -270,12 +283,20 @@ impl Project {
         if differing.is_empty() {
             CheckoutLeft::remove(&self.paper_dir)
                 .map_err(|source| UndoError::io("remove", &file, source))?;
-            return Ok(());
+            return Ok(false);
         }
         CheckoutLeft::new(&recorded, &differing, &seen)
             .write(&self.paper_dir)
             .map_err(|source| UndoError::io("write", &file, source))?;
-        Ok(())
+        // The next undo-family command skips the edits entry only if every differing path is
+        // remembered.
+        let all_differing = wanted
+            .keys()
+            .chain(seen.keys())
+            .filter(|path| wanted.get(*path) != seen.get(*path))
+            .collect::<BTreeSet<_>>()
+            .len();
+        Ok(all_differing == differing.len())
     }
 }
 

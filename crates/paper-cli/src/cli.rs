@@ -154,6 +154,21 @@ pub enum Command {
         /// Go ahead when more than 20 saved files would stop being tracked.
         #[arg(long)]
         yes: bool,
+        /// Keep the rules to yourself: write them in `.git/info/exclude`, not `.gitignore`.
+        #[arg(long)]
+        local: bool,
+        /// Show which rule, file and line ignore this path, and change nothing.
+        #[arg(long, value_name = "PATH", conflicts_with_all = ["paths", "yes", "local"])]
+        why: Option<String>,
+    },
+    /// Track files or folders again: remove their ignore rule, or add an exception.
+    Unignore {
+        /// The files, folders or patterns to stop ignoring (relative to where you run paper).
+        #[arg(required = true)]
+        paths: Vec<String>,
+        /// Work on your private rules in `.git/info/exclude`, not `.gitignore`.
+        #[arg(long)]
+        local: bool,
     },
     /// Put files back the way they were at a point.
     Restore {

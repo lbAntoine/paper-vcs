@@ -371,6 +371,16 @@ Details:
   difference as an edits entry (which clears the redo stack); the next `undo` takes that
   entry back, so undo is never stuck. A crash before the file is written leaves that same
   behaviour; recovery does not write it.
+- **Tracking-only entries.** A single `undo` or `redo` whose entry is an `ignore` or
+  `unignore` (shared or `--local`) changes what is tracked, never the files: the checkout is
+  planned over `.gitignore` files only, and every other file stays on disk as it is. Files
+  that differ from the new draft make `files_match` false. They are remembered like any other
+  leftover (see Skipped paths) only when they still hold what the I1 snapshot saw (see Skipped paths). A file
+  edited while it was ignored never entered history, so it is not remembered: the next command
+  records it as an edit (undo and redo included), which ends the redo stack, and nothing is
+  overwritten. The output then says so instead of "undo and redo go on from here". PV-037
+  (#72) tracks a gentler behaviour. `undo --to` plans over all files as usual, so files added
+  after the target are removed like any added file; their content stays in history.
 - **Order.** snapshot, keep-alive, op, export, checkout (§ Command lifecycle).
 
 Undo never moves remote state. If an undone operation had pushed (`sync`), undo restores

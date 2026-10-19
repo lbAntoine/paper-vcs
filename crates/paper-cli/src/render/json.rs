@@ -300,5 +300,6 @@ pub(super) fn op_kind_name(kind: OpKind) -> &'static str {
         OpKind::Undo => "undo",
         OpKind::Redo => "redo",
         OpKind::Ignore => "ignore",
+        OpKind::Unignore => "unignore",
     }
 }

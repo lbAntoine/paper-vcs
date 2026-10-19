@@ -44,6 +44,12 @@ fn undone_text(verb: Verb, undone: &Undone) -> String {
         out.push_str("\nSkipped (left as they are):\n");
         out.push_str(&restore_skipped_lines(&undone.skipped));
     }
+    if undone.local_rules() {
+        out.push_str(
+            "\nThe rule in .git/info/exclude is unchanged; change it with \
+             `paper ignore --local` or `paper unignore --local`.\n",
+        );
+    }
     if !undone.files_match {
         out.push('\n');
         out.push_str(&warning(undone));
@@ -54,6 +60,17 @@ fn undone_text(verb: Verb, undone: &Undone) -> String {
 
 fn warning(undone: &Undone) -> String {
     let skipped = undone.skipped.len();
+    if !undone.remembered {
+        let head = match skipped {
+            0 => "Some files were left as they are".to_owned(),
+            1 => "1 file was left as it is (see above)".to_owned(),
+            n => format!("{n} files were left as they are (see above)"),
+        };
+        return format!(
+            "{head}; your next paper command records them as edits, which clears what you \
+             can redo."
+        );
+    }
     let (head, records) = if skipped > 0 {
         let head = if skipped == 1 {
             "1 file was left as it is (see above).".to_owned()
@@ -172,6 +189,7 @@ mod tests {
                 })
                 .collect(),
             files_match: false,
+            remembered: true,
         }
     }
 

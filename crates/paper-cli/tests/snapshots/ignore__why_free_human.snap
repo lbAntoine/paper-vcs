@@ -1,0 +1,5 @@
+---
+source: crates/paper-cli/tests/ignore.rs
+expression: paper_env.redact(&free.stdout)
+---
+main.tex is not ignored.

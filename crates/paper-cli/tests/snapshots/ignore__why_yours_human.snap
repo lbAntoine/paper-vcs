@@ -1,0 +1,5 @@
+---
+source: crates/paper-cli/tests/ignore.rs
+expression: env.redact(&ignored_by_yours.stdout)
+---
+notes/keep.log is ignored by `*.log` (the profile block, .gitignore line 5).

@@ -1,0 +1,7 @@
+---
+source: crates/paper-cli/tests/ignore.rs
+expression: nested_env.redact(&nested.stderr)
+---
+error: docs/x.tmp would still be ignored
+  why:  `*.tmp` (docs/.gitignore line 1) keeps it ignored, and an exception written by paper can't override that. Nothing was changed.
+  next: paper ignore --why docs/x.tmp  # see what decides, then edit docs/.gitignore (line 1) by hand

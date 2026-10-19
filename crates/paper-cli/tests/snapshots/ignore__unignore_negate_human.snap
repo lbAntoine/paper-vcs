@@ -1,0 +1,11 @@
+---
+source: crates/paper-cli/tests/ignore.rs
+expression: negate_env.redact(&negated.stdout)
+---
+Exceptions added to the ignore rules:
+  !/notes/keep.log
+
+Now tracking 1 file:
+  notes/keep.log
+Your next save records them.
+`paper undo` takes this back.

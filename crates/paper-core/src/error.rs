@@ -11,8 +11,8 @@ use crate::config::{ConfigError, Conflict, Key, Origin, Scope};
 use crate::point::ParsePointError;
 use crate::profile::gitignore::GitignoreError;
 use crate::project::{
-    DiffError, GcError, HistoryError, IgnoreError, InitError, OpenError, ResolveError,
-    RestoreError, SaveError, ShowError, StatusError, UndoError,
+    DiffError, GcError, HistoryError, IgnoreError, IgnoreMatch, InitError, OpenError, ResolveError,
+    RestoreError, SaveError, ShowError, StatusError, UndoError, UnignoreError,
 };
 
 /// Who has to act, which decides the CLI exit code.
@@ -846,9 +846,8 @@ impl From<IgnoreError> for PaperError {
             ),
             IgnoreError::Unignore { ref arg } => Self::user(
                 format!("'{arg}' starts with '!', which would stop ignoring something"),
-                "`paper ignore` only adds files to the ignore list. Taking a file back off it \
-                 (`paper unignore`) comes in v0.2; until then, edit the line in .gitignore by \
-                 hand. Nothing was changed.",
+                "`paper ignore` only adds files to the ignore list. To take a file back off it, run \
+                 `paper unignore` with the name written without the '!'. Nothing was changed.",
                 vec![list()],
             ),
             IgnoreError::Protected { ref path } => Self::user(
@@ -878,6 +877,7 @@ impl From<IgnoreError> for PaperError {
                     "name a file or folder, or a pattern such as '*.aux'",
                 )],
             ),
+            IgnoreError::StillVisible { ref path, ref rule } => still_visible(path, rule),
             IgnoreError::TooMany {
                 count,
                 ref first,
@@ -908,6 +908,115 @@ impl From<IgnoreError> for PaperError {
             IgnoreError::Gitignore(ref inner) => Self::from_gitignore(inner, "paper ignore"),
             IgnoreError::Git(_) | IgnoreError::Export(_) | IgnoreError::Io { .. } => {
                 Self::project("Paper could not ignore that", &error)
+            }
+        }
+    }
+}
+
+/// `paper ignore --local` of a path that a shared exception keeps visible.
+fn still_visible(path: &str, rule: &IgnoreMatch) -> PaperError {
+    let why = format!(
+        "`{}` ({}) brings it back, and a rule in .git/info/exclude can't override \
+             it. Nothing was changed.",
+        rule.rule,
+        rule.location()
+    );
+    let (command, explanation) = if rule.file == ".gitignore" {
+        (
+            format!("paper ignore {}", shell_word(path)),
+            "run it again without `--local`: the rule then goes after that \
+                 exception in .gitignore"
+                .to_owned(),
+        )
+    } else {
+        (
+            format!("paper ignore --why {}", shell_word(path)),
+            format!(
+                "see what decides, then edit {} (line {}) by hand",
+                rule.file, rule.line
+            ),
+        )
+    };
+    PaperError::user(
+        format!("{path} can't be ignored privately"),
+        why,
+        vec![Suggestion::new(command, explanation)],
+    )
+}
+
+impl From<UnignoreError> for PaperError {
+    fn from(error: UnignoreError) -> Self {
+        match error {
+            UnignoreError::Refused(inner) => inner.into(),
+            UnignoreError::LeadingBang { arg, exists } => {
+                let name = arg.trim_start_matches('!');
+                if exists {
+                    return Self::user(
+                        format!("'{arg}' starts with '!'"),
+                        format!(
+                            "`paper unignore` takes the name without a '!', and adds the \
+                             exception itself. A file called {arg} exists: write ./{arg} to \
+                             mean that file. Nothing was changed."
+                        ),
+                        vec![Suggestion::new(
+                            format!("paper unignore {}", shell_word(&format!("./{arg}"))),
+                            "name the file with ./ in front",
+                        )],
+                    );
+                }
+                Self::user(
+                    format!("'{arg}' starts with '!'"),
+                    "`paper unignore` already takes a rule off the list, or adds the exception \
+                     for you, so the name is written without the '!'. Nothing was changed.",
+                    vec![Suggestion::new(
+                        format!("paper unignore {}", shell_word(name)),
+                        "name the file or folder without the '!'",
+                    )],
+                )
+            }
+            UnignoreError::StillIgnored {
+                path,
+                rule,
+                folder,
+                local,
+            } => {
+                let why = format!(
+                    "`{}` ({}) keeps it ignored, and an exception written by paper can't \
+                     override that. Nothing was changed.",
+                    rule.rule,
+                    rule.location()
+                );
+                let in_exclude = rule.file == ".git/info/exclude";
+                let (command, explanation) = if let Some(folder) = folder {
+                    let flag = if local && in_exclude { " --local" } else { "" };
+                    (
+                        format!("paper unignore {}{flag}", shell_word(&folder)),
+                        format!(
+                            "stop ignoring the folder {folder} first; its files can then be \
+                             tracked"
+                        ),
+                    )
+                } else if local && rule.file == ".gitignore" {
+                    (
+                        format!("paper unignore {}", shell_word(&path)),
+                        "run it again without `--local`: a rule in .git/info/exclude can't \
+                         override .gitignore"
+                            .to_owned(),
+                    )
+                } else {
+                    (
+                        format!("paper ignore --why {}", shell_word(&path)),
+                        format!(
+                            "see what decides, then edit {} (line {}) by hand",
+                            rule.file, rule.line
+                        ),
+                    )
+                };
+                Self::user(
+                    format!("{path} would still be ignored"),
+                    why,
+                    vec![Suggestion::new(command, explanation)],
+                )
             }
         }
     }

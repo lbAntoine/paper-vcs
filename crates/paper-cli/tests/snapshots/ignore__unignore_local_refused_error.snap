@@ -1,0 +1,7 @@
+---
+source: crates/paper-cli/tests/ignore.rs
+expression: shared.redact(&refused.stderr)
+---
+error: notes/keep.log would still be ignored
+  why:  `*.log` (the profile block, .gitignore line 5) keeps it ignored, and an exception written by paper can't override that. Nothing was changed.
+  next: paper unignore notes/keep.log  # run it again without `--local`: a rule in .git/info/exclude can't override .gitignore

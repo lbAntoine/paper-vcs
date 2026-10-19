@@ -1,0 +1,11 @@
+---
+source: crates/paper-cli/tests/ignore.rs
+expression: paper_env.redact_json(&free_json.stdout)
+---
+{
+  "ignored": false,
+  "path": "main.tex",
+  "rule": null,
+  "schema": 1,
+  "tracked": true
+}

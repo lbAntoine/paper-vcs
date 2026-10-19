@@ -1,0 +1,6 @@
+---
+source: crates/paper-cli/tests/ignore.rs
+expression: tracked_env.redact(&tracked.stdout)
+---
+data/keep.csv is ignored by `*.csv` (.gitignore line 30).
+It is still tracked, because it was saved before the rule; paper ignore data/keep.csv stops tracking it.

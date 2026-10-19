@@ -39,7 +39,8 @@ pub use export::ExportError;
 pub use gc::{GcAge, GcError, GcOutcome};
 pub use history::{HistoryEntry, HistoryError, HistoryRequest, ShowError, Shown};
 pub use ignore::{
-    IgnoreError, IgnoreListing, IgnoreOutcome, IgnoreRequest, IgnoreRule, IgnoreSource,
+    IgnoreError, IgnoreListing, IgnoreMatch, IgnoreOutcome, IgnoreRequest, IgnoreRule,
+    IgnoreSource, IgnoreWhy, UnignoreError, UnignoreOutcome, UnignoreRequest,
 };
 pub use init::{InitError, Initialized, ProfileSource, has_damaged_git};
 pub use lock::{DEFAULT_LOCK_WAIT, LockError, LockOptions, ProjectLock};

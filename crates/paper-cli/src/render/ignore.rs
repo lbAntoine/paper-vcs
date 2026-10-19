@@ -3,7 +3,7 @@
 
 use std::fmt::Write as _;
 
-use paper_core::project::{IgnoreListing, IgnoreOutcome, IgnoreSource};
+use paper_core::project::{IgnoreListing, IgnoreOutcome, IgnoreSource, IgnoreWhy, UnignoreOutcome};
 use serde::Serialize;
 
 use super::human::files;
@@ -14,6 +14,24 @@ const SHOWN_FILES: usize = 20;
 
 /// What `paper ignore` prints when it had nothing to do.
 pub const NOTHING_TO_DO: &str = "Nothing to do: already ignored.\n";
+
+/// What `paper unignore` prints when nothing it was given is ignored.
+pub const NOTHING_TO_UNIGNORE: &str = "Nothing to do: not ignored.\n";
+
+/// The closing line: what `paper undo` does, and for `--local` that it leaves the rule alone.
+fn undo_line(local: bool) -> String {
+    if local {
+        format!(
+            "{LOCAL_NOTE}`paper undo` changes tracking only; the rule in .git/info/exclude stays.\n"
+        )
+    } else {
+        "`paper undo` takes this back.\n".to_owned()
+    }
+}
+
+/// Said after a command that wrote to `.git/info/exclude`.
+const LOCAL_NOTE: &str =
+    "The rules are in .git/info/exclude: they are yours alone, and not part of your saves.\n";
 
 /// The text for stdout after `paper ignore <args>`.
 pub fn human(outcome: &IgnoreOutcome) -> String {
@@ -51,7 +69,68 @@ pub fn human(outcome: &IgnoreOutcome) -> String {
         }
         out.push_str("Your next save records their removal; earlier saves keep their versions.\n");
     }
-    out.push_str("`paper undo` takes this back.\n");
+    out.push_str(&undo_line(outcome.local));
+    out
+}
+
+/// The text for stdout after `paper unignore <args>`.
+pub fn unignore_human(outcome: &UnignoreOutcome) -> String {
+    if outcome.entry.is_none() {
+        return NOTHING_TO_UNIGNORE.to_owned();
+    }
+    let mut out = String::new();
+    if !outcome.removed.is_empty() {
+        out.push_str("No longer ignoring:\n");
+        for rule in &outcome.removed {
+            let _ = writeln!(out, "  {rule}");
+        }
+    }
+    if !outcome.negated.is_empty() {
+        out.push_str("Exceptions added to the ignore rules:\n");
+        for rule in &outcome.negated {
+            let _ = writeln!(out, "  {rule}");
+        }
+    }
+    if !outcome.tracked.is_empty() {
+        let count = outcome.tracked.len();
+        let _ = writeln!(out, "\nNow tracking {}:", files(count));
+        for path in outcome.tracked.iter().take(SHOWN_FILES) {
+            let _ = writeln!(out, "  {path}");
+        }
+        if count > SHOWN_FILES {
+            let _ = writeln!(out, "  and {} more", count - SHOWN_FILES);
+        }
+        out.push_str("Your next save records them.\n");
+    }
+    out.push_str(&undo_line(outcome.local));
+    out
+}
+
+/// The text for stdout after `paper ignore --why <path>`.
+pub fn why_human(why: &IgnoreWhy) -> String {
+    let path = &why.path;
+    let Some(rule) = &why.rule else {
+        return format!("{path} is not ignored.\n");
+    };
+    if !why.ignored {
+        return format!(
+            "{path} is not ignored: `{}` ({}) brings it back.\n",
+            rule.rule,
+            rule.location()
+        );
+    }
+    let mut out = format!(
+        "{path} is ignored by `{}` ({}).\n",
+        rule.rule,
+        rule.location()
+    );
+    if why.tracked {
+        let _ = writeln!(
+            out,
+            "It is still tracked, because it was saved before the rule; paper ignore {path} \
+             stops tracking it."
+        );
+    }
     out
 }
 
@@ -80,6 +159,74 @@ struct AddOut<'a> {
     already: &'a [String],
     untracked: &'a [String],
     entry: Option<EntryOut>,
+    local: bool,
+}
+
+fn entry_out(entry: &paper_core::project::ActivityEntry) -> EntryOut {
+    EntryOut {
+        id: entry.id.to_string(),
+        short_id: entry.short_id.clone(),
+        time: entry.time.clone(),
+        kind: op_kind_name(entry.kind),
+        description: entry.description.clone(),
+    }
+}
+
+#[derive(Serialize)]
+struct UnignoreOut<'a> {
+    schema: u32,
+    removed: &'a [String],
+    negated: &'a [String],
+    tracked: &'a [String],
+    entry: Option<EntryOut>,
+    local: bool,
+}
+
+/// The JSON for stdout after `paper unignore <args>`.
+pub fn unignore_json(outcome: &UnignoreOutcome) -> String {
+    line(&UnignoreOut {
+        schema: SCHEMA,
+        removed: &outcome.removed,
+        negated: &outcome.negated,
+        tracked: &outcome.tracked,
+        entry: outcome.entry.as_ref().map(entry_out),
+        local: outcome.local,
+    })
+}
+
+#[derive(Serialize)]
+struct WhyRuleOut<'a> {
+    rule: &'a str,
+    source: &'static str,
+    file: &'a str,
+    line: usize,
+    negated: bool,
+}
+
+#[derive(Serialize)]
+struct WhyOut<'a> {
+    schema: u32,
+    path: &'a str,
+    ignored: bool,
+    tracked: bool,
+    rule: Option<WhyRuleOut<'a>>,
+}
+
+/// The JSON for stdout after `paper ignore --why <path>`.
+pub fn why_json(why: &IgnoreWhy) -> String {
+    line(&WhyOut {
+        schema: SCHEMA,
+        path: &why.path,
+        ignored: why.ignored,
+        tracked: why.tracked,
+        rule: why.rule.as_ref().map(|rule| WhyRuleOut {
+            rule: &rule.rule,
+            source: rule.source.name(),
+            file: &rule.file,
+            line: rule.line,
+            negated: rule.negated,
+        }),
+    })
 }
 
 /// The JSON for stdout after `paper ignore <args>`.
@@ -89,13 +236,8 @@ pub fn json(outcome: &IgnoreOutcome) -> String {
         added: &outcome.added,
         already: &outcome.already,
         untracked: &outcome.untracked,
-        entry: outcome.entry.as_ref().map(|entry| EntryOut {
-            id: entry.id.to_string(),
-            short_id: entry.short_id.clone(),
-            time: entry.time.clone(),
-            kind: op_kind_name(entry.kind),
-            description: entry.description.clone(),
-        }),
+        entry: outcome.entry.as_ref().map(entry_out),
+        local: outcome.local,
     })
 }
 

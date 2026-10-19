@@ -1,0 +1,17 @@
+---
+source: crates/paper-cli/tests/ignore.rs
+expression: paper_env.redact_json(&ignored_json.stdout)
+---
+{
+  "ignored": true,
+  "path": "data/raw/a.csv",
+  "rule": {
+    "file": ".gitignore",
+    "line": 32,
+    "negated": false,
+    "rule": "/data/raw/",
+    "source": "paper"
+  },
+  "schema": 1,
+  "tracked": false
+}

@@ -1,0 +1,17 @@
+---
+source: crates/paper-cli/tests/ignore.rs
+expression: env.redact_json(&negated_json.stdout)
+---
+{
+  "ignored": false,
+  "path": "notes/keep.log",
+  "rule": {
+    "file": ".gitignore",
+    "line": 34,
+    "negated": true,
+    "rule": "!/notes/keep.log",
+    "source": "paper"
+  },
+  "schema": 1,
+  "tracked": true
+}

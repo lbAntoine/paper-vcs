@@ -1,0 +1,13 @@
+---
+source: crates/paper-cli/tests/ignore.rs
+expression: env.redact(&ignored.stdout)
+---
+Now ignoring:
+  /data/raw/
+
+Stopped tracking 2 files; they are still on your disk:
+  data/raw/a.csv
+  data/raw/b.csv
+Your next save records their removal; earlier saves keep their versions.
+The rules are in .git/info/exclude: they are yours alone, and not part of your saves.
+`paper undo` changes tracking only; the rule in .git/info/exclude stays.

@@ -1,0 +1,5 @@
+---
+source: crates/paper-cli/tests/ignore.rs
+expression: env.redact(&negated.stdout)
+---
+notes/keep.log is not ignored: `!/notes/keep.log` (paper's block, .gitignore line 34) brings it back.

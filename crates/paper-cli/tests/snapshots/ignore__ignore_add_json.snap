@@ -15,6 +15,7 @@ expression: env_json.redact_json(&json.stdout)
     "short_id": "[ID]",
     "time": "[TIME]"
   },
+  "local": false,
   "schema": 1,
   "untracked": [
     "data/raw/a.csv",
