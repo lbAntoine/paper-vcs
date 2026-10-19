@@ -165,7 +165,7 @@
       "id": "e1a0c038",
       "title": "PV-038: undoing a redo of unignore --local deletes files from disk",
       "description": "GitHub issue #74. Found by the v0.2 goal verification; maintainer: fix before the v0.2.0 tag. Blocks PV-033.",
-      "status": "in_progress",
+      "status": "done",
       "priority": "high",
       "sprint": "v0.2-b",
       "created_at": "2026-10-19T18:35:32Z",

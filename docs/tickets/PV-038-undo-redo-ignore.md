@@ -1,6 +1,6 @@
 # PV-038: undoing a redo of unignore --local deletes files from disk
 
-- **Status:** In progress
+- **Status:** Done
 - **Issue:** #74
 - **Branch:** `fix/PV-038-undo-redo-ignore`
 - **Depends on:** PV-032 (merged). Blocks PV-033 (the v0.2.0 release); the maintainer decided it is fixed before the tag.
@@ -65,12 +65,12 @@ back, whether the step names the ignore entry directly or through an `undo:` or 
 
 ## Acceptance criteria
 
-- [ ] The reproduction above keeps `raw/r1.csv`, and a never-saved file in `raw/`, byte-identical on disk through every step. `git fsck --strict` is clean.
-- [ ] The same chain with a shared `unignore`, a `--local` `ignore` and a shared `ignore` changes tracking only.
-- [ ] The mirror case: undoing an `undo:` entry of an ignore or unignore (reachable via `undo --to` then `undo`, or through a redo after new edits) is tracking-only.
-- [ ] Ordinary `undo` and `redo` of saves, restores and edits are unchanged. The existing suites pass.
-- [ ] Specs updated, only in the listed sections.
-- [ ] fmt, clippy (`-D warnings`) and the full suite pass (CI on Linux, macOS, Windows).
+- [x] The reproduction above keeps `raw/r1.csv`, and a never-saved file in `raw/`, byte-identical on disk through every step. `git fsck --strict` is clean.
+- [x] The same chain with a shared `unignore`, a `--local` `ignore` and a shared `ignore` changes tracking only.
+- [x] The mirror case: undoing an `undo:` entry of an ignore or unignore (reachable via `undo --to` then `undo`, or through a redo after new edits) is tracking-only.
+- [x] Ordinary `undo` and `redo` of saves, restores and edits are unchanged. The existing suites pass.
+- [x] Specs updated, only in the listed sections.
+- [x] fmt, clippy (`-D warnings`) and the full suite pass (CI on Linux, macOS, Windows).
 
 ## Test plan
 
