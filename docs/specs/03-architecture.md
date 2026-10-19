@@ -375,7 +375,7 @@ Details:
   `unignore` (shared or `--local`) changes what is tracked, never the files: the checkout is
   planned over `.gitignore` files only, and every other file stays on disk as it is. Files
   that differ from the new draft make `files_match` false. They are remembered like any other
-  leftover (see Skipped paths) only when the I1 snapshot already recorded their content. A file
+  leftover (see Skipped paths) only when they still hold what the I1 snapshot saw (see Skipped paths). A file
   edited while it was ignored never entered history, so it is not remembered: the next command
   records it as an edit (undo and redo included), which ends the redo stack, and nothing is
   overwritten. The output then says so instead of "undo and redo go on from here". PV-037

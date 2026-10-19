@@ -544,6 +544,11 @@ unreadable source has no place in this fixed shape, so only the human output nam
   above). `paper undo` and `paper redo` go on from here; any other paper command that looks at
   your files (`paper status`, `paper save`, ...) records them as edits, which clears what you
   can redo." ("1 file was left as it is ... records it as an edit ..." for a single file.)
+  When not every file left as it is could be remembered (a file edited while it was ignored never
+  entered history), the last line is instead "Some files were left as they are; your next paper
+  command records them as edits, which clears what you can redo." (with the "N files were left
+  as they are (see above)" count in place of "Some files were left as they are" when files were
+  skipped), because the next command records the edit and ends the redo stack.
   JSON is unchanged. Repeated `undo` (and `redo`) is not held back by such files: the
   leftovers are remembered, and the next undo-family command does not record them as an edit,
   so it walks one entry further. Any other paper command (`status`, `save`, ...) records them

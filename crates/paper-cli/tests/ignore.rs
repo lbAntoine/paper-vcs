@@ -1480,3 +1480,22 @@ fn undo_after_editing_an_ignored_file_says_the_next_command_records_it() {
     assert!(!undo.stdout.contains("go on from here"), "{undo:#?}");
     assert_eq!(env.read("data/raw/a.csv"), "EDITED\n");
 }
+
+#[test]
+fn undo_with_an_edited_and_a_deleted_ignored_file_does_not_promise_redo() {
+    let env = project();
+    env.paper(&["ignore", "data/raw"]).assert_code(0);
+    env.write("data/raw/a.csv", "EDITED\n");
+    fs::remove_file(env.work.join("data/raw/b.csv")).unwrap();
+
+    let undo = env.paper(&["undo"]);
+
+    undo.assert_code(0);
+    assert!(
+        undo.stdout.contains(
+            "; your next paper command records them as edits, which clears what you can redo."
+        ),
+        "{undo:#?}"
+    );
+    assert!(!undo.stdout.contains("go on from here"), "{undo:#?}");
+}

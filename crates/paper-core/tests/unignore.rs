@@ -1603,3 +1603,19 @@ fn ignore_local_blocked_by_a_nested_negation_points_to_that_file() {
     assert!(all.contains("sub/.gitignore"), "{all}");
     assert!(!all.contains("without `--local`"), "{all}");
 }
+
+#[test]
+fn leftovers_are_not_all_remembered_when_one_was_edited_while_ignored() {
+    let (dir, mut project) = raw_data_project();
+    ignore(&mut project, &["data/raw"]);
+    write(dir.path(), "data/raw/a.csv", "EDITED\n");
+    fs::remove_file(dir.path().join("data/raw/sub/b.csv")).unwrap();
+
+    let back = undone(project.undo().unwrap());
+
+    assert!(!back.files_match, "{back:?}");
+    assert!(
+        !back.remembered,
+        "the edited file is not in history, so the next command records an edit: {back:?}"
+    );
+}

@@ -279,3 +279,9 @@ found 57cf26d8ff17905a48e059f76f3b4eddad56fb1d
 ```
   The edit is its own `edited` entry and its blob is reachable.
 - fmt, clippy and the full workspace suite pass.
+
+### GREEN (post-check) · rust-engineer · 2026-10-19
+- `remember_leftovers` returns true only when the remembered paths cover every path where the draft and the working files differ; `Undone::remembered` is documented as "every differing file is remembered". With `/tmp/pv032r4/m.sh` (edit one ignored file, delete another, `undo`) the output now says "Some files were left as they are; your next paper command records them as edits, which clears what you can redo."
+- The renderer keeps the "N files were left as they are (see above)" count in that sentence when files were skipped. New core test (mixed case, `!remembered`) and CLI test for the sentence.
+- Specs: 02-cli `paper undo` output documents the alternative last line and when it appears; 03-architecture says "only when they still hold what the I1 snapshot saw (see Skipped paths)". Summary and acceptance criteria were already filled in and ticked (CI left to the coordinator).
+- fmt, clippy and the full workspace suite pass.

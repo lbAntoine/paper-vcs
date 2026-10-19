@@ -28,9 +28,9 @@ pub struct Undone {
     /// that looks at the files records the difference as an edits entry (which clears the redo
     /// stack).
     pub files_match: bool,
-    /// Whether paper wrote `checkout-left.json` for this step: the files left alone are
-    /// remembered, so `paper undo` and `paper redo` go on from there. When `files_match` is
-    /// false and this is false too, the next command records the difference as an edit.
+    /// Whether every file left as it is is remembered in `checkout-left.json`, so `paper undo`
+    /// and `paper redo` go on from there. When `files_match` is false and this is false too,
+    /// the next command records the difference as an edit.
     pub remembered: bool,
 }
 
@@ -288,7 +288,15 @@ impl Project {
         CheckoutLeft::new(&recorded, &differing, &seen)
             .write(&self.paper_dir)
             .map_err(|source| UndoError::io("write", &file, source))?;
-        Ok(true)
+        // The next undo-family command skips the edits entry only if every differing path is
+        // remembered.
+        let all_differing = wanted
+            .keys()
+            .chain(seen.keys())
+            .filter(|path| wanted.get(*path) != seen.get(*path))
+            .collect::<BTreeSet<_>>()
+            .len();
+        Ok(all_differing == differing.len())
     }
 }
 

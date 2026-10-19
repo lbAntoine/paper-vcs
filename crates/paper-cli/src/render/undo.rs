@@ -59,12 +59,18 @@ fn undone_text(verb: Verb, undone: &Undone) -> String {
 }
 
 fn warning(undone: &Undone) -> String {
-    if !undone.remembered {
-        return "Some files were left as they are; your next paper command records them as \
-                edits, which clears what you can redo."
-            .to_owned();
-    }
     let skipped = undone.skipped.len();
+    if !undone.remembered {
+        let head = match skipped {
+            0 => "Some files were left as they are".to_owned(),
+            1 => "1 file was left as it is (see above)".to_owned(),
+            n => format!("{n} files were left as they are (see above)"),
+        };
+        return format!(
+            "{head}; your next paper command records them as edits, which clears what you \
+             can redo."
+        );
+    }
     let (head, records) = if skipped > 0 {
         let head = if skipped == 1 {
             "1 file was left as it is (see above).".to_owned()
