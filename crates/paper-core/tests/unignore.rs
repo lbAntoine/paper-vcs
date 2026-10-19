@@ -1619,3 +1619,202 @@ fn leftovers_are_not_all_remembered_when_one_was_edited_while_ignored() {
         "the edited file is not in history, so the next command records an edit: {back:?}"
     );
 }
+
+// ---- PV-038: undo and redo through `undo:` and `redo:` entries ----
+
+/// The four commands whose entries must only ever change tracking.
+#[derive(Debug, Clone, Copy)]
+enum Rule {
+    LocalUnignore,
+    SharedUnignore,
+    LocalIgnore,
+    SharedIgnore,
+}
+
+const ALL_RULES: [Rule; 4] = [
+    Rule::LocalUnignore,
+    Rule::SharedUnignore,
+    Rule::LocalIgnore,
+    Rule::SharedIgnore,
+];
+
+/// Undoing an ignore leaves no untracked files behind, so the next command records no edit
+/// of them. (After undoing an unignore it does, by design, and undoing that ordinary edit
+/// removes the files it recorded, which is not what these tests are about.) Stepping over
+/// an `undo:` entry of an ignore is tracking-only on main already; these pin it.
+const IGNORES: [Rule; 2] = [Rule::LocalIgnore, Rule::SharedIgnore];
+
+const NEVER_SAVED: &str = "data/raw/never-saved.csv";
+
+/// Runs the rule's command on `data/raw`, with a file that was never saved sitting in it.
+/// An unignore is preceded by the matching ignore, so the files are untracked before it.
+fn run_rule(dir: &Path, project: &mut Project, rule: Rule) {
+    match rule {
+        Rule::LocalUnignore => {
+            ignore_local(project, &["data/raw"]);
+            write(dir, NEVER_SAVED, "created while ignored\n");
+            unignore_local(project, &["data/raw"]);
+        }
+        Rule::SharedUnignore => {
+            ignore(project, &["data/raw"]);
+            write(dir, NEVER_SAVED, "created while ignored\n");
+            unignore(project, &["data/raw"]);
+        }
+        Rule::LocalIgnore => {
+            write(dir, NEVER_SAVED, "created before\n");
+            ignore_local(project, &["data/raw"]);
+        }
+        Rule::SharedIgnore => {
+            write(dir, NEVER_SAVED, "created before\n");
+            ignore(project, &["data/raw"]);
+        }
+    }
+}
+
+/// The bytes of every file under `data/raw/`.
+fn raw_files(dir: &Path) -> BTreeMap<String, Vec<u8>> {
+    let mut all = files(dir);
+    all.retain(|path, _| path.starts_with("data/raw/"));
+    all
+}
+
+/// Records an edit to a file outside `data/raw`, as `paper status` does.
+fn edit_main_and_status(dir: &Path, project: &mut Project) {
+    write(dir, "main.tex", "edited again\n");
+    project.status(&StatusOptions::default()).unwrap();
+}
+
+/// One undo or redo whose entry description starts with `prefix`, with `data/raw` untouched.
+fn step_keeps_raw(
+    dir: &Path,
+    raw: &BTreeMap<String, Vec<u8>>,
+    outcome: UndoOutcome,
+    prefix: &str,
+) -> Undone {
+    let step = undone(outcome);
+    assert!(
+        step.entry.description.starts_with(prefix),
+        "expected a step over an entry starting with {prefix:?}: {:?}",
+        step.entry
+    );
+    assert_eq!(&raw_files(dir), raw, "a step over {:?}", step.entry);
+    assert!(raw.contains_key(NEVER_SAVED));
+    step
+}
+
+fn assert_raw_tracked(dir: &Path, tracked: bool) {
+    let draft = draft_files(dir);
+    for file in RAW_FILES {
+        assert_eq!(
+            draft.contains(&file.to_owned()),
+            tracked,
+            "{file}: {draft:?}"
+        );
+    }
+}
+
+#[test]
+fn undoing_a_redo_of_each_ignore_and_unignore_changes_tracking_only() {
+    for rule in ALL_RULES {
+        let (dir, mut project) = raw_data_project();
+        run_rule(dir.path(), &mut project, rule);
+        let tracked_after = matches!(rule, Rule::LocalUnignore | Rule::SharedUnignore);
+        project.undo().unwrap();
+        project.redo().unwrap();
+        edit_main_and_status(dir.path(), &mut project);
+        let raw = raw_files(dir.path());
+
+        step_keeps_raw(dir.path(), &raw, project.undo().unwrap(), "edited");
+        let wrapper = step_keeps_raw(dir.path(), &raw, project.undo().unwrap(), "redo:");
+
+        assert!(wrapper.skipped.is_empty(), "{rule:?}: {wrapper:?}");
+        assert_raw_tracked(dir.path(), !tracked_after);
+        assert!(descriptions(&project)[0].starts_with("undo: redo:"));
+        git(dir.path(), &["fsck", "--strict", "--no-progress"]);
+        git(dir.path(), &["status", "--porcelain"]);
+    }
+}
+
+#[test]
+fn redoing_again_after_undoing_a_redo_brings_the_rule_back_without_touching_files() {
+    for rule in ALL_RULES {
+        let (dir, mut project) = raw_data_project();
+        run_rule(dir.path(), &mut project, rule);
+        let tracked_after = matches!(rule, Rule::LocalUnignore | Rule::SharedUnignore);
+        project.undo().unwrap();
+        project.redo().unwrap();
+        edit_main_and_status(dir.path(), &mut project);
+        let raw = raw_files(dir.path());
+        project.undo().unwrap();
+        step_keeps_raw(dir.path(), &raw, project.undo().unwrap(), "redo:");
+
+        step_keeps_raw(dir.path(), &raw, project.redo().unwrap(), "redo:");
+
+        assert_raw_tracked(dir.path(), tracked_after);
+        git(dir.path(), &["fsck", "--strict", "--no-progress"]);
+    }
+}
+
+#[test]
+fn undoing_and_redoing_an_undo_of_each_ignore_and_unignore_changes_tracking_only() {
+    for rule in IGNORES {
+        let (dir, mut project) = raw_data_project();
+        run_rule(dir.path(), &mut project, rule);
+        let raw = raw_files(dir.path());
+        step_keeps_raw(dir.path(), &raw, project.undo().unwrap(), "ignore");
+        edit_main_and_status(dir.path(), &mut project);
+
+        step_keeps_raw(dir.path(), &raw, project.undo().unwrap(), "edited");
+        // Takes back the `undo:` entry: the state of the rule itself again.
+        step_keeps_raw(dir.path(), &raw, project.undo().unwrap(), "undo:");
+        assert_raw_tracked(dir.path(), false);
+        // Brings the `undo:` entry back.
+        step_keeps_raw(dir.path(), &raw, project.redo().unwrap(), "undo:");
+        assert_raw_tracked(dir.path(), true);
+
+        git(dir.path(), &["fsck", "--strict", "--no-progress"]);
+        git(dir.path(), &["status", "--porcelain"]);
+    }
+}
+
+/// gc keeps a `redo:` entry but not the op its position names: the step over it must not fail
+/// on the missing op, it just uses the normal rules.
+#[test]
+fn undoing_over_a_redo_entry_whose_target_gc_removed_still_works() {
+    let (dir, mut project) = raw_data_project();
+    run_rule(dir.path(), &mut project, Rule::LocalUnignore);
+    project.undo().unwrap();
+    project.redo().unwrap();
+    edit_main_and_status(dir.path(), &mut project);
+    project.undo().unwrap();
+    project.undo().unwrap();
+    fs::write(dir.path().join("m.tex"), "m3\n").unwrap();
+    project.status(&StatusOptions::default()).unwrap();
+
+    let ops = dir.path().join(".git/paper/activity/ops");
+    let head = fs::read_to_string(dir.path().join(".git/paper/activity/head")).unwrap();
+    let head = head.trim();
+    let head_op: serde_json::Value =
+        serde_json::from_slice(&fs::read(ops.join(format!("{head}.json"))).unwrap()).unwrap();
+    let newest_parent = head_op["parent"].as_str().unwrap().to_owned();
+    for entry in fs::read_dir(&ops).unwrap() {
+        let path = entry.unwrap().path();
+        let id = path.file_stem().unwrap().to_string_lossy().into_owned();
+        if id == head || id == newest_parent {
+            continue;
+        }
+        let mut op: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        op["time"] = serde_json::json!("2020-01-01T00:00:00Z");
+        fs::write(&path, serde_json::to_vec_pretty(&op).unwrap()).unwrap();
+    }
+    project.gc(GcAge::parse("1d").unwrap(), false).unwrap();
+
+    project.undo().unwrap();
+    project.undo().unwrap();
+    assert_eq!(
+        fs::read_to_string(dir.path().join("data/raw/a.csv")).unwrap(),
+        "1,2\n"
+    );
+    assert_raw_tracked(dir.path(), true);
+    git(dir.path(), &["fsck", "--strict", "--no-progress"]);
+}

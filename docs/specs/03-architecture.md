@@ -372,8 +372,10 @@ Details:
   entry back, so undo is never stuck. A crash before the file is written leaves that same
   behaviour; recovery does not write it.
 - **Tracking-only entries.** A single `undo` or `redo` whose entry is an `ignore` or
-  `unignore` (shared or `--local`) changes what is tracked, never the files: the checkout is
-  planned over `.gitignore` files only, and every other file stays on disk as it is. Files
+  `unignore` (shared or `--local`), or an `undo:` or `redo:` entry of one (looked through, up
+  to 64 wrappers deep; `undo --to` and a chain that reaches an op gc removed keep the normal
+  rules), changes what is tracked, never the files: the checkout is planned over `.gitignore`
+  files only, and every other file stays on disk as it is. Files
   that differ from the new draft make `files_match` false. They are remembered like any other
   leftover (see Skipped paths) only when they still hold what the I1 snapshot saw (see Skipped paths). A file
   edited while it was ignored never entered history, so it is not remembered: the next command
