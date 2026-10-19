@@ -1811,5 +1811,10 @@ fn undoing_over_a_redo_entry_whose_target_gc_removed_still_works() {
 
     project.undo().unwrap();
     project.undo().unwrap();
+    assert_eq!(
+        fs::read_to_string(dir.path().join("data/raw/a.csv")).unwrap(),
+        "1,2\n"
+    );
+    assert_raw_tracked(dir.path(), true);
     git(dir.path(), &["fsck", "--strict", "--no-progress"]);
 }

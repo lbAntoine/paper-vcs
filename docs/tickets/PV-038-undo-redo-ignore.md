@@ -144,3 +144,12 @@ back, whether the step names the ignore entry directly or through an `undo:` or 
   `--local` "outside history" parenthesis in 02-cli; re-wrapped 03-architecture (also mentions gc).
 - NIT: the mirror test uses literal `false`/`true` and the prefix `"ignore"`.
 - Ticket Summary filled in as asked.
+
+### GREEN (post-approval) · rust-engineer · 2026-10-19
+
+- The gc test now also asserts `data/raw/a.csv` is on disk with its content and that the folder is
+  tracked in the draft after the second undo.
+- Rewrapped the 02-cli `--local` paragraph and the 03-architecture bullet; the latter now says
+  "a chain that reaches an op gc removed".
+- Note: during this round a stale incremental build briefly made the gc test look like it failed
+  with `MissingOp`; after touching `undo.rs` and rebuilding it passes consistently.
