@@ -44,6 +44,9 @@ Known issues:
 - `paper undo --to` an entry before a `paper unignore --local` removes the files that unignore
   started tracking from your folder (#75). Their content is kept: `paper undo --to` the
   unignore entry brings them back.
+- After you undo a `paper unignore --local`, the next command records its files as new, and
+  undoing that entry removes them from your folder (#75). Their content is kept: `paper redo`
+  brings them back.
 - A few small ignore gaps remain: an exception (`!name`) in a nested `.gitignore` can
   silently override `paper ignore` (#71), and the rule listing can show rules from a
   repository-level `core.excludesFile` that paper doesn't apply (#66).
