@@ -85,11 +85,11 @@
       "id": "e1a0c033",
       "title": "PV-033: release v0.2.0",
       "description": "GitHub issue #60. Wave 5, last. Size S. Verification, then maintainer approval before the tag.",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "high",
       "sprint": "v0.2-b",
       "created_at": "2026-10-18T09:25:14Z",
-      "updated_at": "2026-10-18T09:25:14Z"
+      "updated_at": "2026-10-19T18:07:15Z"
     },
     {
       "id": "e1a0c015",

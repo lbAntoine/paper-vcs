@@ -2,10 +2,13 @@
 
 **Version control for researchers.** Plain git underneath, a much friendlier model on top.
 
-> **Status: v0.1.0 is a pre-release walking skeleton for early testers.** It works on one
-> line of work, locally: `init`, `save`, `history`, `show`, `status`, `diff`, `restore` and
-> `config`. There is no undo, no lines or tries, no milestones, no sync and no word-level diff
-> yet. Expect rough edges.
+> **Status: v0.2.0 is a pre-release for early testers.** It works on one line of work,
+> locally: `init`, `save`, `history`, `show`, `status`, `diff`, `restore`, `config`, `undo`,
+> `redo`, `activity`, `gc`, `ignore` and `unignore`. Saves, restores, edits and ignore rules
+> can be taken back with `paper undo`, files included (except `paper gc`, and rules added
+> with `--local`: see the changelog). There are no lines or tries, no milestones, no sync and
+> no word-level diff yet. Expect rough edges, and see the [changelog](CHANGELOG.md) for the
+> known issues.
 >
 > **Sharing:** you can publish your saves with plain `git push`. Bringing in other people's
 > work with `git pull` isn't supported yet. After a pull, `status` shows their edits as your
@@ -17,24 +20,24 @@
 ## Install
 
 Installers for macOS, Linux and Windows are attached to the
-[v0.1.0 release](https://github.com/lbAntoine/paper-vcs/releases/tag/v0.1.0), a GitHub
+[v0.2.0 release](https://github.com/lbAntoine/paper-vcs/releases/tag/v0.2.0), a GitHub
 pre-release. Each one downloads the right build for your machine, checks it and puts `paper`
 in `~/.cargo/bin` (`%USERPROFILE%\.cargo\bin` on Windows).
 
 macOS and Linux:
 
 ```console
-$ curl --proto '=https' --tlsv1.2 -LsSf https://github.com/lbAntoine/paper-vcs/releases/download/v0.1.0/paper-cli-installer.sh | sh
+$ curl --proto '=https' --tlsv1.2 -LsSf https://github.com/lbAntoine/paper-vcs/releases/download/v0.2.0/paper-cli-installer.sh | sh
 ```
 
 Windows (PowerShell):
 
 ```console
-> powershell -ExecutionPolicy Bypass -c "irm https://github.com/lbAntoine/paper-vcs/releases/download/v0.1.0/paper-cli-installer.ps1 | iex"
+> powershell -ExecutionPolicy Bypass -c "irm https://github.com/lbAntoine/paper-vcs/releases/download/v0.2.0/paper-cli-installer.ps1 | iex"
 ```
 
 Then open a new terminal (the installer adds `~/.cargo/bin`, or `%USERPROFILE%\.cargo\bin` on Windows, to your PATH) and run
-`paper --version`, which prints `paper 0.1.0`. You can also download an
+`paper --version`, which prints `paper 0.2.0`. You can also download an
 archive and its `.sha256` checksum from the release page. To build from source instead, see
 [Building from source](#building-from-source).
 
@@ -51,7 +54,8 @@ from [Jujutsu](https://github.com/jj-vcs/jj). Where paper is going (see Status a
 what works today):
 
 - **You can't lose work.** Your files are recorded automatically before every command.
-- **Everything is undoable.** `paper undo` reverts any operation, including itself.
+- **Everything is undoable.** `paper undo` takes back saves, restores, edits and even an undo.
+  Only `paper gc`, which trims old history on purpose, is permanent.
 - **No dirty state.** There's no staging area and no stash, and switching is always safe.
 - **Diffs that read like prose.** Word-level diffs for LaTeX, Markdown and Typst, with
   readable diffs for Word and Excel files planned.
@@ -60,8 +64,8 @@ what works today):
 
 ## A taste (planned interface, later versions)
 
-This is where paper is heading. v0.1.0 has `init`, `save` and `history`, but not `try`, `keep`
-or `milestone`.
+This is where paper is heading. v0.2.0 has `init`, `save`, `history`, `undo` and `redo`, but
+not `try`, `keep` or `milestone`.
 
 ```console
 $ paper init --profile latex
