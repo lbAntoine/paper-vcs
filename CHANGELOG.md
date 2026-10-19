@@ -16,17 +16,17 @@ What's new since 0.1.0:
   straight back to an earlier point.
 - `paper activity` lists everything that happened to the project, newest first, with the ids
   `undo --to` takes. Every entry can be undone.
-- If paper is stopped in the middle of a command, the next
-  command repairs the project.
+- If paper is stopped in the middle of a command (a crash, a power cut, a closed terminal),
+  the next command repairs the project, and no work is lost.
 - `paper gc` trims the undo history to a recent window (90 days by default; `--dry-run`
   shows what it would do). Nothing runs it for you.
 - `paper ignore` stops tracking files or folders, even ones you've already saved, and
   `paper unignore` takes the rule back. With no arguments, `paper ignore` lists the rules.
   `--local` keeps a rule private to your machine, and `paper ignore --why <path>` tells you
   which rule ignores a file.
-- `paper status` tells you when the line was changed with plain git (a commit, a reset), and
-  the refusal that follows now names a way back: `git reset --soft <id>` keeps your files and
-  shows anything different from paper's last save as unsaved edits.
+- `paper status` tells you when the line was changed with plain git (a commit, a reset).
+  When `paper save` or `paper undo` then refuse, they name a way back: `git reset --soft <id>`
+  keeps your files and shows anything different from paper's last save as unsaved edits.
 
 Upgrading from 0.1.0: your project upgrades itself the first time you run a 0.2.0 command.
 History from before the upgrade can't be undone.

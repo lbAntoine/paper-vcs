@@ -4,10 +4,10 @@
 
 > **Status: v0.2.0 is a pre-release for early testers.** It works on one line of work,
 > locally: `init`, `save`, `history`, `show`, `status`, `diff`, `restore`, `config`, `undo`,
-> `redo`, `activity`, `gc`, `ignore` and `unignore`. Anything you or paper did can be taken
-> back with `paper undo`, files included. There are no lines or tries, no milestones, no sync
-> and no word-level diff yet. Expect rough edges, and see the [changelog](CHANGELOG.md) for
-> the known issues.
+> `redo`, `activity`, `gc`, `ignore` and `unignore`. Saves, restores, edits and ignore rules
+> can be taken back with `paper undo`, files included (`paper gc` itself can't). There are no
+> lines or tries, no milestones, no sync and no word-level diff yet. Expect rough edges, and
+> see the [changelog](CHANGELOG.md) for the known issues.
 >
 > **Sharing:** you can publish your saves with plain `git push`. Bringing in other people's
 > work with `git pull` isn't supported yet. After a pull, `status` shows their edits as your
