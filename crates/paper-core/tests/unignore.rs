@@ -1486,38 +1486,88 @@ fn edited_entries(project: &Project) -> usize {
         .count()
 }
 
+/// Whether any commit reachable from a ref (paper keeps drafts alive) holds `needle` in a file.
+fn history_holds(dir: &Path, needle: &str) -> bool {
+    let revs = git(dir, &["rev-list", "--all"]);
+    let mut args = vec!["grep", "-l", needle];
+    args.extend(revs.lines());
+    Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(&args)
+        .output()
+        .unwrap()
+        .status
+        .success()
+}
+
 #[test]
-fn a_file_edited_while_ignored_is_remembered_so_redo_still_works() {
+fn a_file_edited_while_ignored_becomes_an_edit_at_the_next_command_which_ends_redo() {
     let (dir, mut project) = raw_data_project();
     ignore(&mut project, &["data/raw"]);
-    write(dir.path(), "data/raw/a.csv", "edited while ignored\n");
+    write(dir.path(), "data/raw/a.csv", "EDITED while ignored\n");
     let edited = edited_entries(&project);
 
     let back = undone(project.undo().unwrap());
     assert_eq!(back.entry.kind, OpKind::Ignore);
-    assert_eq!(text(dir.path(), "data/raw/a.csv"), "edited while ignored\n");
-    let redone = undone(project.redo().unwrap());
+    assert!(!back.files_match && !back.remembered, "{back:?}");
+    assert_eq!(text(dir.path(), "data/raw/a.csv"), "EDITED while ignored\n");
+    assert!(matches!(
+        project.redo().unwrap(),
+        UndoOutcome::NothingToRedo
+    ));
 
-    assert_eq!(redone.entry.kind, OpKind::Ignore);
-    assert_eq!(edited_entries(&project), edited, "no edits entry");
-    assert_eq!(text(dir.path(), "data/raw/a.csv"), "edited while ignored\n");
+    assert_eq!(edited_entries(&project), edited + 1, "recorded as an edit");
+    assert_eq!(text(dir.path(), "data/raw/a.csv"), "EDITED while ignored\n");
+    assert!(history_holds(dir.path(), "EDITED while ignored"));
 }
 
 #[test]
-fn the_mirror_for_unignore_does_not_turn_the_edit_into_an_entry() {
+fn undoing_twice_never_loses_a_file_edited_while_ignored() {
+    let (dir, mut project) = raw_data_project();
+    write(dir.path(), "main.tex", "second\n");
+    save_all(&mut project, "second");
+    ignore(&mut project, &["data/raw"]);
+    write(dir.path(), "data/raw/a.csv", "EDITED\n");
+
+    undone(project.undo().unwrap());
+    let second = undone(project.undo().unwrap());
+
+    assert!(
+        second
+            .entry
+            .description
+            .starts_with("edited data/raw/a.csv"),
+        "{second:?}"
+    );
+    assert!(
+        history_holds(dir.path(), "EDITED"),
+        "the edit is in history"
+    );
+    undone(project.redo().unwrap());
+    assert_eq!(text(dir.path(), "data/raw/a.csv"), "EDITED\n");
+}
+
+#[test]
+fn a_file_edited_while_ignored_after_an_undone_unignore_is_recorded_by_the_next_command() {
     let (dir, mut project) = project_with(&[("main.tex", "m\n"), (".gitignore", "*.tmp\n")]);
     write(dir.path(), "s.tmp", "first\n");
     unignore(&mut project, &["s.tmp"]);
     undone(project.undo().unwrap());
-    write(dir.path(), "s.tmp", "edited\n");
+    write(dir.path(), "s.tmp", "EDITED\n");
     let edited = edited_entries(&project);
 
     undone(project.redo().unwrap());
     let back = undone(project.undo().unwrap());
 
-    assert_eq!(back.entry.kind, OpKind::Unignore, "{back:?}");
-    assert_eq!(edited_entries(&project), edited);
-    assert_eq!(text(dir.path(), "s.tmp"), "edited\n");
+    assert!(
+        back.entry.description.starts_with("edited s.tmp"),
+        "{back:?}"
+    );
+    assert_eq!(edited_entries(&project), edited + 1);
+    assert!(history_holds(dir.path(), "EDITED"));
+    undone(project.redo().unwrap());
+    assert_eq!(text(dir.path(), "s.tmp"), "EDITED\n");
 }
 
 #[test]

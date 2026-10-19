@@ -444,9 +444,9 @@ stay on disk.
 **Output.** With `--local`, the output ends with "The rules are in .git/info/exclude: they are
 yours alone, and not part of your saves." and "`paper undo` changes tracking only; the rule in
 .git/info/exclude stays." in place of "`paper undo` takes this back." `No longer ignoring:` lists
-removed rules, `Exceptions added to the ignore rules:`
-lists negations, then `Now tracking N files:` lists the files (at most 20, then `and N more`)
-and says the next save records them. `--json`:
+removed rules, `Exceptions added to the ignore rules:` lists negations, then
+`Now tracking N files:` lists the files (at most 20, then `and N more`) and says the next save
+records them. `--json`:
 `{"schema":1,"removed","negated","tracked","entry","local"}`, every key always present, with
 `entry` as above (`null` for the no-op).
 
@@ -460,15 +460,18 @@ exactly as without `--local`, and one entry is recorded.
 **Local rules are outside history**, like git config. Undo and redo of a `--local` entry take
 back or bring back the tracking change only (for any single `undo` or `redo` of an `ignore` or
 `unignore` entry, only `.gitignore` files are written or deleted; the other files stay on disk
-as they are, are remembered as left alone, and the next command records any difference as an
-edit); `.git/info/exclude` is left as it is. `undo --to` across local entries follows its usual
-rules: files tracked after the target are removed from disk like any added file, and their
-content stays in history. Such an entry's description ends with ` (in .git/info/exclude)`,
-for example `ignore /data/raw/ (in .git/info/exclude)`, which is how `paper activity` shows
-where the rule lives. `paper undo`, `redo` and `undo --to` tell the researcher so in one extra line: ``The rule
-in .git/info/exclude is unchanged; change it with `paper ignore --local` or `paper unignore
---local`.`` (`paper-core` exposes this as `Undone::local_rules()`, true when the kind is
-`ignore` or `unignore` and the description ends with that suffix.)
+as they are. Files whose content is already in history are remembered as left alone, so `undo`
+and `redo` go on. A file edited while it was ignored is recorded as an edit by the next
+command, undo and redo included, which ends the redo stack; the output says so, and PV-037
+(#72) tracks a gentler behaviour); `.git/info/exclude` is left as it is. `undo --to` across
+local entries follows its usual rules: files tracked after the target are removed from disk
+like any added file, and their content stays in history. Such an entry's description ends
+with ` (in .git/info/exclude)`, for example `ignore /data/raw/ (in .git/info/exclude)`, which
+is how `paper activity` shows where the rule lives. `paper undo`, `redo` and `undo --to`
+tell the researcher so in one extra line: ``The rule in .git/info/exclude is unchanged;
+change it with `paper ignore --local` or `paper unignore --local`.`` (`paper-core` exposes this as
+`Undone::local_rules()`, true when the kind is `ignore` or `unignore` and the description
+ends with that suffix.)
 
 Git gives `.git/info/exclude` a lower precedence than `.gitignore` files, so an exception there
 can't override a `.gitignore` rule. `paper unignore --local` of a path that `.gitignore`

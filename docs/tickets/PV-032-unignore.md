@@ -187,6 +187,9 @@ tracking only (they write `.gitignore` files and leave other files alone, rememb
 and the undo note says the local rule stays.
 
 **Known gaps**
+- A file edited while it is ignored is recorded as an edit by the next command after an `undo` or
+  `redo` of an `ignore`/`unignore` entry, which ends the redo stack. PV-037 (#72) tracks a gentler
+  behaviour.
 - Shared `paper ignore` reports success when a negation in a nested `.gitignore` wins over the new
   rule. This predates the branch; a follow-up is to be filed.
 - A damaged block in `.git/info/exclude` reports "the paper block in .gitignore is damaged".
@@ -251,3 +254,28 @@ and the undo note says the local rule stays.
 - `StillVisible` hint points to the nested file when the winning negation is not in the root `.gitignore`; test added.
 - Specs: 02-cli unignore list (rule removed and negation added), `./!name` hint, `--local` closing lines, the `ignore --local` refusal; rewrapped. Ticket: Summary, Known gaps (nested-negation `ignore` success, predates the branch; exclude-block error wording) and acceptance criteria ticked except the CI one.
 - No snapshots changed this round.
+
+### GREEN (round 2 revert) · rust-engineer · 2026-10-19
+- Reverted the `tracking_only` remember branch in `undo.rs`: `remember_leftovers` is PV-031's rule for every step again (a file edited while ignored never entered history, so remembering it let a second undo overwrite it). Kept the rest of cd5b627. `Undone` gains `remembered: bool` (true when `checkout-left.json` was written for the step); the renderer prints "Some files were left as they are; your next paper command records them as edits, which clears what you can redo." instead of "undo and redo go on from here" when `files_match` is false and `remembered` is false.
+- Tests: the two cd5b627 tests that asserted the rejected behaviour are replaced (sanctioned) by `a_file_edited_while_ignored_becomes_an_edit_at_the_next_command_which_ends_redo` and `a_file_edited_while_ignored_after_an_undone_unignore_is_recorded_by_the_next_command`; new `undoing_twice_never_loses_a_file_edited_while_ignored` (edit recorded as an `edited` entry, content found in history by `git grep`, redo restores it); a CLI test for the new message.
+- Specs: 03-architecture "Tracking-only entries" and 02-cli `--local` paragraph rewritten (edit recorded by the next command, ends the redo stack, PV-037 #72); reflowed. Ticket Known gaps lists PV-037.
+- Probe `/tmp/pv032r3/a.sh` on a fresh binary:
+```
+--- undo 1
+Undid: ignore /data/raw/
+Changed 1 file:
+  modified  .gitignore
+Some files were left as they are; your next paper command records them as edits, which clears what you can redo.
+--- left
+cat: .git/paper/checkout-left.json: No such file or directory
+--- undo 2
+Undid: edited data/raw/a.csv
+Changed 1 file:
+  modified  data/raw/a.csv
+--- a.csv now: 1,2
+activity: undo: edited data/raw/a.csv / edited data/raw/a.csv / undo: ignore /data/raw/ / ignore /data/raw/ / save "second" ...
+--- grep EDITED in all objects
+found 57cf26d8ff17905a48e059f76f3b4eddad56fb1d
+```
+  The edit is its own `edited` entry and its blob is reachable.
+- fmt, clippy and the full workspace suite pass.

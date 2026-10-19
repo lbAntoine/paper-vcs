@@ -59,6 +59,11 @@ fn undone_text(verb: Verb, undone: &Undone) -> String {
 }
 
 fn warning(undone: &Undone) -> String {
+    if !undone.remembered {
+        return "Some files were left as they are; your next paper command records them as \
+                edits, which clears what you can redo."
+            .to_owned();
+    }
     let skipped = undone.skipped.len();
     let (head, records) = if skipped > 0 {
         let head = if skipped == 1 {
@@ -178,6 +183,7 @@ mod tests {
                 })
                 .collect(),
             files_match: false,
+            remembered: true,
         }
     }
 

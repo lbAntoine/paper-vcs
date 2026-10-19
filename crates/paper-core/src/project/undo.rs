@@ -28,6 +28,10 @@ pub struct Undone {
     /// that looks at the files records the difference as an edits entry (which clears the redo
     /// stack).
     pub files_match: bool,
+    /// Whether paper wrote `checkout-left.json` for this step: the files left alone are
+    /// remembered, so `paper undo` and `paper redo` go on from there. When `files_match` is
+    /// false and this is false too, the next command records the difference as an edit.
+    pub remembered: bool,
 }
 
 /// What an undo-family command did.
@@ -226,7 +230,7 @@ impl Project {
         crate::fault::crash_point("after-checkout");
         let now = self.refresh_stat_cache(&tree)?;
         let files_match = now == tree;
-        self.remember_leftovers(&log, &tree, &now, &current, tracking_only)?;
+        let remembered = self.remember_leftovers(&log, &tree, &now, &current)?;
         PendingCheckout::clear(&self.paper_dir)
             .map_err(|source| UndoError::io("remove", &marker_name, source))?;
 
@@ -235,6 +239,7 @@ impl Project {
             changed: plan.changes,
             skipped: plan.skipped,
             files_match,
+            remembered,
         }))
     }
 
@@ -262,37 +267,28 @@ impl Project {
         tree: &paper_git::TreeId,
         now: &paper_git::TreeId,
         before: &BTreeMap<String, TreeFile>,
-        tracking_only: bool,
-    ) -> Result<(), UndoError> {
+    ) -> Result<bool, UndoError> {
         let file = CheckoutLeft::path(&self.paper_dir).display().to_string();
         if now == tree {
             CheckoutLeft::remove(&self.paper_dir)
                 .map_err(|source| UndoError::io("remove", &file, source))?;
-            return Ok(());
+            return Ok(false);
         }
         let recorded = log.head()?.ok_or_else(|| ActivityError::MissingHead {
             path: log.root().join("head"),
         })?;
         let wanted = self.repo.tree_files(tree)?;
         let seen = self.repo.tree_files(now)?;
-        let mut before = before.clone();
-        if tracking_only {
-            // A path the I1 snapshot couldn't see (it was ignored) is unchanged since I1 by
-            // definition: it was left alone, not edited during the command.
-            for (path, file) in &seen {
-                before.entry(path.clone()).or_insert_with(|| file.clone());
-            }
-        }
-        let differing = leftovers_to_remember(&wanted, &seen, &before);
+        let differing = leftovers_to_remember(&wanted, &seen, before);
         if differing.is_empty() {
             CheckoutLeft::remove(&self.paper_dir)
                 .map_err(|source| UndoError::io("remove", &file, source))?;
-            return Ok(());
+            return Ok(false);
         }
         CheckoutLeft::new(&recorded, &differing, &seen)
             .write(&self.paper_dir)
             .map_err(|source| UndoError::io("write", &file, source))?;
-        Ok(())
+        Ok(true)
     }
 }
 

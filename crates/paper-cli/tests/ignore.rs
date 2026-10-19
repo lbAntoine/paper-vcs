@@ -1460,3 +1460,23 @@ fn snapshot_why() {
         insta::assert_snapshot!("why_tracked_human", tracked_env.redact(&tracked.stdout));
     });
 }
+
+#[test]
+fn undo_after_editing_an_ignored_file_says_the_next_command_records_it() {
+    let env = project();
+    env.paper(&["ignore", "data/raw"]).assert_code(0);
+    env.write("data/raw/a.csv", "EDITED\n");
+
+    let undo = env.paper(&["undo"]);
+
+    undo.assert_code(0);
+    assert!(
+        undo.stdout.contains(
+            "Some files were left as they are; your next paper command records them as \
+             edits, which clears what you can redo."
+        ),
+        "{undo:#?}"
+    );
+    assert!(!undo.stdout.contains("go on from here"), "{undo:#?}");
+    assert_eq!(env.read("data/raw/a.csv"), "EDITED\n");
+}
