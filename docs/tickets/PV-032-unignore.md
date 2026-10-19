@@ -1,6 +1,6 @@
 # PV-032: `paper unignore`, `--local` and `--why`
 
-- **Status:** In progress
+- **Status:** Done
 - **Issue:** #59. The design is in #36. PV-018 (#68) shipped the first half.
 - **Branch:** `feat/PV-032-unignore`
 - **Depends on:** PV-018 (merged). Runs in parallel with PV-030 (undo wording).

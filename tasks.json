@@ -65,11 +65,11 @@
       "id": "e1a0c032",
       "title": "PV-032: paper unignore, --local and --why",
       "description": "GitHub issue #59. Wave 4, parallel with PV-030. Size S-M. After PV-018.",
-      "status": "in_progress",
+      "status": "done",
       "priority": "medium",
       "sprint": "v0.2-b",
       "created_at": "2026-10-18T09:25:14Z",
-      "updated_at": "2026-10-18T20:12:15Z"
+      "updated_at": "2026-10-19T17:23:38Z"
     },
     {
       "id": "e1a0c030",
@@ -140,6 +140,26 @@
       "sprint": "v0.3",
       "created_at": "2026-10-18T19:30:00Z",
       "updated_at": "2026-10-18T19:30:00Z"
+    },
+    {
+      "id": "e1a0c036",
+      "title": "PV-036: paper ignore reports success when a nested .gitignore negation keeps the path visible",
+      "description": "GitHub issue #71. From the PV-032 review. Predates PV-032.",
+      "status": "todo",
+      "priority": "low",
+      "sprint": "v0.3",
+      "created_at": "2026-10-19T17:23:38Z",
+      "updated_at": "2026-10-19T17:23:38Z"
+    },
+    {
+      "id": "e1a0c037",
+      "title": "PV-037: undo/redo of an ignore entry keeps redo working when a file was edited while ignored",
+      "description": "GitHub issue #72. From the PV-032 reviews; the quick fix lost data and was reverted. Design: recorded:false leftovers.",
+      "status": "todo",
+      "priority": "medium",
+      "sprint": "v0.3",
+      "created_at": "2026-10-19T17:23:38Z",
+      "updated_at": "2026-10-19T17:23:38Z"
     }
   ]
 }
