@@ -66,3 +66,12 @@ and which known issues remain.
 ## Summary
 
 ## Handoff log
+
+### Prep · rust-engineer · 2026-10-19
+
+- Version bumped to 0.2.0 (`Cargo.toml`, `Cargo.lock`); `paper --version` prints `paper 0.2.0`.
+- CHANGELOG `## 0.2.0` written per the Decisions; claims checked against `02-cli.md` and `paper --help`. README status block, Install URLs and version, and the overview line updated. Roadmap § v0.2: ticked `ignore` line, Accept marked met (PV-026 proptest).
+- `dist plan` (cargo-dist 0.32.0 in `target/tools`): "announcing v0.2.0", `paper-cli 0.2.0` with `paper-cli-installer.sh`, `paper-cli-installer.ps1`, `sha256.sum`, and archives for aarch64-apple-darwin, aarch64-unknown-linux-gnu, x86_64-apple-darwin, x86_64-pc-windows-msvc (.zip), x86_64-unknown-linux-gnu. No changes to `dist-workspace.toml` or the workflow.
+- `cargo test --release -p paper-cli --test crash release_builds_ignore_the_crash_variable`: passed.
+- fmt, clippy `-D warnings` and `cargo test --workspace --all-targets --no-fail-fast`: all passed.
+- README's "Why" bullets (line 56, "`paper undo` reverts any operation, including itself") left as they were: they describe the goal and are true for v0.2. The sentence "There is no undo" existed only in the status block.
