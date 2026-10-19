@@ -113,3 +113,16 @@ back, whether the step names the ignore entry directly or through an `undo:` or 
     I did not write a test for it.
   - I did not use `undo --to`: it records `position` = the target, so the next undo names the
     target itself, never a wrapper.
+
+### GREEN · rust-engineer · 2026-10-19
+
+- `project/undo.rs`: new helper `changes_tracking_only` resolves the step's entry through
+  `Redo` (its `position`) and `Undo` (`redo[0]`, which is what `step_undo` records as the op it
+  took back), up to 64 wrappers, and is tracking-only when it reaches `Ignore` or `Unignore`.
+  An `undo --to` op has an empty redo stack, so it keeps the normal rules; `undo --to` itself
+  is unchanged.
+- Specs: 03-architecture "Tracking-only entries" and 02-cli `paper ignore` `--local` output
+  paragraph say `undo:` / `redo:` entries of an ignore or unignore count too.
+- All four rules now pass in both RED loops. fmt, clippy and the full suite pass; session
+  proptest passes with `PROPTEST_CASES=3`.
+- Follow-up (v0.3): add ignore and unignore steps to the session proptest.

@@ -443,7 +443,8 @@ stay on disk.
 
 **Output.** With `--local`, the output ends with "The rules are in .git/info/exclude: they are
 yours alone, and not part of your saves." and "`paper undo` changes tracking only; the rule in
-.git/info/exclude stays." in place of "`paper undo` takes this back." `No longer ignoring:` lists
+.git/info/exclude stays." in place of "`paper undo` takes this back." The same holds when the
+step takes back or brings back an `undo:` or `redo:` entry of an ignore or unignore. `No longer ignoring:` lists
 removed rules, `Exceptions added to the ignore rules:` lists negations, then
 `Now tracking N files:` lists the files (at most 20, then `and N more`) and says the next save
 records them. `--json`:

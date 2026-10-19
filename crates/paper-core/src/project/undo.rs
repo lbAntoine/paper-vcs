@@ -204,8 +204,7 @@ impl Project {
         let wanted_files = self.repo.tree_files(&tree)?;
         // Taking back or bringing back an ignore or unignore changes what is tracked, never
         // the files: only `.gitignore` files are written or deleted.
-        let tracking_only = !matches!(aim, Aim::To(_))
-            && matches!(step.entry.kind, OpKind::Ignore | OpKind::Unignore);
+        let tracking_only = !matches!(aim, Aim::To(_)) && changes_tracking_only(&log, &step.entry)?;
         let targets: BTreeSet<&String> = current
             .keys()
             .chain(wanted_files.keys())
@@ -328,6 +327,27 @@ fn leftovers_to_remember(
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect()
+}
+
+/// Whether `entry` is an ignore or unignore, or an `undo:` / `redo:` entry that took back or
+/// brought back one (looking through at most 64 wrappers). An `undo` op took back the front of
+/// its own redo stack; a `redo` op brought back its position. An `undo --to` op has an empty
+/// redo stack, so it falls under the normal rules.
+fn changes_tracking_only(log: &ActivityLog, entry: &Op) -> Result<bool, UndoError> {
+    let mut current = entry.clone();
+    for _ in 0..64 {
+        let next = match current.kind {
+            OpKind::Ignore | OpKind::Unignore => return Ok(true),
+            OpKind::Redo => current.position.clone(),
+            OpKind::Undo => match current.redo.first() {
+                Some(id) => id.clone(),
+                None => return Ok(false),
+            },
+            _ => return Ok(false),
+        };
+        current = log.read(&next)?;
+    }
+    Ok(false)
 }
 
 /// `undo`: back to the parent of the position; `None` at the first entry.
