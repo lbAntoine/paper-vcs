@@ -5,9 +5,10 @@
 > **Status: v0.2.0 is a pre-release for early testers.** It works on one line of work,
 > locally: `init`, `save`, `history`, `show`, `status`, `diff`, `restore`, `config`, `undo`,
 > `redo`, `activity`, `gc`, `ignore` and `unignore`. Saves, restores, edits and ignore rules
-> can be taken back with `paper undo`, files included (`paper gc` itself can't). There are no
-> lines or tries, no milestones, no sync and no word-level diff yet. Expect rough edges, and
-> see the [changelog](CHANGELOG.md) for the known issues.
+> can be taken back with `paper undo`, files included (except `paper gc`, and rules added
+> with `--local`: see the changelog). There are no lines or tries, no milestones, no sync and
+> no word-level diff yet. Expect rough edges, and see the [changelog](CHANGELOG.md) for the
+> known issues.
 >
 > **Sharing:** you can publish your saves with plain `git push`. Bringing in other people's
 > work with `git pull` isn't supported yet. After a pull, `status` shows their edits as your
@@ -53,7 +54,8 @@ from [Jujutsu](https://github.com/jj-vcs/jj). Where paper is going (see Status a
 what works today):
 
 - **You can't lose work.** Your files are recorded automatically before every command.
-- **Everything is undoable.** `paper undo` reverts any operation, including itself.
+- **Everything is undoable.** `paper undo` takes back saves, restores, edits and even an undo.
+  Only `paper gc`, which trims old history on purpose, is permanent.
 - **No dirty state.** There's no staging area and no stash, and switching is always safe.
 - **Diffs that read like prose.** Word-level diffs for LaTeX, Markdown and Typst, with
   readable diffs for Word and Excel files planned.

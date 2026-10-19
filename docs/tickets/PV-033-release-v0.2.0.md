@@ -33,7 +33,7 @@ and which known issues remain.
     - the refusal after a plain-git commit now names a way back (`git reset --soft <id>`).
   - **Upgrading from 0.1.0:** projects upgrade themselves on first use. History from before the upgrade can't be undone.
   - **Known issues:**
-    - **PV-035 (#67):** on macOS, undo after renaming a file by changing only the Unicode form of an accented name (same bytes) can delete it. Avoid renames that change only an accent's encoding. Maintainer decision: listed as a known issue.
+    - **PV-035 (#67):** on macOS, undo and `restore` after renaming a file by changing only the Unicode form of an accented name can delete it. Avoid renames that change only an accent's encoding. Maintainer decision: listed as a known issue.
     - **PV-037 (#72):** a file edited while it's ignored ends the redo stack at the next command.
     - **Local rules (`--local`)** live in `.git/info/exclude`, outside history: undo changes tracking only.
     - **PV-036 (#71)** and **PV-034 (#66):** small ignore-listing gaps. Mention them only if they fit in one line.
@@ -75,3 +75,9 @@ and which known issues remain.
 - `cargo test --release -p paper-cli --test crash release_builds_ignore_the_crash_variable`: passed.
 - fmt, clippy `-D warnings` and `cargo test --workspace --all-targets --no-fail-fast`: all passed.
 - README's "Why" bullets (line 56, "`paper undo` reverts any operation, including itself") left as they were: they describe the goal and are true for v0.2. The sentence "There is no undo" existed only in the status block.
+
+### Prep (review fixes) · rust-engineer · 2026-10-19
+
+- Applied the eleven wording fixes from review to CHANGELOG, README and this ticket.
+- Checked item 8 with the binary: after a `git pull` that brought in another clone's commit, `paper save` refuses and names `git reset --soft <id>` and `git log main`.
+- PV-038 (#74) is not listed as a known issue, per the maintainer: it lands on main before the release.
