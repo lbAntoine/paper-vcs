@@ -1,6 +1,6 @@
 # PV-033: release v0.2.0
 
-- **Status:** In progress
+- **Status:** Done
 - **Issue:** #60
 - **Branch:** `chore/PV-033-release-v0.2.0`
 - **Depends on:** every other v0.2-b ticket (merged: PV-025, PV-027, PV-029, PV-031, PV-018, PV-026, PV-030, PV-032).
@@ -54,16 +54,28 @@ and which known issues remain.
 
 ## Acceptance criteria
 
-- [ ] Version 0.2.0 in `Cargo.toml` and `Cargo.lock`; `paper --version` prints `paper 0.2.0`.
-- [ ] CHANGELOG `## 0.2.0` and README updated as decided. Nothing in them is untrue for v0.2.0.
-- [ ] Roadmap § v0.2 updated.
-- [ ] `dist plan` is clean, and the release-only crash test passes locally.
-- [ ] VERIFICATION.md for v0.2: PASSED, or its gaps handled.
-- [ ] fmt, clippy and the full suite pass on CI (3 OSes). PR merged.
-- [ ] Maintainer approval, then tag `v0.2.0`, release workflow green, marked as a pre-release, installer smoke-tested.
-- [ ] v0.2 milestone and #60 closed.
+- [x] Version 0.2.0 in `Cargo.toml` and `Cargo.lock`; `paper --version` prints `paper 0.2.0`.
+- [x] CHANGELOG `## 0.2.0` and README updated as decided. Nothing in them is untrue for v0.2.0.
+- [x] Roadmap § v0.2 updated.
+- [x] `dist plan` is clean, and the release-only crash test passes locally.
+- [x] VERIFICATION.md for v0.2: PASSED, or its gaps handled.
+- [x] fmt, clippy and the full suite pass on CI (3 OSes). PR merged.
+- [x] Maintainer approval, then tag `v0.2.0`, release workflow green, marked as a pre-release, installer smoke-tested.
+- [x] v0.2 milestone and #60 closed.
 
 ## Summary
+
+v0.2.0 was published on 2026-10-19 as a GitHub pre-release
+(https://github.com/lbAntoine/paper-vcs/releases/tag/v0.2.0), tag `v0.2.0` at 20c178c after the
+maintainer's approval. The release workflow built all five targets; the shell installer was
+smoke-tested in a throwaway folder (`paper --version` printed `paper 0.2.0`; init, history,
+status, undo, redo; fsck clean). The first goal verification found GAPS_FOUND (6/8): undoing a
+`redo:` of `unignore --local` deleted files. The maintainer chose to fix it first (PV-038, #76);
+the re-check found one more `--local` path, listed as a known issue in the CHANGELOG and #75 by
+the maintainer's decision, and VERIFICATION.md ended PASSED 8/8. Review of the release text
+removed four untrue claims; the coordinator also dropped a hint that `git reset --soft` works
+after a pull (it would fold co-authors' commits into your own save). #60 and the v0.2 milestone
+are closed.
 
 ## Handoff log
 

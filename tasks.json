@@ -2,96 +2,6 @@
   "version": 1,
   "tasks": [
     {
-      "id": "e1a0c025",
-      "title": "PV-025: crash recovery (lifecycle step 2) and fault-injection tests",
-      "description": "GitHub issue #43. Wave 1, parallel with PV-027. Size M. Implement the exact repair rule in 03-architecture \u00a7 Command lifecycle; add the deferred ordering and marker tests.",
-      "status": "done",
-      "priority": "high",
-      "sprint": "v0.2-b",
-      "created_at": "2026-10-17T08:47:11Z",
-      "updated_at": "2026-10-18T09:57:50Z"
-    },
-    {
-      "id": "e1a0c027",
-      "title": "PV-027: paper gc (rebuild keep-alive chain, prune old ops)",
-      "description": "GitHub issue #45. Wave 1, parallel with PV-025 (must not change the open path, export.rs or checkout.rs). Size S.",
-      "status": "done",
-      "priority": "medium",
-      "sprint": "v0.2-b",
-      "created_at": "2026-10-17T08:47:11Z",
-      "updated_at": "2026-10-18T09:57:50Z"
-    },
-    {
-      "id": "e1a0c031",
-      "title": "PV-031: undo gets stuck behind a file it had to leave alone (skipped paths re-recorded as edits)",
-      "description": "GitHub issue #57. Wave 2, parallel with PV-029. Size M. Maintainer: option (a).",
-      "status": "done",
-      "priority": "high",
-      "sprint": "v0.2-b",
-      "created_at": "2026-10-18T00:05:04Z",
-      "updated_at": "2026-10-18T13:24:42Z"
-    },
-    {
-      "id": "e1a0c029",
-      "title": "PV-029: status says when the line moved outside paper",
-      "description": "GitHub issue #52. Wave 2, parallel with PV-031. Size S.",
-      "status": "done",
-      "priority": "medium",
-      "sprint": "v0.2-b",
-      "created_at": "2026-10-18T00:05:04Z",
-      "updated_at": "2026-10-18T13:24:42Z"
-    },
-    {
-      "id": "e1a0c026",
-      "title": "PV-026: I4 acceptance: random 200-step sessions undo and redo exactly (proptest)",
-      "description": "GitHub issue #44. Wave 3, parallel with PV-018 (tests only). Size M. Needs PV-025 and PV-031.",
-      "status": "done",
-      "priority": "high",
-      "sprint": "v0.2-b",
-      "created_at": "2026-10-17T08:47:11Z",
-      "updated_at": "2026-10-18T15:25:37Z"
-    },
-    {
-      "id": "e1a0c018",
-      "title": "PV-018: paper ignore <path|pattern>: own .gitignore block, untrack saved matches, list rules",
-      "description": "GitHub issue #36. Wave 3, parallel with PV-026. Size M. Split: unignore/--local/--why are PV-032.",
-      "status": "done",
-      "priority": "medium",
-      "sprint": "v0.2-b",
-      "created_at": "2026-10-17T08:47:11Z",
-      "updated_at": "2026-10-18T15:25:37Z"
-    },
-    {
-      "id": "e1a0c032",
-      "title": "PV-032: paper unignore, --local and --why",
-      "description": "GitHub issue #59. Wave 4, parallel with PV-030. Size S-M. After PV-018.",
-      "status": "done",
-      "priority": "medium",
-      "sprint": "v0.2-b",
-      "created_at": "2026-10-18T09:25:14Z",
-      "updated_at": "2026-10-19T17:23:38Z"
-    },
-    {
-      "id": "e1a0c030",
-      "title": "PV-030: undo wording polish (refusal text, repeated undo --to) and stale spec sentences",
-      "description": "GitHub issue #55. Wave 4, parallel with PV-032. Size S.",
-      "status": "done",
-      "priority": "low",
-      "sprint": "v0.2-b",
-      "created_at": "2026-10-18T00:05:04Z",
-      "updated_at": "2026-10-18T20:12:15Z"
-    },
-    {
-      "id": "e1a0c033",
-      "title": "PV-033: release v0.2.0",
-      "description": "GitHub issue #60. Wave 5, last. Size S. Verification, then maintainer approval before the tag.",
-      "status": "in_progress",
-      "priority": "high",
-      "sprint": "v0.2-b",
-      "created_at": "2026-10-18T09:25:14Z",
-      "updated_at": "2026-10-19T18:07:15Z"
-    },
-    {
       "id": "e1a0c015",
       "title": "PV-015: config set values containing CR/LF round-trip as \\r\\r\\n in CRLF files (reject control characters in text values?)",
       "description": "GitHub issue #15. Pre-existing; found in PV-014 review round 2",
@@ -162,14 +72,14 @@
       "updated_at": "2026-10-19T17:23:38Z"
     },
     {
-      "id": "e1a0c038",
-      "title": "PV-038: undoing a redo of unignore --local deletes files from disk",
-      "description": "GitHub issue #74. Found by the v0.2 goal verification; maintainer: fix before the v0.2.0 tag. Blocks PV-033.",
-      "status": "done",
-      "priority": "high",
-      "sprint": "v0.2-b",
-      "created_at": "2026-10-19T18:35:32Z",
-      "updated_at": "2026-10-19T18:35:32Z"
+      "id": "e1a0c039",
+      "title": "PV-039: ignore/unignore follow-ups (undo --to across --local, local note for wrappers, proptest ignore steps, undo of a local unignore's files)",
+      "description": "GitHub issue #75. From the PV-038 review and the v0.2 re-verification; two items ship in v0.2.0 as known issues.",
+      "status": "todo",
+      "priority": "medium",
+      "sprint": "v0.3",
+      "created_at": "2026-10-19T21:49:37Z",
+      "updated_at": "2026-10-19T21:49:37Z"
     }
   ]
 }
