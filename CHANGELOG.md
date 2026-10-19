@@ -12,8 +12,8 @@ new is that you can take back anything you or paper did except `paper gc`, files
 What's new since 0.1.0:
 
 - `paper undo` takes back the last thing you or paper did: for example a save, a restore, an
-  ignore rule or your unsaved edits. Your files follow. `paper redo` brings it back, and `paper undo --to <id>` goes
-  straight back to an earlier point.
+  ignore rule or your unsaved edits. Your files follow. `paper redo` brings it back, and
+  `paper undo --to <id>` goes straight back to an earlier point.
 - `paper activity` lists everything that happened to the project, newest first, with the ids
   `undo --to` takes. You can go back to any of them with `paper undo --to <id>`.
 - If paper is stopped in the middle of a command (a crash, a power cut, a closed terminal),
@@ -35,7 +35,8 @@ longer open the project.
 Known issues:
 
 - On macOS, if you rename a file by changing only how an accent in its name is encoded (the
-  name looks the same), `paper undo` or `paper restore` can delete the file (#67). Avoid such renames.
+  name looks the same), `paper undo` or `paper restore` can delete the
+  file (#67). Avoid such renames.
 - If you edit a file while it is ignored, then undo or redo that `ignore` or `unignore`, your
   next command records the edit and you can no longer redo (#72). Nothing is lost.
 - Rules added with `--local` live in `.git/info/exclude`, outside history. `paper undo`
