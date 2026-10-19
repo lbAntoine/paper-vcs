@@ -35,8 +35,8 @@ longer open the project.
 Known issues:
 
 - On macOS, if you rename a file by changing only how an accent in its name is encoded (the
-  name looks the same), `paper undo` or `paper restore` can delete the
-  file (#67). Avoid such renames.
+  name looks the same), `paper undo` or `paper restore` can delete the file
+  (#67). Avoid such renames.
 - If you edit a file while it is ignored, then undo or redo that `ignore` or `unignore`, your
   next command records the edit and you can no longer redo (#72). Nothing is lost.
 - Rules added with `--local` live in `.git/info/exclude`, outside history. `paper undo`
@@ -50,7 +50,7 @@ What doesn't work yet:
 - No lines (`try`, `keep`) and no milestones.
 - No sync with collaborators. You can `git push` your saves, but bringing in other people's
   work with `git pull` isn't supported yet: after a pull brings in commits, `paper save`
-  stops until a later version (the `git reset --soft` way back above works after a pull too).
+  stops until a later version.
 - Diffs are by line, not by word (planned for v0.3).
 
 ## 0.1.0
