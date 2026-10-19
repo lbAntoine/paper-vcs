@@ -46,6 +46,10 @@ the ticket's `Issue` field.
   open ticket branch. Two tickets touching the same file are sequenced (`Depends on`), never
   parallel. Two tickets defining the same behaviour are merged or one is rewritten before dispatch.
 - A ticket is `Ready` only when every acceptance criterion is testable.
+- **Data-safety invariant:** a ticket that touches undo, checkout, recovery or snapshot code
+  states the invariant it must keep, in one sentence (for example: a file leaves the disk only
+  if its content is already in history and the target state does not keep it). RED tests and
+  the review brief name it.
 - Tickets are groomed when their work starts, not in advance: tickets rot when the code under
   them moves.
 
@@ -94,6 +98,13 @@ the ADRs and the hard rules in `CLAUDE.md`, and returns findings ranked `BLOCKER
 - **CHANGES**: the coordinator sends the findings to the *same* rust-engineer agent with
   `SendMessage`, so it keeps its context, then re-runs the review. After two rounds without
   approval, the coordinator escalates to the maintainer.
+
+**Fixes in data-safety code.** Every fix after a review in undo, checkout, recovery or snapshot
+code, including a fix the coordinator decides, gets a diff-only review against the ticket's
+invariant: the reviewer re-runs its own probe scripts on a fresh build, and builds any scratch
+copy (to prove a test fails without the fix) in its own `CARGO_TARGET_DIR`, never the
+worktree's. A fix described as "narrow" is not exempt: in v0.2-b four such fixes added a
+data-loss path that only this check caught.
 
 ## 6. Pull request and merge
 

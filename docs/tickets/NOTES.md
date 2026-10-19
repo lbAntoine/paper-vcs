@@ -3,6 +3,40 @@
 Dated process lessons and project decisions that aren't architecture (those are ADRs).
 Newest first.
 
+## 2026-10-19: sprint v0.2-b retrospective
+
+Sprint v0.2-b met its goal: nothing is ever lost, proven, and released as v0.2.0 (a GitHub
+pre-release, tag at 20c178c). Ten tickets shipped in sixteen pull requests (#62 to #77): crash
+recovery (PV-025), `paper gc` (PV-027), `status` noticing plain-git moves (PV-029), undo past
+skipped files (PV-031), `paper ignore` (PV-018), the 200-step session proptest (PV-026), undo
+wording and the `git reset --soft` way out (PV-030), `unignore`/`--local`/`--why` (PV-032), a
+data-loss fix found by the goal verification (PV-038), and the release (PV-033). 1205 tests.
+
+- **What slowed us down: "narrow" fixes to the undo and checkout code that broke something
+  else.** Four times a fix in that code, three of them decided by the coordinator, introduced a
+  new data-loss path that only a later check caught. In PV-018, an "already on disk" rule for
+  every checkout deleted a file renamed only in letter case. In PV-032, a tracking-only rule
+  dropped PV-031's leftovers, and the "narrow" fix for a file edited while ignored let a second
+  undo overwrite it. In PV-038, a lookup turned an undo after `gc` into an internal error. The
+  goal verification found two more `--local` deletion paths before the tag (one fixed, one a
+  known issue). The pattern: each fix was stated as a local patch for one reported scenario,
+  not checked against the invariant that keeps work safe (a file leaves the disk only if its
+  content is already in history and the target state does not keep it). Three tickets needed
+  the maintainer's decision after two review rounds.
+- **What worked: checks that try to break the result, run by someone other than the author.**
+  Diff-only reviews with the reviewer's own probe scripts on a fresh build caught every one of
+  the regressions above. Mutation-testing the PV-026 proptest (planting nine undo bugs) showed
+  its first oracle missed three and drove an independent model that catches all nine. The goal
+  verification before the tag, run by hand with the real binary, found what no ticket test did.
+- **Process change:** tickets that touch undo, checkout, recovery or snapshot code name the
+  data-safety invariant they must keep, and every fix in that code after a review, including
+  the coordinator's own decisions, is checked by the reviewer against that invariant with its
+  probe scripts on a fresh build in its own target directory (docs/workflow.md, sections 2
+  and 5).
+- **Open for v0.3:** the known issues #67 (macOS Unicode rename), #72 (edit while ignored ends
+  redo), #75 (`--local` and `undo --to` paths, plus ignore steps in the session proptest), #71,
+  #66; and #15, #33, #50 carried from earlier.
+
 ## 2026-10-18: sprint v0.2-a retrospective
 
 Sprint v0.2-a met its goal: every paper command can be undone and redone, working files
