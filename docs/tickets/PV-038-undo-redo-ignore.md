@@ -83,3 +83,33 @@ back, whether the step names the ignore entry directly or through an `undo:` or 
 ## Summary
 
 ## Handoff log
+
+### RED · test-author · 2026-10-19
+
+- File: `crates/paper-core/tests/unignore.rs`, 3 new tests (each loops over its rules, with a
+  never-saved file `data/raw/never-saved.csv` in the folder), no stubs, no src changes.
+  - `undoing_a_redo_of_each_ignore_and_unignore_changes_tracking_only`: the reproduction for
+    local and shared unignore, local and shared ignore. FAILS on origin/main: the step over
+    the `redo:` entry deletes every file in `data/raw/` (left `{}`). The loop stops at its
+    first rule (`--local` unignore), so the other three rules are untested until GREEN.
+  - `redoing_again_after_undoing_a_redo_brings_the_rule_back_without_touching_files`: the same,
+    then `redo` of the `redo:` entry. FAILS on main for the same reason.
+  - `undoing_and_redoing_an_undo_of_each_ignore_and_unignore_changes_tracking_only`: PASSES
+    on main by design (a pin, see below).
+- Each step asserts the stepped-over entry's description prefix (`edited`, `redo:`, `undo:`),
+  raw files byte-identical, and the tracking in the draft; fsck --strict and `git status` run.
+- Main: 59 passed, 2 failed in the file; the rest of the workspace passes. fmt and clippy clean.
+- Findings for GREEN:
+  - The mirror (`undo:` wrapper) is not reachable as a deletion on main. Deletion needs a
+    file that is present, untracked at the target, and not ignored by the target's rules.
+    Only a `--local` rule that is gone from `.git/info/exclude` gives that, i.e. after a local
+    unignore. But after undoing an unignore, the next command records the left files as an
+    ordinary edit, and undoing that edit removes them, which is the existing PV-031 design and
+    not part of this ticket. For an ignore the mirror is tracking-only already: a shared rule
+    is in the target's `.gitignore`, a local rule is still in the exclude file. So the mirror
+    test covers `ignore` and `ignore --local` only and passes on main. It guards the fix.
+  - Worth a thought for the coordinator: undoing the `edited data/raw/...` entry that recorded
+    leftovers of an undone unignore deletes those files (ordinary undo of a save-like edit).
+    I did not write a test for it.
+  - I did not use `undo --to`: it records `position` = the target, so the next undo names the
+    target itself, never a wrapper.
