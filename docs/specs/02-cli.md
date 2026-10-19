@@ -459,8 +459,8 @@ exactly as without `--local`, and one entry is recorded.
 
 **Local rules are outside history**, like git config. Undo and redo of a `--local` entry take
 back or bring back the tracking change only (for any single `undo` or `redo` of an `ignore` or
-`unignore` entry, only `.gitignore` files are written or deleted; the other files stay on disk
-as they are. Files whose content is already in history are remembered as left alone, so `undo`
+`unignore` entry, or of an `undo:` or `redo:` entry of one, only `.gitignore` files are written
+or deleted; the other files stay on disk as they are. Files whose content is already in history are remembered as left alone, so `undo`
 and `redo` go on. A file edited while it was ignored is recorded as an edit by the next
 command, undo and redo included, which ends the redo stack; the output says so, and PV-037
 (#72) tracks a gentler behaviour); `.git/info/exclude` is left as it is. `undo --to` across
