@@ -332,7 +332,7 @@ fn leftovers_to_remember(
 /// Whether `entry` is an ignore or unignore, or an `undo:` / `redo:` entry that took back or
 /// brought back one (looking through at most 64 wrappers). An `undo` op took back the front of
 /// its own redo stack; a `redo` op brought back its position. An `undo --to` op has an empty
-/// redo stack, so it falls under the normal rules.
+/// redo stack, so it falls under the normal rules, as does a chain that reaches an op gc removed.
 fn changes_tracking_only(log: &ActivityLog, entry: &Op) -> Result<bool, UndoError> {
     let mut current = entry.clone();
     for _ in 0..64 {
@@ -345,7 +345,12 @@ fn changes_tracking_only(log: &ActivityLog, entry: &Op) -> Result<bool, UndoErro
             },
             _ => return Ok(false),
         };
-        current = log.read(&next)?;
+        // An op below the gc horizon is gone: stop and use the normal rules.
+        current = match log.read(&next) {
+            Ok(op) => op,
+            Err(ActivityError::MissingOp { .. }) => return Ok(false),
+            Err(other) => return Err(other.into()),
+        };
     }
     Ok(false)
 }

@@ -82,6 +82,14 @@ back, whether the step names the ignore entry directly or through an `undo:` or 
 
 ## Summary
 
+- `changes_tracking_only` in `undo.rs` looks through `undo:` and `redo:` entries (up to 64) to an
+  ignore or unignore; a missing op (below the gc horizon) falls back to the normal rules.
+- The `OpKind::Undo => redo[0]` branch is pinned only by the mirror test, which passes on main
+  by design.
+- Follow-ups for v0.3 (PV-039): `undo --to` across a `--local` unignore removes its files
+  (documented, normal rules); the `--local` undo note is not printed for `undo:`/`redo:`
+  wrappers; ignore and unignore steps in the session proptest.
+
 ## Handoff log
 
 ### RED · test-author · 2026-10-19
@@ -126,3 +134,13 @@ back, whether the step names the ignore entry directly or through an `undo:` or 
 - All four rules now pass in both RED loops. fmt, clippy and the full suite pass; session
   proptest passes with `PROPTEST_CASES=3`.
 - Follow-up (v0.3): add ignore and unignore steps to the session proptest.
+
+### GREEN (review round 1) · rust-engineer · 2026-10-19
+
+- MAJOR: `changes_tracking_only` returns `Ok(false)` (normal rules) on `ActivityError::MissingOp`;
+  other errors propagate. New core test
+  `undoing_over_a_redo_entry_whose_target_gc_removed_still_works` (fails without the fix).
+- MINOR: moved the `undo:`/`redo:` clause from `paper unignore`'s Output paragraph to the
+  `--local` "outside history" parenthesis in 02-cli; re-wrapped 03-architecture (also mentions gc).
+- NIT: the mirror test uses literal `false`/`true` and the prefix `"ignore"`.
+- Ticket Summary filled in as asked.

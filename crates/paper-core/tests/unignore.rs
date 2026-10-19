@@ -1760,20 +1760,56 @@ fn undoing_and_redoing_an_undo_of_each_ignore_and_unignore_changes_tracking_only
     for rule in IGNORES {
         let (dir, mut project) = raw_data_project();
         run_rule(dir.path(), &mut project, rule);
-        let tracked_after = matches!(rule, Rule::LocalUnignore | Rule::SharedUnignore);
         let raw = raw_files(dir.path());
-        step_keeps_raw(dir.path(), &raw, project.undo().unwrap(), "");
+        step_keeps_raw(dir.path(), &raw, project.undo().unwrap(), "ignore");
         edit_main_and_status(dir.path(), &mut project);
 
         step_keeps_raw(dir.path(), &raw, project.undo().unwrap(), "edited");
         // Takes back the `undo:` entry: the state of the rule itself again.
         step_keeps_raw(dir.path(), &raw, project.undo().unwrap(), "undo:");
-        assert_raw_tracked(dir.path(), tracked_after);
+        assert_raw_tracked(dir.path(), false);
         // Brings the `undo:` entry back.
         step_keeps_raw(dir.path(), &raw, project.redo().unwrap(), "undo:");
-        assert_raw_tracked(dir.path(), !tracked_after);
+        assert_raw_tracked(dir.path(), true);
 
         git(dir.path(), &["fsck", "--strict", "--no-progress"]);
         git(dir.path(), &["status", "--porcelain"]);
     }
+}
+
+/// gc keeps a `redo:` entry but not the op its position names: the step over it must not fail
+/// on the missing op, it just uses the normal rules.
+#[test]
+fn undoing_over_a_redo_entry_whose_target_gc_removed_still_works() {
+    let (dir, mut project) = raw_data_project();
+    run_rule(dir.path(), &mut project, Rule::LocalUnignore);
+    project.undo().unwrap();
+    project.redo().unwrap();
+    edit_main_and_status(dir.path(), &mut project);
+    project.undo().unwrap();
+    project.undo().unwrap();
+    fs::write(dir.path().join("m.tex"), "m3\n").unwrap();
+    project.status(&StatusOptions::default()).unwrap();
+
+    let ops = dir.path().join(".git/paper/activity/ops");
+    let head = fs::read_to_string(dir.path().join(".git/paper/activity/head")).unwrap();
+    let head = head.trim();
+    let head_op: serde_json::Value =
+        serde_json::from_slice(&fs::read(ops.join(format!("{head}.json"))).unwrap()).unwrap();
+    let newest_parent = head_op["parent"].as_str().unwrap().to_owned();
+    for entry in fs::read_dir(&ops).unwrap() {
+        let path = entry.unwrap().path();
+        let id = path.file_stem().unwrap().to_string_lossy().into_owned();
+        if id == head || id == newest_parent {
+            continue;
+        }
+        let mut op: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        op["time"] = serde_json::json!("2020-01-01T00:00:00Z");
+        fs::write(&path, serde_json::to_vec_pretty(&op).unwrap()).unwrap();
+    }
+    project.gc(GcAge::parse("1d").unwrap(), false).unwrap();
+
+    project.undo().unwrap();
+    project.undo().unwrap();
+    git(dir.path(), &["fsck", "--strict", "--no-progress"]);
 }
