@@ -214,3 +214,76 @@ fn restoring_the_previous_save_after_a_case_only_rename_keeps_the_file() {
     restore_previous(&mut project, &["Notes.tex", "notes.tex"]);
     assert_file_survives(dir.path(), "Notes.tex", "notes.tex", "the content\n");
 }
+
+/// Whatever is at `top` after the round trip: the folder's `cv.tex` or the file itself.
+fn assert_folder_or_file_survives(dir: &Path, top: &str) {
+    let at = dir.join(top);
+    let content = if at.is_dir() {
+        fs::read_to_string(at.join("cv.tex")).unwrap()
+    } else {
+        fs::read_to_string(&at).unwrap()
+    };
+    assert_eq!(content, "the content\n");
+    git(dir, &["fsck", "--strict", "--no-progress"]);
+}
+
+#[test]
+fn undoing_a_folder_turned_into_a_unicode_form_file_keeps_the_content() {
+    if !folds(NFC_DIR, NFD_DIR) {
+        return;
+    }
+    let old = format!("{NFC_DIR}/cv.tex");
+    let (dir, mut project) = renamed_project(&old, NFD_DIR, NFC_DIR);
+    project.undo().unwrap();
+    assert_folder_or_file_survives(dir.path(), NFC_DIR);
+    project.undo().unwrap();
+    assert_folder_or_file_survives(dir.path(), NFC_DIR);
+}
+
+#[test]
+fn restoring_a_folder_turned_into_a_unicode_form_file_keeps_the_content() {
+    if !folds(NFC_DIR, NFD_DIR) {
+        return;
+    }
+    let old = format!("{NFC_DIR}/cv.tex");
+    let (dir, mut project) = renamed_project(&old, NFD_DIR, NFC_DIR);
+    restore_previous(&mut project, &[&old, NFD_DIR]);
+    assert_folder_or_file_survives(dir.path(), NFC_DIR);
+}
+
+#[test]
+fn undoing_a_file_turned_into_a_unicode_form_folder_keeps_the_content() {
+    if !folds(NFC_DIR, NFD_DIR) {
+        return;
+    }
+    let new = format!("{NFD_DIR}/cv.tex");
+    let (dir, mut project) = renamed_project(NFC_DIR, &new, NFC_DIR);
+    project.undo().unwrap();
+    assert_folder_or_file_survives(dir.path(), NFC_DIR);
+    project.undo().unwrap();
+    assert_folder_or_file_survives(dir.path(), NFC_DIR);
+}
+
+#[test]
+fn restoring_one_spelling_names_the_tracked_other_spelling_in_the_skip() {
+    if !folds(NFC_FILE, NFD_FILE) {
+        return;
+    }
+    let (dir, mut project) = renamed_project(NFC_FILE, NFD_FILE, NFC_FILE);
+    let restored = project
+        .restore(&RestoreRequest {
+            paths: vec![NFC_FILE.to_owned()],
+            from: Some("last~1".parse().unwrap()),
+        })
+        .unwrap();
+    assert_eq!(
+        restored.skipped,
+        vec![SkippedPath {
+            path: NFC_FILE.to_owned(),
+            reason: RestoreSkip::CaseAlias {
+                other: NFD_FILE.to_owned()
+            },
+        }]
+    );
+    assert_file_survives(dir.path(), NFC_FILE, NFD_FILE, "the content\n");
+}

@@ -277,17 +277,20 @@ ignores case would otherwise read the other spelling's file and delete the only 
 Same-file rule (`restore_plan.rs`, shared by every checkout planner). A filesystem may fold
 names by rules paper-vcs does not know (APFS folds Unicode normalisation; case-insensitive
 volumes fold case). So the planner also compares files, not only names: on Unix, two paths are
-the same file when `symlink_metadata` gives the same `(device, inode)`. Data-safety invariant:
-a planned deletion never removes a file that another path in the same plan refers to on disk,
-unless that path is written after the deletion as part of the same swap. Concretely, an
-existing entry that is the same file as a doomed path is not an obstacle (the deletion runs,
-then the write); when a write is blocked, every deletion of the same file as its target is
-kept too (`KeptForSwap`); and the "already there" rule above is dropped for a path whose file
-is also deleted under another spelling. The name logic still decides `CaseAlias` reasons and
-the spelling reported. On Windows, NTFS does not normalise names and std has no stable file
-id, so the same-file test is always false there and the name logic alone applies. A hard link
-between a tracked and an untracked path looks the same as a folded name, and is treated as a
-swap.
+the same file when `symlink_metadata` gives the same `(device, inode)` and the folder listings
+do not show both names exactly. A folded name is listed once, under one spelling; a real hard
+link is listed under both and stays two files (so it is never overwritten as if it were a
+spelling of the other). Data-safety invariant: a planned deletion never removes a file that
+another path in the same plan refers to on disk, unless that path is written after the
+deletion as part of the same swap. Concretely, an existing entry that is the same file as a
+doomed path is not an obstacle, whether it is the target itself, a parent path that is a file,
+or a file inside a folder the restore empties (the deletion runs, then the write). When a write
+is blocked, every deletion of the same file as its target, or as any of its parent paths, is
+kept too (`KeptForSwap`). The "already there" rule above is dropped for a path whose file is
+also deleted under another spelling. A differently spelled entry is found by listing folders
+and matching by name ignoring case, or by file identity; when it is a draft file the skip is
+`CaseAlias`, which names it. On Windows, NTFS does not normalise names and std has no stable
+file id, so the same-file test is always false there and the name logic alone applies.
 
 Repair, in `Project::open_with` under the lock (`project/recover.rs`), if the marker exists, in
 this order: (1) head is `from`: the op never committed, so drop the marker; (2) otherwise, if

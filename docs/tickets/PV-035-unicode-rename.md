@@ -122,3 +122,10 @@ extra guard that is never weaker.
 - Spec: 03-architecture gets the same-file rule, the invariant and the Windows note. 02-cli unchanged (no skip wording changed).
 - Known limit: a real hard link between an untracked path and a doomed tracked path is read as a folded name and swapped (documented in the spec).
 - Checks: fmt, clippy `-D warnings`, full suite with `--no-fail-fast` pass on macOS; the 4 Unicode-form tests pass.
+
+### GREEN (review round 1) · rust-engineer · 2026-10-20
+- 1 (MAJOR): the parent-prefix file check, `only_holds` (child files) and `settle` (deletions that are the same file as any prefix of a blocked target) now use the same-file rule. `actual_spelling` also matches an entry by file identity, so `real` is right for NFD/NFC. New tests (runtime fold check): folder to NFD file via undo x2 and via restore, NFC file to NFD folder via undo x2. A restore variant of the reverse case was not added.
+- 2 (MAJOR): unit test in `checkout.rs` for the already-there re-plan. It fails with the re-plan disabled (checked in a scratch copy with its own target dir). Deviation: it uses an NFC/NFD pair with a runtime fold check (skips on Linux), not a hard link, because with item 3 a hard link is no longer "the same file".
+- 3: `same_file` = same inode and not both names listed exactly. A real hard link keeps the old behaviour (`Blocked`); Linux-runnable unit tests assert it. Hard-link sentence dropped from the spec; spec covers the parent/folder rule.
+- 4: a draft path that is the same file is reported as `CaseAlias`; integration test added.
+- 5: stray `same_file.rs-E` removed. 6: `root` hoisted.
