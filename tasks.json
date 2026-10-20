@@ -45,11 +45,11 @@
       "id": "e1a0c035",
       "title": "PV-035: undo after a Unicode-normalisation-only rename deletes the file (macOS)",
       "description": "GitHub issue #67. Follow-up from PV-018. Ships in v0.2.0 as a known issue (maintainer). Wave 1, parallel with PV-040. Data-safety invariant ticket.",
-      "status": "in_progress",
+      "status": "done",
       "priority": "high",
       "sprint": "v0.3-a",
       "created_at": "2026-10-18T19:30:00Z",
-      "updated_at": "2026-10-20T19:12:55Z"
+      "updated_at": "2026-10-20T21:07:50Z"
     },
     {
       "id": "e1a0c036",
@@ -140,6 +140,16 @@
       "sprint": "v0.3-b",
       "created_at": "2026-10-20T19:03:13Z",
       "updated_at": "2026-10-20T19:03:13Z"
+    },
+    {
+      "id": "e1a0c046",
+      "title": "PV-046: same-file rule overwrites an ignored hard link under a folded name",
+      "description": "GitHub issue #87. From the PV-035 reviews; the single-link fix regressed #67 and was reverted. Design: split strict vs plain identity by how each use fails safe.",
+      "status": "todo",
+      "priority": "medium",
+      "sprint": "v0.3-b",
+      "created_at": "2026-10-20T21:07:50Z",
+      "updated_at": "2026-10-20T21:07:50Z"
     }
   ]
 }

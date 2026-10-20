@@ -279,8 +279,9 @@ names by rules paper-vcs does not know (APFS folds Unicode normalisation; case-i
 volumes fold case). So the planner also compares files, not only names: on Unix, two paths are
 the same file when `symlink_metadata` gives the same `(device, inode)` and the folder listings
 do not show both names exactly. A folded name is listed once, under one spelling; a real hard
-link is listed under both and stays two files (so it is never overwritten as if it were a
-spelling of the other). Data-safety invariant: a planned deletion never removes a file that
+link listed under both exact names stays two files. Known gap (#87): a hard link whose name is
+folded (another file linked under the NFD spelling of an NFC target) passes this check, so an
+ignored file can be overwritten with bytes a saved file shares. Data-safety invariant: a planned deletion never removes a file that
 another path in the same plan refers to on disk, unless that path is written after the
 deletion as part of the same swap. Concretely, an existing entry that is the same file as a
 doomed path is not an obstacle, whether it is the target itself, a parent path that is a file,

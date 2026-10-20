@@ -1,6 +1,6 @@
 # PV-035: a rename that changes only the Unicode form of a name loses the file (macOS)
 
-- **Status:** In progress
+- **Status:** Done
 - **Issue:** #67
 - **Branch:** `fix/PV-035-unicode-rename`
 - **Depends on:** none. Runs in parallel with PV-040 (paper-diff only).
@@ -83,12 +83,12 @@ extra guard that is never weaker.
 
 ## Acceptance criteria
 
-- [ ] The #67 reproduction through `undo` twice and through `restore --from last~1 .` (file and folder variants): the file survives with its content. The result is either the NFC spelling, swapped, or the NFD spelling left as is, never neither. `git fsck --strict` is clean.
-- [ ] The same for a case-only rename where the filesystem folds case. The existing case-rename tests still pass.
-- [ ] No planned deletion removes a file that a blocked write's target refers to on disk. The invariant is tested directly at the planner level.
-- [ ] Ordinary restore and undo are unchanged. The existing suites pass on all three OSes.
-- [ ] Specs updated, only in the listed sections, including the Windows note.
-- [ ] fmt, clippy (`-D warnings`) and the full suite pass (CI on Linux, macOS, Windows).
+- [x] The #67 reproduction through `undo` twice and through `restore --from last~1 .` (file and folder variants): the file survives with its content. The result is either the NFC spelling, swapped, or the NFD spelling left as is, never neither. `git fsck --strict` is clean.
+- [x] The same for a case-only rename where the filesystem folds case. The existing case-rename tests still pass.
+- [x] No planned deletion removes a file that a blocked write's target refers to on disk. The invariant is tested directly at the planner level.
+- [x] Ordinary restore and undo are unchanged. The existing suites pass on all three OSes.
+- [x] Specs updated, only in the listed sections, including the Windows note.
+- [x] fmt, clippy (`-D warnings`) and the full suite pass (CI on Linux, macOS, Windows).
 
 ## Test plan
 
@@ -100,6 +100,21 @@ extra guard that is never weaker.
 - No snapshots by hand.
 
 ## Summary
+
+On a filesystem that folds names, `paper undo` and `paper restore` no longer delete the only
+copy of a file renamed by changing only its Unicode form (#67) or its letter case, including
+renames that also turn a file into a folder or back. The planner compares files by
+`(device, inode)` on Unix, in the target, parent and folder checks, in `settle` and in the
+to-draft "already there" re-plan; Windows keeps the name logic. A draft file found under another
+spelling is reported as `CaseAlias`. Reviewed in two rounds plus a diff-only check: the
+post-approval single-link guard (9b7720e) regressed #67 for files with an extra hard link and
+was reverted by the maintainer's decision (93fe459), so the shipped rule is the round-2-approved
+one (4e9d49a). Known gap: an ignored file hard-linked under a folded name can be overwritten
+with bytes a saved file shares, follow-up #87 (PV-046) with the two-predicate design.
+
+## Known gaps
+
+- #87 (PV-046): folded-name hard links (see Summary).
 
 ## Handoff log
 
@@ -120,7 +135,7 @@ extra guard that is never weaker.
 - `checkout.rs`: the "already there" rule could still lose the file (disk shows NFC, draft tracks NFD: NFD is deleted while NFC is judged already there and not written). Paths judged already there are now re-planned as writes when a deletion is the same file, so `settle` swaps them. Reaches `settle` otherwise unchanged.
 - Unit tests in `restore_plan.rs` (`cfg(all(test, unix))`) using a hard link: helper behaviour, a swap through `settle`, and the invariant (`assert_invariant`) on a plan with an unrelated blocker. They run on any Unix filesystem.
 - Spec: 03-architecture gets the same-file rule, the invariant and the Windows note. 02-cli unchanged (no skip wording changed).
-- Known limit: a real hard link between an untracked path and a doomed tracked path is read as a folded name and swapped (documented in the spec).
+- Known limit: a real hard link between an untracked path and a doomed tracked path is read as a folded name and swapped (documented in the spec). *Superseded: round 1 added the listing guard; the folded-name case left is #87.*
 - Checks: fmt, clippy `-D warnings`, full suite with `--no-fail-fast` pass on macOS; the 4 Unicode-form tests pass.
 
 ### GREEN (review round 1) · rust-engineer · 2026-10-20
