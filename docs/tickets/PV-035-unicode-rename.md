@@ -102,3 +102,15 @@ extra guard that is never weaker.
 ## Summary
 
 ## Handoff log
+
+### RED · test-author · 2026-10-20
+- Tests: crates/paper-core/tests/same_file.rs (6 tests, whole file `cfg(unix)`, each skips with an eprintln unless the filesystem folds the pair: write one spelling, `symlink_metadata` the other).
+  - NFC to NFD rename of a file: `undo` twice, and `restore --from last~1` naming both spellings (2).
+  - Same for a folder (`Résumé/cv.tex`) (2).
+  - Case-only rename (`Notes.tex` to `notes.tex`): `undo` twice, and restore (2).
+- Each test asserts exactly one spelling is on disk, the content is intact under either name, and `git fsck --strict` is clean.
+- Failing on (proved on a detached `origin/main` probe worktree with its own target dir, macOS APFS): the 4 Unicode-form tests fail with "exactly one spelling" left 0 (file gone). The 2 case-only tests pass on main by design (existing case-alias handling already covers them); they guard against regressions.
+- Planner-level invariant: `restore_plan` is `pub(super)`, so not reachable from the public API. Covered end to end by the survival assertions above. The GREEN phase may add a unit test next to `restore_plan.rs`.
+- Note: `restore` has no `.` path, so tests name both spellings explicitly, as the existing case-alias restore tests do.
+- Stubs: none. Existing suites all pass; fmt and clippy clean.
+- Questions: none
