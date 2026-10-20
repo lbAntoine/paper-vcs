@@ -21,7 +21,8 @@ pub enum TokenKind {
     Word,
     /// A run of whitespace, line breaks included.
     Space,
-    /// One punctuation mark or symbol.
+    /// A punctuation mark, symbol or emoji. A segment such as `___` or a
+    /// multi-character emoji is one token.
     Punct,
     /// A LaTeX command such as `\section*` or `\%` (LaTeX only).
     Command,
@@ -83,11 +84,12 @@ pub fn tokenise(text: &str, tokeniser: Tokeniser) -> Vec<Token<'_>> {
 ///   Jamo Extended-A `U+A960..=U+A97F`, Syllables `U+AC00..=U+D7AF`, Jamo
 ///   Extended-B `U+D7B0..=U+D7FF`, half-width Hangul `U+FFA0..=U+FFDC`.
 /// - Hiragana `U+3040..=U+309F`.
-/// - Katakana `U+30A0..=U+30FF`, Phonetic Extensions `U+31F0..=U+31FF`,
+/// - Katakana `U+30A1..=U+30FF` (not the dash `U+30A0`), Phonetic Extensions `U+31F0..=U+31FF`,
 ///   half-width Katakana `U+FF66..=U+FF9F`.
 /// - CJK Unified Ideographs `U+4E00..=U+9FFF`, Extension A `U+3400..=U+4DBF`,
-///   Extensions B and later `U+20000..=U+323AF`.
-/// - CJK Compatibility Ideographs `U+F900..=U+FAFF`.
+///   Extensions B and later `U+20000..=U+3FFFD`.
+/// - CJK Compatibility Ideographs `U+F900..=U+FAFF` (the compatibility
+///   supplement `U+2F800..=U+2FA1F` lies inside the planes above).
 fn is_cjk(c: char) -> bool {
     matches!(u32::from(c),
         0x1100..=0x11FF
@@ -95,12 +97,13 @@ fn is_cjk(c: char) -> bool {
         | 0xA960..=0xA97F
         | 0xAC00..=0xD7FF
         | 0xFFA0..=0xFFDC
-        | 0x3040..=0x30FF
+        | 0x3040..=0x309F
+        | 0x30A1..=0x30FF
         | 0x31F0..=0x31FF
         | 0xFF66..=0xFF9F
         | 0x3400..=0x4DBF
         | 0x4E00..=0x9FFF
-        | 0x20000..=0x323AF
+        | 0x20000..=0x3FFFD
         | 0xF900..=0xFAFF)
 }
 
@@ -191,25 +194,31 @@ fn latex_into<'a>(text: &'a str, out: &mut Vec<Token<'a>>) {
     }
 }
 
-/// Length of a comment starting at `%`, up to (not including) `\n` or `\r\n`.
+/// Length of a comment starting at `%`, up to (not including) the first line
+/// break (`\n`, `\r\n` or a lone `\r`).
 fn comment_len(text: &str) -> usize {
-    match text.find('\n') {
-        Some(n) if text[..n].ends_with('\r') => n - 1,
-        Some(n) => n,
-        None => text.len(),
-    }
+    text.find(['\n', '\r']).unwrap_or(text.len())
 }
 
 /// Length and kind of the token starting at a backslash.
+///
+/// A line break after the backslash is not part of the token, so line breaks
+/// only ever appear inside `Space` tokens. Escapes take a whole grapheme.
 fn command_len(text: &str) -> (usize, TokenKind) {
     let after = &text[1..];
+    if after.is_empty() || after.starts_with(['\n', '\r']) {
+        return (1, TokenKind::Punct);
+    }
     let letters = after.bytes().take_while(u8::is_ascii_alphabetic).count();
     if letters > 0 {
-        let star = usize::from(after.as_bytes().get(letters) == Some(&b'*'));
-        return (1 + letters + star, TokenKind::Command);
+        let end = after
+            .grapheme_indices(true)
+            .map(|(start, g)| start + g.len())
+            .find(|&end| end >= letters)
+            .unwrap_or(letters);
+        let star = usize::from(after.as_bytes().get(end) == Some(&b'*'));
+        return (1 + end + star, TokenKind::Command);
     }
-    match after.chars().next() {
-        Some(c) => (1 + c.len_utf8(), TokenKind::Command),
-        None => (1, TokenKind::Punct),
-    }
+    let first = after.graphemes(true).next().map_or(0, str::len);
+    (1 + first, TokenKind::Command)
 }

@@ -27,6 +27,20 @@ fn check_table(tokeniser: Tokeniser, table: &[(&str, Vec<(&str, TokenKind)>)]) {
     }
 }
 
+fn assert_well_formed(text: &str, tokeniser: Tokeniser) -> Result<(), TestCaseError> {
+    let tokens = tokenise(text, tokeniser);
+    for token in &tokens {
+        prop_assert!(!token.text.is_empty());
+        if token.kind != S {
+            prop_assert!(!token.text.contains(['\n', '\r']), "{:?}", token);
+        }
+    }
+    for pair in tokens.windows(2) {
+        prop_assert!(!(pair[0].kind == S && pair[1].kind == S), "{:?}", pair);
+    }
+    Ok(())
+}
+
 // --- helper sanity -------------------------------------------------------
 
 #[test]
@@ -434,6 +448,7 @@ proptest! {
     fn arbitrary_strings_round_trip(text in any::<String>()) {
         for tokeniser in [Tokeniser::Generic, Tokeniser::Latex] {
             prop_assert_eq!(joined(&text, tokeniser), text.clone());
+            assert_well_formed(&text, tokeniser)?;
         }
     }
 
@@ -443,6 +458,7 @@ proptest! {
     ) {
         for tokeniser in [Tokeniser::Generic, Tokeniser::Latex] {
             prop_assert_eq!(joined(&text, tokeniser), text.clone());
+            assert_well_formed(&text, tokeniser)?;
         }
     }
 }
@@ -458,6 +474,16 @@ fn latex_open_cases_follow_the_coordinator_decisions() {
             ("a\\", vec![("a", W), ("\\", P)]),
             ("\\section**", vec![("\\section*", C), ("*", P)]),
             ("% c\r\nx", vec![("% c", Cm), ("\r\n", S), ("x", W)]),
+            ("a\\\r\nb", vec![("a", W), ("\\", P), ("\r\n", S), ("b", W)]),
+            ("a\\\n\nb", vec![("a", W), ("\\", P), ("\n\n", S), ("b", W)]),
+            ("\\\r", vec![("\\", P), ("\r", S)]),
+            ("\\\u{1f1eb}\u{1f1f7}", vec![("\\\u{1f1eb}\u{1f1f7}", C)]),
+            (
+                "\\\u{1f468}\u{200d}\u{1f469}",
+                vec![("\\\u{1f468}\u{200d}\u{1f469}", C)],
+            ),
+            ("\\e\u{301}x", vec![("\\e\u{301}", C), ("x", W)]),
+            ("\\e\u{301}*", vec![("\\e\u{301}*", C)]),
         ],
     );
 }

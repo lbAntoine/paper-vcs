@@ -133,3 +133,17 @@ Markdown and Typst use Generic in v0.3. The diff, counting and rendering are PV-
 - CJK ranges are code point ranges documented on `is_cjk` (Hangul, Hiragana, Katakana incl. half-width, Han incl. Ext A and Ext B+ in the supplementary planes, compatibility ideographs).
 - Behaviour note: `\` followed by a multibyte char is one `Command` of both; `\` + `\r\n` makes `\` + `\r` a Command and `\n` the Space.
 - Checks: fmt, clippy `-D warnings`, full `cargo test --workspace --all-targets --no-fail-fast` all pass.
+
+### GREEN (review round 1) · rust-engineer · 2026-10-20
+
+- `command_len`: a line break (`\n`, `\r\n`, lone `\r`) after `\` is treated like end of input: the backslash is a one-byte `Punct` and the break joins the next `Space`. Line breaks now only appear in `Space` tokens. Escapes take a whole grapheme (`\` + flag, ZWJ sequence); a command's letters extend to the end of the grapheme holding the last letter (`\e` + U+0301). Table cases added to `latex_open_cases_follow_the_coordinator_decisions` (coordinator-sanctioned), including the three requested break cases.
+- Deleted the dead `tokenise.proptest-regressions`. Both proptests now also assert no empty token, no adjacent `Space` tokens, and no non-`Space` token with `\n` or `\r`.
+- Katakana starts at U+30A1; Han supplementary range is `U+20000..=U+3FFFD`; doc comments for `is_cjk` and `TokenKind::Punct` fixed.
+- A `%` comment now also ends before a lone `\r` (found by the new proptest assertion), so line breaks never sit inside a Comment.
+
+## Known gaps
+
+- `@` is not treated as a letter in `.sty`/`.cls` files (`\my@cmd` splits at `@`). Follow-up.
+
+- A `%` comment now also ends before a lone `
+` (found by the new proptest assertion), so line breaks never sit inside a Comment.
