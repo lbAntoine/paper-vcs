@@ -45,7 +45,8 @@ impl Project {
             let mut names = vec![path.clone()];
             names.extend(actual_spelling(self.repo.workdir(), path));
             deletes.retain(|gone| {
-                let room_for_it = names.iter().any(|name| makes_room(gone, name));
+                let room_for_it = names.iter().any(|name| makes_room(gone, name))
+                    || same_file(self.repo.workdir(), gone, path);
                 if room_for_it {
                     let kept = RestoreSkip::KeptForSwap {
                         target: path.clone(),
@@ -104,7 +105,7 @@ impl Project {
         if meta.is_dir() {
             return (!only_holds(root, &real, doomed)).then_some(RestoreSkip::Blocked);
         }
-        if doomed.contains(real.as_str()) {
+        if doomed.contains(real.as_str()) || any_same_file(root, path, doomed) {
             return None;
         }
         Some(if real != path && in_draft(&real) {
@@ -113,6 +114,36 @@ impl Project {
             RestoreSkip::Blocked
         })
     }
+}
+
+/// Whether `a` and `b` (relative to `root`) are the same file on disk, by the filesystem's
+/// own rules: the same device and inode, without following symlinks. This sees through
+/// any name folding (Unicode normalisation, case) without knowing the rule.
+///
+/// Only on Unix: elsewhere std has no stable file id, so this is `false` and the name
+/// comparison decides.
+pub(super) fn same_file(root: &Path, a: &str, b: &str) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        match (
+            fs::symlink_metadata(root.join(a)),
+            fs::symlink_metadata(root.join(b)),
+        ) {
+            (Ok(a), Ok(b)) => a.dev() == b.dev() && a.ino() == b.ino(),
+            _ => false,
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (root, a, b);
+        false
+    }
+}
+
+/// Whether `path` is the same file as any of the `doomed` paths.
+fn any_same_file(root: &Path, path: &str, doomed: &BTreeSet<&str>) -> bool {
+    doomed.iter().any(|gone| same_file(root, gone, path))
 }
 
 /// Whether removing `gone` only serves to let `target` be written: it is under the target,
@@ -170,4 +201,97 @@ fn only_holds(root: &Path, dir: &str, doomed: &BTreeSet<&str>) -> bool {
             _ => false,
         }
     })
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    /// A temp dir with `a` and `b` hard-linked (one inode, two names, as a folding
+    /// filesystem shows a renamed spelling) and an unrelated `other`.
+    fn linked() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("temp dir");
+        fs::write(dir.path().join("a"), "x").expect("write a");
+        fs::hard_link(dir.path().join("a"), dir.path().join("b")).expect("link");
+        fs::write(dir.path().join("other"), "y").expect("write other");
+        dir
+    }
+
+    #[test]
+    fn same_file_sees_one_inode_under_two_names() {
+        let dir = linked();
+        assert!(same_file(dir.path(), "a", "b"));
+        assert!(!same_file(dir.path(), "a", "other"));
+        assert!(!same_file(dir.path(), "a", "missing"));
+    }
+
+    #[test]
+    fn a_doomed_name_does_not_block_its_own_file_written_under_another_name() {
+        let dir = linked();
+        let doomed: BTreeSet<&str> = ["a"].into();
+        // Writing `b` after deleting `a` is a swap, not a collision.
+        assert!(any_same_file(dir.path(), "b", &doomed));
+        // An unrelated file is still in the way.
+        assert!(!any_same_file(dir.path(), "other", &doomed));
+    }
+
+    /// A project over the linked folder, for running the real planner.
+    fn project_over(dir: &tempfile::TempDir) -> Project {
+        let identity = paper_git::Identity {
+            name: "Mina Park".to_owned(),
+            email: "mina@uni.example".to_owned(),
+        };
+        Project::init_with_profile(
+            dir.path(),
+            identity,
+            &crate::snapshot::SnapshotOptions::default(),
+            crate::profile::Profile::builtin("generic"),
+        )
+        .expect("init")
+        .0
+    }
+
+    /// The data-safety invariant: no planned deletion removes a file that a blocked or
+    /// written path refers to on disk, unless it is a swap (deleted, then written).
+    fn assert_invariant(root: &Path, plan: &Plan<'_>) {
+        for gone in &plan.deletes {
+            for (path, _) in plan
+                .blocked
+                .iter()
+                .filter(|(_, why)| !matches!(why, RestoreSkip::KeptForSwap { .. }))
+            {
+                assert!(
+                    !same_file(root, gone, path),
+                    "{gone} is deleted but {path}, which is the same file, is blocked"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_write_onto_the_same_file_as_a_deletion_is_a_swap() {
+        let dir = linked();
+        let project = project_over(&dir);
+        let (a, b) = ("a".to_owned(), "b".to_owned());
+        let plan = project.settle(vec![&b], vec![&a], |p| p == "a");
+        assert_eq!(plan.deletes, vec![&a]);
+        assert_eq!(plan.writes, vec![&b]);
+        assert!(plan.blocked.is_empty());
+        assert_invariant(dir.path(), &plan);
+    }
+
+    #[test]
+    fn an_unrelated_untracked_file_blocks_its_write_and_spares_the_deletion_of_another() {
+        let dir = linked();
+        let project = project_over(&dir);
+        let (a, other) = ("a".to_owned(), "other".to_owned());
+        let plan = project.settle(vec![&other], vec![&a], |p| p == "a");
+        assert_eq!(plan.deletes, vec![&a]);
+        assert!(plan.writes.is_empty());
+        assert_eq!(
+            plan.blocked,
+            vec![("other".to_owned(), RestoreSkip::Blocked)]
+        );
+        assert_invariant(dir.path(), &plan);
+    }
 }

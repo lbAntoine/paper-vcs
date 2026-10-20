@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use super::Project;
 use super::restore::{RestoreSkip, SkippedPath};
+use super::restore_plan::same_file;
 use crate::activity::OpId;
 use crate::fs_util::write_atomic;
 use crate::snapshot::{Change, ChangeKind, SkipReason, Skipped};
@@ -140,6 +141,7 @@ impl Project {
         let mut skipped = Vec::new();
         let mut deletes: Vec<&String> = Vec::new();
         let mut candidates = Vec::new();
+        let mut already_there_paths = Vec::new();
         let case_counts = lowercase_counts(current);
         let ignored = if leave_ignored {
             self.ignored_in(current, wanted)?
@@ -173,9 +175,20 @@ impl Project {
                     && fs::symlink_metadata(self.repo.workdir().join(path)).is_ok()
                     && self.spelled_exactly(path)
                     && want.is_some_and(|file| self.on_disk_equals(path, file));
-                if !already_there {
+                if already_there {
+                    already_there_paths.push(path);
+                } else {
                     candidates.push(path);
                 }
+            }
+        }
+        // "Already there" trusts the file at `path`, but a deletion may remove that very file
+        // under another spelling (a filesystem that folds Unicode forms or case). Then it is
+        // not there to stay: plan it as a write, so `settle` swaps it rather than lose it.
+        for path in already_there_paths {
+            let root = self.repo.workdir();
+            if deletes.iter().any(|gone| same_file(root, gone, path)) {
+                candidates.push(path);
             }
         }
         let plan = self.settle(candidates, deletes, |p| current.contains_key(p));

@@ -114,3 +114,11 @@ extra guard that is never weaker.
 - Note: `restore` has no `.` path, so tests name both spellings explicitly, as the existing case-alias restore tests do.
 - Stubs: none. Existing suites all pass; fmt and clippy clean.
 - Questions: none
+
+### GREEN · rust-engineer · 2026-10-20
+- `restore_plan.rs`: `same_file(root, a, b)` (Unix: `symlink_metadata` `(dev, ino)`; other platforms: `false`, so the name logic decides) and `any_same_file`. `obstacle` no longer treats an entry that is the same file as a doomed path as an obstacle (parent file check and final check): deletion, then write. `settle` also keeps (`KeptForSwap`) every deletion that is the same file as a blocked target.
+- `checkout.rs`: the "already there" rule could still lose the file (disk shows NFC, draft tracks NFD: NFD is deleted while NFC is judged already there and not written). Paths judged already there are now re-planned as writes when a deletion is the same file, so `settle` swaps them. Reaches `settle` otherwise unchanged.
+- Unit tests in `restore_plan.rs` (`cfg(all(test, unix))`) using a hard link: helper behaviour, a swap through `settle`, and the invariant (`assert_invariant`) on a plan with an unrelated blocker. They run on any Unix filesystem.
+- Spec: 03-architecture gets the same-file rule, the invariant and the Windows note. 02-cli unchanged (no skip wording changed).
+- Known limit: a real hard link between an untracked path and a doomed tracked path is read as a folded name and swapped (documented in the spec).
+- Checks: fmt, clippy `-D warnings`, full suite with `--no-fail-fast` pass on macOS; the 4 Unicode-form tests pass.
