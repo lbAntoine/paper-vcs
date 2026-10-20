@@ -45,11 +45,11 @@
       "id": "e1a0c035",
       "title": "PV-035: undo after a Unicode-normalisation-only rename deletes the file (macOS)",
       "description": "GitHub issue #67. Follow-up from PV-018. Ships in v0.2.0 as a known issue (maintainer). Wave 1, parallel with PV-040. Data-safety invariant ticket.",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "high",
       "sprint": "v0.3-a",
       "created_at": "2026-10-18T19:30:00Z",
-      "updated_at": "2026-10-20T19:03:13Z"
+      "updated_at": "2026-10-20T19:12:55Z"
     },
     {
       "id": "e1a0c036",

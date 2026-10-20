@@ -1,0 +1,104 @@
+# PV-035: a rename that changes only the Unicode form of a name loses the file (macOS)
+
+- **Status:** In progress
+- **Issue:** #67
+- **Branch:** `fix/PV-035-unicode-rename`
+- **Depends on:** none. Runs in parallel with PV-040 (paper-diff only).
+- **Touches:**
+  - `crates/paper-core/src/project/restore_plan.rs` (`settle`, `obstacle`, a same-file helper)
+  - `crates/paper-core/src/project/checkout.rs` (only if the same-file rule must reach the to-draft planner too)
+  - `crates/paper-core/tests/restore.rs`, `crates/paper-core/tests/undo.rs` (or a new `tests/same_file.rs`)
+  - `docs/specs/03-architecture.md` (the checkout and restore planning rules)
+  - `docs/specs/02-cli.md` (§ `paper restore`, only if a skip reason's wording changes)
+- **Must not touch:** `Cargo.toml` and `Cargo.lock` (no new dependency), `paper-diff`, `undo.rs`'s tracking-only logic, `recover.rs`.
+- **Specs:** `03-architecture.md` (checkout and restore planning), `02-cli.md` § `paper restore` (case aliases); NOTES.md 2026-10-19 (data-safety invariant rule)
+
+## Data-safety invariant
+
+A planned deletion never removes a file that another path in the same plan refers to on disk
+(the same file, through the filesystem's own name folding), unless that path is written after
+the deletion as part of the same swap.
+
+## Goal
+
+On a filesystem that folds names (APFS folds Unicode normalisation, and case-insensitive
+volumes fold case), `paper undo` and `paper restore` never delete the only copy of a file. That
+holds whatever folding rule the filesystem uses.
+
+## Context
+
+- **Reproduction** (issue #67, confirmed by the v0.2 verification for both `undo` and
+  `restore --from last~1 .`):
+  1. Track `été.tex` in NFC.
+  2. Rename it to its NFD spelling, with the same bytes.
+  3. `paper save`.
+  4. `paper undo` twice.
+
+  The plan deletes the NFD path and blocks the NFC write, and no file is left.
+- **Cause:** `actual_spelling` (`restore_plan.rs:136`) matches names by `to_lowercase` only.
+  - `obstacle` doesn't see that the NFD file on disk is the NFC target, so the NFC write is
+    `Blocked`.
+  - `settle` keeps a deletion for a swap only when `makes_room` matches a spelling it found by
+    name, so the NFD deletion goes ahead.
+  - The same gap exists for any folding `to_lowercase` misses (`ß`, `İ`), as the doc comment
+    on `actual_spelling` already admits.
+- **Existing guards:** the PV-018 guards in `checkout.rs` (`spelled_exactly`, `has_case_twin`,
+  the "already there" rule) compare bytes, so they already skip the rule for an NFD/NFC pair.
+  Check that this holds.
+
+## Decisions (coordinator, 2026-10-20)
+
+### Compare files, not names
+
+On Unix, two paths are the same file when `symlink_metadata` gives the same `(dev, ino)`, via
+`std::os::unix::fs::MetadataExt`. Add a small helper, for example
+`same_file(root, a, b) -> bool`. Apply it in two places:
+
+- **In `obstacle`:** an existing entry at `path` that is the same file as a doomed path is not
+  an obstacle. Treat it like the case-alias swap: the deletion runs first, then the write.
+- **In `settle`:** when a write is blocked, also keep every deletion that is the same file as
+  the blocked target (`KeptForSwap`), not only the ones found by name.
+
+### No new dependency
+
+Not `unicode-normalization`, and no Unicode tables. The filesystem decides what counts as the
+same file.
+
+### Windows
+
+NTFS doesn't normalise names, and std has no stable file id there. Keep today's name logic on
+Windows. Document this, and make the tests `cfg(unix)` with a runtime check that the
+filesystem folds the pair:
+
+- write the NFC name;
+- `symlink_metadata` the NFD name;
+- if it doesn't resolve, the test returns early and says why.
+
+On Linux ext4 the test is a no-op. On macOS APFS it runs.
+
+### Keep the existing name logic
+
+It still decides `CaseAlias` reasons and the spelling to report. The same-file rule is an
+extra guard that is never weaker.
+
+## Acceptance criteria
+
+- [ ] The #67 reproduction through `undo` twice and through `restore --from last~1 .` (file and folder variants): the file survives with its content. The result is either the NFC spelling, swapped, or the NFD spelling left as is, never neither. `git fsck --strict` is clean.
+- [ ] The same for a case-only rename where the filesystem folds case. The existing case-rename tests still pass.
+- [ ] No planned deletion removes a file that a blocked write's target refers to on disk. The invariant is tested directly at the planner level.
+- [ ] Ordinary restore and undo are unchanged. The existing suites pass on all three OSes.
+- [ ] Specs updated, only in the listed sections, including the Windows note.
+- [ ] fmt, clippy (`-D warnings`) and the full suite pass (CI on Linux, macOS, Windows).
+
+## Test plan
+
+- Core tests for the reproduction via the API: two undos, and `restore --from last~1 .`, for a
+  file and for a folder. Each skips unless the filesystem folds the NFC and NFD pair, and must
+  fail on `origin/main` on macOS (file gone).
+- A planner-level test of the invariant.
+- The existing restore case-alias tests pass unchanged.
+- No snapshots by hand.
+
+## Summary
+
+## Handoff log
