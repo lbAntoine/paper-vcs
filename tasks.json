@@ -7,9 +7,9 @@
       "description": "GitHub issue #15. Pre-existing; found in PV-014 review round 2",
       "status": "todo",
       "priority": "low",
-      "sprint": "v0.3",
+      "sprint": "v0.3-b",
       "created_at": "2026-10-16T14:21:47Z",
-      "updated_at": "2026-10-18T09:25:14Z"
+      "updated_at": "2026-10-20T19:03:13Z"
     },
     {
       "id": "e1a0c016",
@@ -17,9 +17,9 @@
       "description": "GitHub issue #33. List in docs/tickets/PV-012-restore-case-insensitive.md Summary",
       "status": "todo",
       "priority": "low",
-      "sprint": "v0.3",
+      "sprint": "v0.3-b",
       "created_at": "2026-10-16T22:04:33Z",
-      "updated_at": "2026-10-18T09:25:14Z"
+      "updated_at": "2026-10-20T19:03:13Z"
     },
     {
       "id": "e1a0c028",
@@ -27,9 +27,9 @@
       "description": "GitHub issue #50. From the PV-021 review.",
       "status": "todo",
       "priority": "low",
-      "sprint": "v0.3",
+      "sprint": "v0.3-b",
       "created_at": "2026-10-18T00:05:04Z",
-      "updated_at": "2026-10-18T09:25:14Z"
+      "updated_at": "2026-10-20T19:03:13Z"
     },
     {
       "id": "e1a0c034",
@@ -37,19 +37,19 @@
       "description": "GitHub issue #66. Follow-up from PV-018.",
       "status": "todo",
       "priority": "low",
-      "sprint": "v0.3",
+      "sprint": "v0.3-b",
       "created_at": "2026-10-18T19:30:00Z",
-      "updated_at": "2026-10-18T19:30:00Z"
+      "updated_at": "2026-10-20T19:03:13Z"
     },
     {
       "id": "e1a0c035",
       "title": "PV-035: undo after a Unicode-normalisation-only rename deletes the file (macOS)",
-      "description": "GitHub issue #67. Follow-up from PV-018. Ships in v0.2.0 as a known issue (maintainer).",
+      "description": "GitHub issue #67. Follow-up from PV-018. Ships in v0.2.0 as a known issue (maintainer). Wave 1, parallel with PV-040. Data-safety invariant ticket.",
       "status": "todo",
       "priority": "high",
-      "sprint": "v0.3",
+      "sprint": "v0.3-a",
       "created_at": "2026-10-18T19:30:00Z",
-      "updated_at": "2026-10-18T19:30:00Z"
+      "updated_at": "2026-10-20T19:03:13Z"
     },
     {
       "id": "e1a0c036",
@@ -57,9 +57,9 @@
       "description": "GitHub issue #71. From the PV-032 review. Predates PV-032.",
       "status": "todo",
       "priority": "low",
-      "sprint": "v0.3",
+      "sprint": "v0.3-b",
       "created_at": "2026-10-19T17:23:38Z",
-      "updated_at": "2026-10-19T17:23:38Z"
+      "updated_at": "2026-10-20T19:03:13Z"
     },
     {
       "id": "e1a0c037",
@@ -67,9 +67,9 @@
       "description": "GitHub issue #72. From the PV-032 reviews; the quick fix lost data and was reverted. Design: recorded:false leftovers.",
       "status": "todo",
       "priority": "medium",
-      "sprint": "v0.3",
+      "sprint": "v0.3-b",
       "created_at": "2026-10-19T17:23:38Z",
-      "updated_at": "2026-10-19T17:23:38Z"
+      "updated_at": "2026-10-20T19:03:13Z"
     },
     {
       "id": "e1a0c039",
@@ -77,9 +77,69 @@
       "description": "GitHub issue #75. From the PV-038 review and the v0.2 re-verification; two items ship in v0.2.0 as known issues.",
       "status": "todo",
       "priority": "medium",
-      "sprint": "v0.3",
+      "sprint": "v0.3-b",
       "created_at": "2026-10-19T21:49:37Z",
-      "updated_at": "2026-10-19T21:49:37Z"
+      "updated_at": "2026-10-20T19:03:13Z"
+    },
+    {
+      "id": "e1a0c040",
+      "title": "PV-040: word tokenisers (generic, CJK, LaTeX)",
+      "description": "GitHub issue #79. Wave 1, parallel with PV-035. Size S-M. unicode-segmentation 1.11 (split_word_bounds, graphemes).",
+      "status": "todo",
+      "priority": "high",
+      "sprint": "v0.3-a",
+      "created_at": "2026-10-20T19:03:13Z",
+      "updated_at": "2026-10-20T19:03:13Z"
+    },
+    {
+      "id": "e1a0c041",
+      "title": "PV-041: word diff with paragraph grouping and rendering",
+      "description": "GitHub issue #80. Wave 2, parallel with PV-043. Size M. Needs PV-040.",
+      "status": "todo",
+      "priority": "high",
+      "sprint": "v0.3-a",
+      "created_at": "2026-10-20T19:03:13Z",
+      "updated_at": "2026-10-20T19:03:13Z"
+    },
+    {
+      "id": "e1a0c042",
+      "title": "PV-042: word diff is the default for text in diff and status",
+      "description": "GitHub issue #81. Wave 3. Size M. Needs PV-041. Roadmap v0.3 acceptance.",
+      "status": "todo",
+      "priority": "high",
+      "sprint": "v0.3-a",
+      "created_at": "2026-10-20T19:03:13Z",
+      "updated_at": "2026-10-20T19:03:13Z"
+    },
+    {
+      "id": "e1a0c043",
+      "title": "PV-043: paper help large-files (help topics)",
+      "description": "GitHub issue #82. Wave 2, parallel with PV-041. Size S.",
+      "status": "todo",
+      "priority": "medium",
+      "sprint": "v0.3-a",
+      "created_at": "2026-10-20T19:03:13Z",
+      "updated_at": "2026-10-20T19:03:13Z"
+    },
+    {
+      "id": "e1a0c044",
+      "title": "PV-044: README, install docs and demo (scripted .cast plus a recording script)",
+      "description": "GitHub issue #83. Sprint v0.3-b. Size S-M. Maintainer records a natural take too (Notion).",
+      "status": "todo",
+      "priority": "medium",
+      "sprint": "v0.3-b",
+      "created_at": "2026-10-20T19:03:13Z",
+      "updated_at": "2026-10-20T19:03:13Z"
+    },
+    {
+      "id": "e1a0c045",
+      "title": "PV-045: release v0.3.0 (first public alpha)",
+      "description": "GitHub issue #84. Last ticket of v0.3-b. Verification, then maintainer approval before the tag.",
+      "status": "todo",
+      "priority": "high",
+      "sprint": "v0.3-b",
+      "created_at": "2026-10-20T19:03:13Z",
+      "updated_at": "2026-10-20T19:03:13Z"
     }
   ]
 }
