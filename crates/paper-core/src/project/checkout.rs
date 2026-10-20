@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use super::Project;
 use super::restore::{RestoreSkip, SkippedPath};
+use super::restore_plan::same_file;
 use crate::activity::OpId;
 use crate::fs_util::write_atomic;
 use crate::snapshot::{Change, ChangeKind, SkipReason, Skipped};
@@ -140,6 +141,7 @@ impl Project {
         let mut skipped = Vec::new();
         let mut deletes: Vec<&String> = Vec::new();
         let mut candidates = Vec::new();
+        let mut already_there_paths = Vec::new();
         let case_counts = lowercase_counts(current);
         let ignored = if leave_ignored {
             self.ignored_in(current, wanted)?
@@ -173,9 +175,20 @@ impl Project {
                     && fs::symlink_metadata(self.repo.workdir().join(path)).is_ok()
                     && self.spelled_exactly(path)
                     && want.is_some_and(|file| self.on_disk_equals(path, file));
-                if !already_there {
+                if already_there {
+                    already_there_paths.push(path);
+                } else {
                     candidates.push(path);
                 }
+            }
+        }
+        // "Already there" trusts the file at `path`, but a deletion may remove that very file
+        // under another spelling (a filesystem that folds Unicode forms or case). Then it is
+        // not there to stay: plan it as a write, so `settle` swaps it rather than lose it.
+        let root = self.repo.workdir();
+        for path in already_there_paths {
+            if deletes.iter().any(|gone| same_file(root, gone, path)) {
+                candidates.push(path);
             }
         }
         let plan = self.settle(candidates, deletes, |p| current.contains_key(p));
@@ -399,5 +412,44 @@ mod tests {
         PendingCheckout::clear(dir.path()).unwrap();
         assert!(!dir.path().join(PENDING_FILE).exists());
         PendingCheckout::clear(dir.path()).unwrap();
+    }
+
+    /// A deletion of the very file an "already there" path points at (one file, two
+    /// spellings) turns that path into a write, so the file is swapped, not lost.
+    #[cfg(unix)]
+    #[test]
+    fn already_there_is_replanned_as_a_write_when_a_deletion_removes_that_file() {
+        const NFC: &str = "\u{e9}t\u{e9}.tex";
+        const NFD: &str = "e\u{301}te\u{301}.tex";
+        let dir = tempfile::tempdir().unwrap();
+        let identity = paper_git::Identity {
+            name: "Mina Park".to_owned(),
+            email: "mina@uni.example".to_owned(),
+        };
+        let (project, _) = Project::init_with_profile(
+            dir.path(),
+            identity,
+            &crate::snapshot::SnapshotOptions::default(),
+            crate::profile::Profile::builtin("generic"),
+        )
+        .unwrap();
+        fs::write(dir.path().join(NFC), "x").unwrap();
+        if fs::symlink_metadata(dir.path().join(NFD)).is_err() {
+            eprintln!("skipped: this filesystem does not fold Unicode forms");
+            return;
+        }
+        let file = TreeFile {
+            blob: project.repo.write_blob(b"x").unwrap(),
+            kind: FileKind::Regular,
+        };
+        let (nfc, nfd) = (NFC.to_owned(), NFD.to_owned());
+        let current = BTreeMap::from([(nfd.clone(), file.clone())]);
+        let wanted = BTreeMap::from([(nfc.clone(), file)]);
+        let plan = project
+            .plan_checkout_to_draft(BTreeSet::from([&nfc, &nfd]), &wanted, &current, &[])
+            .unwrap();
+        assert_eq!(plan.deletes, vec![nfd]);
+        assert_eq!(plan.writes.len(), 1);
+        assert_eq!(plan.writes[0].0, nfc);
     }
 }
