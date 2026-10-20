@@ -107,3 +107,19 @@ Markdown and Typst use Generic in v0.3. The diff, counting and rendering are PV-
 ## Summary
 
 ## Handoff log
+
+### RED · test-author · 2026-10-20
+
+- Tests: `crates/paper-diff/tests/tokenise.rs`, 31 tests (2 helper sanity, 7 generic, 9 CJK, 7 LaTeX, 3 `tokeniser_for`, 1 fixed tricky-string round trip, 2 proptests: arbitrary `String` and a LaTeX/CJK/emoji/combining alphabet). All 31 fail on the `todo!()` stubs; every pre-existing test passes (`--no-fail-fast`). fmt and clippy `-D warnings` are clean.
+- Stubs: `crates/paper-diff/src/tokenise.rs` with `Tokeniser {Generic, Latex}`, `TokenKind {Word, Space, Punct, Command, Comment}`, `Token<'a> {text, kind}`, `tokeniser_for`, `tokenise` (bodies `todo!()`). `lib.rs` gets `mod tokenise;` and a `pub use` line. API names are exactly as in the ticket.
+- Dependencies: `unicode-segmentation = "1.11"` (workspace and paper-diff), `proptest` dev-dependency. Cargo resolved 1.13.3 (not the local 1.11.0); a scratch run gave identical results for the cases below on both versions.
+- Choices taken from the scratch run of `split_word_bounds`:
+  - `don't` and `can\u{2019}t` are one segment (Word); `'` around `b` are separate Punct.
+  - `3.14`, `1,000`, `v0.3` are one Word; `50%` is `50` + `%`; `$5` is `$` + `5`.
+  - `e-mail` splits at `-`; `snake_case` stays one Word (`_` is ExtendNumLet).
+  - Whitespace: UAX #29 returns `" "`, `"\t"`, `"\r\n"`, `" "` separately for `a \t\r\n b`, so the implementation must merge adjacent whitespace segments into one `Space`.
+  - `日本語のテスト`: UAX #29 keeps the katakana run `テスト` whole, so per-grapheme splitting must be applied to it as well (7 tokens expected).
+  - `v0.3에서` is one UAX #29 segment; expected `v0.3`, `에`, `서`.
+- Not tested (ticket silent, left to GREEN to decide, covered only by round trip): a lone trailing `\`, `\` + multibyte non-letter, `\section**`, CRLF at the end of a comment line, and `\` followed by a space.
+- Extra assertion not in the ticket: empty input gives no tokens.
+- Can only be confirmed GREEN: the actual kinds and splits, the 1.13 vs 1.11 segmentation equivalence on the full tables, and the proptest round trip (default 256 cases; persistence disabled in the test config to avoid the missing `lib.rs` warning).

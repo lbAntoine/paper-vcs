@@ -4,6 +4,9 @@
 
 use similar::{Algorithm, ChangeTag};
 
+mod tokenise;
+pub use tokenise::{Token, TokenKind, Tokeniser, tokenise, tokeniser_for};
+
 /// How many leading bytes are scanned for a NUL byte when classifying content.
 pub const BINARY_SNIFF_LEN: usize = 8 * 1024;
 
