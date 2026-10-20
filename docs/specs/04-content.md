@@ -43,6 +43,10 @@ more readable hunks than Myers. The output is git's unified format with 3 lines 
      so a Korean or Japanese edit shows only the changed characters.
    - **LaTeX** (`.tex`, `.bib`, `.sty`, `.cls`): `\command` and `\command*`
      are single tokens, and `%` comments are one token.
+     A `%` comment runs to the next `\n`, `\r\n` or lone `\r`, as TeX reads lines. In
+     the word diff any `\r` is whitespace and belongs to a Space token. For grouping
+     (step 2), paragraphs are separated by a blank line, counted in `\n`, as in the
+     line diff.
    - **Markdown and Typst**: generic in v0.3. Format-aware tokenisers come later if users ask.
 2. **Diff** the token streams with the patience algorithm (`similar`), and group
    the hunks by paragraph (a blank line separates paragraphs).

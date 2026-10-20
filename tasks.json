@@ -85,11 +85,11 @@
       "id": "e1a0c040",
       "title": "PV-040: word tokenisers (generic, CJK, LaTeX)",
       "description": "GitHub issue #79. Wave 1, parallel with PV-035. Size S-M. unicode-segmentation 1.11 (split_word_bounds, graphemes).",
-      "status": "todo",
+      "status": "done",
       "priority": "high",
       "sprint": "v0.3-a",
       "created_at": "2026-10-20T19:03:13Z",
-      "updated_at": "2026-10-20T19:03:13Z"
+      "updated_at": "2026-10-20T19:12:55Z"
     },
     {
       "id": "e1a0c041",

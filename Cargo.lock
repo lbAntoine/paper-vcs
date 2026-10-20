@@ -1408,8 +1408,10 @@ dependencies = [
 name = "paper-diff"
 version = "0.2.0"
 dependencies = [
+ "proptest",
  "similar",
  "tempfile",
+ "unicode-segmentation",
 ]
 
 [[package]]
@@ -1891,6 +1893,12 @@ checksum = "5fd4f6878c9cb28d874b009da9e8d183b5abc80117c40bbd187a1fde336be6e8"
 dependencies = [
  "tinyvec",
 ]
+
+[[package]]
+name = "unicode-segmentation"
+version = "1.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d4c87d22b6e3f4a18d4d40ef354e97c90fcb14dd91d7dc0aa9d8a1172ebf7202"
 
 [[package]]
 name = "utf8parse"
