@@ -446,3 +446,18 @@ proptest! {
         }
     }
 }
+
+// --- coordinator-requested additions (open cases in PV-040) --------------
+
+#[test]
+fn latex_open_cases_follow_the_coordinator_decisions() {
+    check_table(
+        Tokeniser::Latex,
+        &[
+            ("\\ x", vec![("\\ ", C), ("x", W)]),
+            ("a\\", vec![("a", W), ("\\", P)]),
+            ("\\section**", vec![("\\section*", C), ("*", P)]),
+            ("% c\r\nx", vec![("% c", Cm), ("\r\n", S), ("x", W)]),
+        ],
+    );
+}

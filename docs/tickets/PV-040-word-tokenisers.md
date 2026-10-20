@@ -123,3 +123,13 @@ Markdown and Typst use Generic in v0.3. The diff, counting and rendering are PV-
 - Not tested (ticket silent, left to GREEN to decide, covered only by round trip): a lone trailing `\`, `\` + multibyte non-letter, `\section**`, CRLF at the end of a comment line, and `\` followed by a space.
 - Extra assertion not in the ticket: empty input gives no tokens.
 - Can only be confirmed GREEN: the actual kinds and splits, the 1.13 vs 1.11 segmentation equivalence on the full tables, and the proptest round trip (default 256 cases; persistence disabled in the test config to avoid the missing `lib.rs` warning).
+
+### GREEN · rust-engineer · 2026-10-20
+
+- Implemented `crates/paper-diff/src/tokenise.rs` (215 lines): `tokeniser_for` (extension, case-insensitive, last path component only), `tokenise`. Generic = UAX #29 `split_word_bound_indices`, adjacent whitespace segments merged into one `Space`, segments with an alphanumeric char are `Word` (split per grapheme at CJK graphemes, non-CJK runs kept whole), everything else `Punct`. LaTeX scans for `\` and `%`, running Generic on the text between.
+- API names unchanged from the ticket. No spec or ADR change needed.
+- Dependency: lock pinned to unicode-segmentation 1.11.0 (`cargo update -p unicode-segmentation --precise 1.11.0`); only that package's lock entry changed. `"1.11"` kept in Cargo.toml.
+- Coordinator decisions applied: `\` + space is one `Command`; a lone trailing `\` is `Punct`; `\section**` is `\section*` + `*`; a `%` comment stops before `\n` or `\r\n`. Coordinator-requested addition: test `latex_open_cases_follow_the_coordinator_decisions` in `tests/tokenise.rs` (a table for these four).
+- CJK ranges are code point ranges documented on `is_cjk` (Hangul, Hiragana, Katakana incl. half-width, Han incl. Ext A and Ext B+ in the supplementary planes, compatibility ideographs).
+- Behaviour note: `\` followed by a multibyte char is one `Command` of both; `\` + `\r\n` makes `\` + `\r` a Command and `\n` the Space.
+- Checks: fmt, clippy `-D warnings`, full `cargo test --workspace --all-targets --no-fail-fast` all pass.
