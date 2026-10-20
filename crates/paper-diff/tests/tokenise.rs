@@ -474,6 +474,7 @@ fn latex_open_cases_follow_the_coordinator_decisions() {
             ("a\\", vec![("a", W), ("\\", P)]),
             ("\\section**", vec![("\\section*", C), ("*", P)]),
             ("% c\r\nx", vec![("% c", Cm), ("\r\n", S), ("x", W)]),
+            ("% c\rx", vec![("% c", Cm), ("\r", S), ("x", W)]),
             ("a\\\r\nb", vec![("a", W), ("\\", P), ("\r\n", S), ("b", W)]),
             ("a\\\n\nb", vec![("a", W), ("\\", P), ("\n\n", S), ("b", W)]),
             ("\\\r", vec![("\\", P), ("\r", S)]),

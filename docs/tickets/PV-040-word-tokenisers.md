@@ -87,12 +87,12 @@ Markdown and Typst use Generic in v0.3. The diff, counting and rendering are PV-
 
 ## Acceptance criteria
 
-- [ ] `tokenise` round-trips every input byte for byte (proptest, default case count, plus a fixed set of tricky strings).
-- [ ] Generic: words, numbers, punctuation and whitespace runs are separate tokens with the right kinds; contractions and apostrophes follow UAX #29.
-- [ ] CJK: Korean, Japanese (kana and kanji) and Chinese are split per grapheme; mixed Latin and CJK splits at the boundary; Hangul syllables made of combining jamo stay one grapheme.
-- [ ] LaTeX: `\section*{Intro}`, `\\`, `\%`, `% comment`, `50\% done` and a comment at the end of the file are tokenised as decided.
-- [ ] `tokeniser_for` picks by extension, case-insensitively (`.TEX`).
-- [ ] No printing or I/O. Public items document `# Panics` (they never panic).
+- [x] `tokenise` round-trips every input byte for byte (proptest, default case count, plus a fixed set of tricky strings).
+- [x] Generic: words, numbers, punctuation and whitespace runs are separate tokens with the right kinds; contractions and apostrophes follow UAX #29.
+- [x] CJK: Korean, Japanese (kana and kanji) and Chinese are split per grapheme; mixed Latin and CJK splits at the boundary; Hangul syllables made of combining jamo stay one grapheme.
+- [x] LaTeX: `\section*{Intro}`, `\\`, `\%`, `% comment`, `50\% done` and a comment at the end of the file are tokenised as decided.
+- [x] `tokeniser_for` picks by extension, case-insensitively (`.TEX`).
+- [x] No printing or I/O. Public items document `# Panics` (they never panic).
 - [ ] fmt, clippy (`-D warnings`) and the full suite pass (CI on Linux, macOS, Windows).
 
 ## Test plan
@@ -105,6 +105,13 @@ Markdown and Typst use Generic in v0.3. The diff, counting and rendering are PV-
 - Tests must fail on `origin/main`, since the module doesn't exist there.
 
 ## Summary
+
+Added `paper-diff`'s `tokenise` module: `tokenise`, `tokeniser_for`, `Tokeniser`, `TokenKind`
+and `Token`. Generic text uses UAX #29 word bounds with whitespace runs merged into one
+`Space`; Han, kana and Hangul are split per grapheme; the LaTeX tokeniser adds `\command`,
+`\command*`, one-character escapes and `%` comments. Tokens always concatenate back to the
+input, and line breaks only appear in `Space` tokens. `unicode-segmentation` is pinned to 1.11.0
+in the lock file. Known gap: `@` in `.sty`/`.cls` command names.
 
 ## Handoff log
 
@@ -144,3 +151,7 @@ Markdown and Typst use Generic in v0.3. The diff, counting and rendering are PV-
 ## Known gaps
 
 - `@` is not treated as a letter in `.sty`/`.cls` files (`\my@cmd` splits at `@`). Follow-up.
+
+### GREEN (post-approval) · rust-engineer · 2026-10-20
+
+- Spec `04-content.md` step 1: added the comment/line-break/paragraph note. Added the table case `% c\rx` to the LaTeX open cases. Ticket Summary filled in; acceptance criteria ticked except the CI one.
