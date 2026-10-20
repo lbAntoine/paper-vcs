@@ -144,6 +144,3 @@ Markdown and Typst use Generic in v0.3. The diff, counting and rendering are PV-
 ## Known gaps
 
 - `@` is not treated as a letter in `.sty`/`.cls` files (`\my@cmd` splits at `@`). Follow-up.
-
-- A `%` comment now also ends before a lone `
-` (found by the new proptest assertion), so line breaks never sit inside a Comment.
