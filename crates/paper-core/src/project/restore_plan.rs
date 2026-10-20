@@ -43,8 +43,8 @@ impl Project {
             let path = writes.remove(at);
             // A write that lands on a differently spelled entry also frees that entry.
             let mut names = vec![path.clone()];
-            names.extend(actual_spelling(self.repo.workdir(), path));
             let root = self.repo.workdir();
+            names.extend(actual_spelling(root, path));
             // The target and each of its parent paths: removing the same file under another
             // spelling would take the blocked write's file or folder with it.
             let prefixes: Vec<&str> = path
@@ -127,15 +127,16 @@ impl Project {
 }
 
 /// Whether `a` and `b` (relative to `root`) are one file that the filesystem shows under two
-/// spellings: the same device and inode (without following symlinks), but not both listed
-/// in their folders with exactly that name. A folded name (Unicode normalisation, case) is
-/// listed once, under one spelling; a real hard link is listed under both, and stays two
-/// paths. This sees through any folding rule without knowing it.
+/// spellings: the same device and inode (without following symlinks), and a single link.
+/// A file with one link has one directory entry, so two names for it are spellings of that
+/// entry (Unicode normalisation, case). A hard link (two or more links) is two files as far
+/// as restore is concerned, and the name logic decides. This sees through any folding rule
+/// without knowing it.
 ///
 /// Only on Unix: elsewhere std has no stable file id, so this is `false` and the name
 /// comparison decides.
 pub(super) fn same_file(root: &Path, a: &str, b: &str) -> bool {
-    same_inode(root, a, b) && !(listed_exactly(root, a) && listed_exactly(root, b))
+    same_inode(root, a, b)
 }
 
 #[cfg(unix)]
@@ -145,7 +146,9 @@ fn same_inode(root: &Path, a: &str, b: &str) -> bool {
         fs::symlink_metadata(root.join(a)),
         fs::symlink_metadata(root.join(b)),
     ) {
-        (Ok(a), Ok(b)) => a.dev() == b.dev() && a.ino() == b.ino(),
+        (Ok(a), Ok(b)) => {
+            a.dev() == b.dev() && a.ino() == b.ino() && (a.is_dir() || a.nlink() == 1)
+        }
         _ => false,
     }
 }
@@ -153,20 +156,6 @@ fn same_inode(root: &Path, a: &str, b: &str) -> bool {
 #[cfg(not(unix))]
 fn same_inode(_root: &Path, _a: &str, _b: &str) -> bool {
     false
-}
-
-/// Whether every part of `path` is listed on disk with exactly that spelling.
-fn listed_exactly(root: &Path, path: &str) -> bool {
-    let mut dir = root.to_owned();
-    for part in path.split('/') {
-        let listed = fs::read_dir(&dir)
-            .is_ok_and(|entries| entries.flatten().any(|e| e.file_name() == part));
-        if !listed {
-            return false;
-        }
-        dir.push(part);
-    }
-    true
 }
 
 /// Whether `path` is the same file as any of the `doomed` paths.
@@ -276,11 +265,20 @@ mod tests {
     #[test]
     fn a_real_hard_link_is_two_files_not_one_folded_name() {
         let dir = linked();
-        assert!(same_inode(dir.path(), "a", "b"));
-        // Both names are listed, so deleting one leaves the other: not the same file.
+        assert!(!same_inode(dir.path(), "a", "b"));
+        // Two links: deleting one name leaves the other, so not the same file.
         assert!(!same_file(dir.path(), "a", "b"));
         assert!(!same_file(dir.path(), "a", "other"));
         assert!(!any_same_file(dir.path(), "b", &["a"].into()));
+    }
+
+    #[test]
+    fn a_file_with_two_links_is_not_the_same_file_as_itself_under_another_name() {
+        let dir = linked();
+        assert!(!same_file(dir.path(), "a", "b"));
+        // Dropping one link leaves a single entry: now the two names are one file again.
+        fs::remove_file(dir.path().join("b")).expect("unlink");
+        assert!(same_file(dir.path(), "a", "a"));
     }
 
     #[test]

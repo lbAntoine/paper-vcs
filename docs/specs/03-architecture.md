@@ -277,10 +277,9 @@ ignores case would otherwise read the other spelling's file and delete the only 
 Same-file rule (`restore_plan.rs`, shared by every checkout planner). A filesystem may fold
 names by rules paper-vcs does not know (APFS folds Unicode normalisation; case-insensitive
 volumes fold case). So the planner also compares files, not only names: on Unix, two paths are
-the same file when `symlink_metadata` gives the same `(device, inode)` and the folder listings
-do not show both names exactly. A folded name is listed once, under one spelling; a real hard
-link is listed under both and stays two files (so it is never overwritten as if it were a
-spelling of the other). Data-safety invariant: a planned deletion never removes a file that
+the same file when `symlink_metadata` gives the same `(device, inode)` and a single link. A hard
+link (two or more links) is two files and the name logic decides. A file with one link has one
+directory entry, so two names for it are spellings of that entry. Data-safety invariant: a planned deletion never removes a file that
 another path in the same plan refers to on disk, unless that path is written after the
 deletion as part of the same swap. Concretely, an existing entry that is the same file as a
 doomed path is not an obstacle, whether it is the target itself, a parent path that is a file,
