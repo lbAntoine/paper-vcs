@@ -1,6 +1,6 @@
 # PV-040: word tokenisers (generic, CJK, LaTeX)
 
-- **Status:** In progress
+- **Status:** Done
 - **Issue:** #79
 - **Branch:** `feat/PV-040-word-tokenisers`
 - **Depends on:** none. Runs in parallel with PV-035.
