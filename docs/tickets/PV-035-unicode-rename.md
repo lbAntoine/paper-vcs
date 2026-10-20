@@ -83,11 +83,11 @@ extra guard that is never weaker.
 
 ## Acceptance criteria
 
-- [x] The #67 reproduction through `undo` twice and through `restore --from last~1 .` (file and folder variants): the file survives with its content. The result is either the NFC spelling, swapped, or the NFD spelling left as is, never neither. `git fsck --strict` is clean.
-- [x] The same for a case-only rename where the filesystem folds case. The existing case-rename tests still pass.
-- [x] No planned deletion removes a file that a blocked write's target refers to on disk. The invariant is tested directly at the planner level.
+- [ ] The #67 reproduction through `undo` twice and through `restore --from last~1 .` (file and folder variants): the file survives with its content. The result is either the NFC spelling, swapped, or the NFD spelling left as is, never neither. `git fsck --strict` is clean.
+- [ ] The same for a case-only rename where the filesystem folds case. The existing case-rename tests still pass.
+- [ ] No planned deletion removes a file that a blocked write's target refers to on disk. The invariant is tested directly at the planner level.
 - [ ] Ordinary restore and undo are unchanged. The existing suites pass on all three OSes.
-- [x] Specs updated, only in the listed sections, including the Windows note.
+- [ ] Specs updated, only in the listed sections, including the Windows note.
 - [ ] fmt, clippy (`-D warnings`) and the full suite pass (CI on Linux, macOS, Windows).
 
 ## Test plan
@@ -100,16 +100,6 @@ extra guard that is never weaker.
 - No snapshots by hand.
 
 ## Summary
-
-Restore and undo now compare files, not only names, so a rename that changes only the Unicode
-form of a name (or its case) on a folding filesystem no longer loses the file. In
-`restore_plan.rs`, on Unix, two paths are the same file when they share `(device, inode)` and
-the file has a single link; `obstacle` treats such an entry as a swap, `settle` keeps the
-deletions of the blocked target or its parents, and `actual_spelling` finds the real spelling
-by identity. The to-draft planner's "already there" rule is re-planned as a write when a
-deletion removes the same file. Real hard links keep the name logic (`Blocked`). Windows keeps
-the name logic. No new dependency. 03-architecture documents the rule. CI on all three OSes is
-left to the coordinator.
 
 ## Handoff log
 
@@ -130,7 +120,7 @@ left to the coordinator.
 - `checkout.rs`: the "already there" rule could still lose the file (disk shows NFC, draft tracks NFD: NFD is deleted while NFC is judged already there and not written). Paths judged already there are now re-planned as writes when a deletion is the same file, so `settle` swaps them. Reaches `settle` otherwise unchanged.
 - Unit tests in `restore_plan.rs` (`cfg(all(test, unix))`) using a hard link: helper behaviour, a swap through `settle`, and the invariant (`assert_invariant`) on a plan with an unrelated blocker. They run on any Unix filesystem.
 - Spec: 03-architecture gets the same-file rule, the invariant and the Windows note. 02-cli unchanged (no skip wording changed).
-- Known limit (superseded in the post-approval entry: a hard link now keeps the name logic): a real hard link between an untracked path and a doomed tracked path is read as a folded name and swapped (documented in the spec).
+- Known limit: a real hard link between an untracked path and a doomed tracked path is read as a folded name and swapped (documented in the spec).
 - Checks: fmt, clippy `-D warnings`, full suite with `--no-fail-fast` pass on macOS; the 4 Unicode-form tests pass.
 
 ### GREEN (review round 1) · rust-engineer · 2026-10-20
@@ -139,8 +129,3 @@ left to the coordinator.
 - 3: `same_file` = same inode and not both names listed exactly. A real hard link keeps the old behaviour (`Blocked`); Linux-runnable unit tests assert it. Hard-link sentence dropped from the spec; spec covers the parent/folder rule.
 - 4: a draft path that is the same file is reported as `CaseAlias`; integration test added.
 - 5: stray `same_file.rs-E` removed. 6: `root` hoisted.
-
-### GREEN (post-approval) · rust-engineer · 2026-10-20
-- Guard changed: `listed_exactly` is gone. `same_file` is now `same_inode`: same `(dev, ino)` and (a directory or `nlink() == 1`). A hard link (two or more links) falls back to the name logic (`Blocked`). `actual_spelling`'s identity alias uses the same rule, so a hard-linked sibling is not picked. This supersedes the earlier "Known limit" and the round-1 listing guard (a real hard link under a folded name was still swapped).
-- Tests: in `a_real_hard_link_is_two_files_not_one_folded_name` the one assertion changed is `same_inode(a, b)`, now `!same_inode` (nlink 2). Both hard-link unit tests are otherwise unchanged. Added a Linux-runnable unit test for nlink 2 not being the same file, and the integration test `a_hard_link_under_a_folded_name_is_not_overwritten_by_undo` (the repro; runtime fold check; fails with the nlink condition removed, passes with it).
-- Spec: hard-link sentence replaced in 03-architecture. Nit: `root` bound before first use in `settle`. Summary filled; criteria that hold ticked (the all-OS and CI ones left open).
