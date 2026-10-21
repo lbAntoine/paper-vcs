@@ -7,6 +7,12 @@ use similar::{Algorithm, ChangeTag};
 mod tokenise;
 pub use tokenise::{Token, TokenKind, Tokeniser, tokenise, tokeniser_for};
 
+mod word;
+pub use word::{
+    CUT_KEEP_WORDS, CUT_THRESHOLD_WORDS, Paragraph, Segment, WordDiff, WordDiffOptions, diff_words,
+    diff_words_with, to_word_markup,
+};
+
 /// How many leading bytes are scanned for a NUL byte when classifying content.
 pub const BINARY_SNIFF_LEN: usize = 8 * 1024;
 
