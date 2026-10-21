@@ -12,7 +12,7 @@
   - `crates/paper-cli/tests/help.rs` (new) and its snapshots
   - `docs/specs/02-cli.md` (the `paper help` bullet and its "Planned" note)
 - **Must not touch:** `paper-core`, `paper-diff`, or any other command's behaviour or output.
-  `paper status` already says "see `paper help large-files`"; leave that line unchanged.
+
 - **Specs:**
   - `02-cli.md`: the `paper help …` bullet (around line 778).
   - `04-content.md` § Large files: the content of the topic.
@@ -70,6 +70,19 @@ options are.
 - **Spec.** In 02-cli, the `paper help` bullet describes `help large-files` as shipped in v0.3
   and keeps `concepts` and `git` as planned.
 
+### Coordinator decision after RED (2026-10-21)
+
+- **The `status` pointer doesn't exist yet.** RED found that `paper status` prints the heading
+  "Skipped (paper leaves these out of the draft):" and never mentions `paper help large-files`;
+  only the spec example (02-cli.md:139) does. Decision: add it.
+  - When at least one listed file was skipped for being too large, `status` ends the Skipped
+    section with one hint line: `  Too large to track? See \`paper help large-files\`.`
+  - Other skip reasons (nested repositories and the rest) don't print the hint.
+  - JSON is unchanged.
+  - Touches now also include `crates/paper-cli/src/render/status.rs`,
+    `crates/paper-cli/src/render/human.rs` (only if the skipped lines live there), and the
+    `status_skipped` snapshot. Update the 02-cli `paper status` example to the real output.
+
 ## Acceptance criteria
 
 - [ ] `paper help large-files` prints the topic, exit 0. Every command and default in it is
@@ -78,7 +91,7 @@ options are.
   other command) matches `paper save --help` exactly.
 - [ ] `paper help nonsense` is a three-part error listing the topics and commands, exit 1.
 - [ ] JSON shapes as decided, with fixed keys.
-- [ ] The `status` pointer text is unchanged, and now resolves.
+- [ ] `paper status` with a too-large file ends the Skipped section with the `paper help large-files` hint, and a skip for another reason doesn't. JSON is unchanged.
 - [ ] Snapshot-tested: topic text, `paper help` output, the error.
 - [ ] Spec updated (only the listed bullet).
 - [ ] fmt, clippy (`-D warnings`) and the full suite pass (CI on Linux, macOS and Windows).
