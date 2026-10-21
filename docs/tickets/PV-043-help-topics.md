@@ -134,3 +134,13 @@ options are.
   ticket's Touches/Must-not-touch lists forbid. No status test was written. The coordinator
   must decide: add the pointer (and widen Touches to `render/status.rs`/`human.rs` and the
   `status_skipped` snapshot) or drop that acceptance criterion.
+
+### RED (addendum) · test-author · 2026-10-21
+
+- Added 3 status-hint tests to `crates/paper-cli/tests/help.rs` (17 total, no snapshots):
+  - `status_ends_the_skipped_section_with_the_large_files_hint`: FAILS now (the last line of the
+    Skipped section must be `  Too large to track? See \`paper help large-files\`.`).
+  - `status_does_not_print_the_hint_for_a_nested_repository_skip`: passes by design.
+  - `status_json_for_a_too_large_file_keeps_its_key_set`: passes by design (key set unchanged,
+    no hint in the JSON).
+- No src/ changes. GREEN re-accepts the `status_skipped` snapshot.

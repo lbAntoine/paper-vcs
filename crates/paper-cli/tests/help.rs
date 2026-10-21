@@ -2,7 +2,7 @@
 
 mod common;
 
-use common::{Env, Run, assert_keys};
+use common::{Env, Run, assert_keys, binary};
 
 const TOPIC_SUMMARY: &str = "What happens to big files, and what to do about them";
 
@@ -274,4 +274,65 @@ fn dash_h_and_dash_dash_help_still_work() {
         run.assert_code(0);
         assert!(run.stdout.contains("Usage:"), "{args:?}: {run:#?}");
     }
+}
+
+const HINT: &str = "  Too large to track? See `paper help large-files`.";
+
+/// A project whose `data/big.bin` (2 MB) is over a 1 MB `large_files.max_mb`.
+fn project_with_a_too_large_file() -> Env {
+    let env = Env::new();
+    env.project_with_three_saves();
+    env.paper(&["config", "set", "--project", "large_files.max_mb", "1"])
+        .assert_code(0);
+    env.write_bytes("data/big.bin", &binary(2 * 1024 * 1024, 3));
+    env
+}
+
+#[test]
+fn status_ends_the_skipped_section_with_the_large_files_hint() {
+    let env = project_with_a_too_large_file();
+
+    let run = env.paper(&["status"]);
+
+    run.assert_code(0);
+    assert!(run.stdout.contains("data/big.bin"), "{run:#?}");
+    assert!(run.stdout.contains("too large to track"), "{run:#?}");
+    let skipped = run.stdout.split_once("Skipped").unwrap().1;
+    assert_eq!(skipped.lines().last(), Some(HINT), "{run:#?}");
+}
+
+#[test]
+fn status_does_not_print_the_hint_for_a_nested_repository_skip() {
+    let env = Env::new();
+    env.project_with_three_saves();
+    env.git_work(&["init", "-q", "vendor"]);
+    env.write("vendor/lib.tex", "nested\n");
+
+    let run = env.paper(&["status"]);
+
+    run.assert_code(0);
+    assert!(run.stdout.contains("a separate git repository"), "{run:#?}");
+    assert!(!run.stdout.contains("paper help large-files"), "{run:#?}");
+}
+
+#[test]
+fn status_json_for_a_too_large_file_keeps_its_key_set() {
+    let env = project_with_a_too_large_file();
+
+    let run = env.paper(&["--json", "status"]);
+
+    run.assert_code(0);
+    assert_keys(
+        &run.json(),
+        &[
+            "schema",
+            "line",
+            "last",
+            "changes",
+            "skipped",
+            "large",
+            "outside_paper",
+        ],
+    );
+    assert!(!run.stdout.contains("paper help large-files"), "{run:#?}");
 }
