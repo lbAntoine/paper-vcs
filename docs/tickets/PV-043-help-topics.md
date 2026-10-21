@@ -97,3 +97,27 @@ options are.
 ## Summary
 
 ## Handoff log
+
+### RED · test-author · 2026-10-21
+
+- **Tests:** `crates/paper-cli/tests/help.rs`, 14 tests, through the binary, `contains` checks
+  only (no snapshots). 10 fail on `origin/main` (probe worktree): the topic text and its
+  facts (limits, defaults 10/100 MB, config keys, `paper ignore <path>`, Zenodo, `paper config
+  set --project large_files.max_mb <N>`, "Skipped", one "Git LFS" line with "1.0"), 25-40 lines
+  at <= 80 columns, `help` + "Help topics:" list, unknown topic three-part error (names the
+  word, lists `large-files` and commands), topic JSON keys, `help --json` keys,
+  `help <cmd> --json` user error. They fail with "unrecognized subcommand".
+- **Pass on main by design (4):** `help <cmd>` equals `<cmd> --help` for every command (clap's
+  built-in already does this; guards the replacement), the same inside a project, `-h` and
+  `--help`, and the unknown-topic JSON error (clap's error is already a JSON user error naming
+  the word).
+- **Command list:** discovered from the `Commands:` block of `paper --help` (minus `help`),
+  and checked to include a fixed list of the 14 current commands.
+- **Stubs:** none needed (tests go through the binary).
+- **QUESTION (ticket premise is wrong):** `paper status` does NOT print "see `paper help
+  large-files`" today. The heading is "Skipped (paper leaves these out of the draft):" and no
+  source or snapshot contains the pointer (only the spec, 02-cli.md line 139). So there is
+  nothing to pin, and adding the pointer changes `status` output and snapshots, which the
+  ticket's Touches/Must-not-touch lists forbid. No status test was written. The coordinator
+  must decide: add the pointer (and widen Touches to `render/status.rs`/`human.rs` and the
+  `status_skipped` snapshot) or drop that acceptance criterion.
