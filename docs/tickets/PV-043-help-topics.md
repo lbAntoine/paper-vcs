@@ -1,6 +1,6 @@
 # PV-043: `paper help large-files` (help topics)
 
-- **Status:** In progress
+- **Status:** Done
 - **Issue:** #82
 - **Branch:** `feat/PV-043-help-topics`
 - **Depends on:** none. Runs in parallel with PV-041 (`paper-diff` only).
