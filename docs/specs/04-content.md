@@ -50,8 +50,26 @@ more readable hunks than Myers. The output is git's unified format with 3 lines 
    - **Markdown and Typst**: generic in v0.3. Format-aware tokenisers come later if users ask.
 2. **Diff** the token streams with the patience algorithm (`similar`), and group
    the hunks by paragraph (a blank line separates paragraphs).
+   - **Comparison.** Tokens are equal when they have the same kind and text, except
+     `Space` tokens: two are equal when neither holds a paragraph break (two or more `\n`)
+     or when both do. Re-wrapping, re-indenting or a double space is not a change, which
+     matters for hard-wrapped LaTeX. Unchanged text is reported with the new side's spacing.
+   - **Layout only.** A change made only of such spaces, and white space added or removed at
+     the very end of the text (a final line break or blank line), is layout. If nothing else
+     changed, the result has no paragraphs and `layout_only` is true.
+   - **Counts.** `+N` and `−M` count `Word` tokens only (a CJK grapheme is one word).
+     Punctuation, spaces, commands and comments change the text but not the counts.
+   - **Paragraphs.** Numbers are 1-based on the new side. Only paragraphs with a change are
+     returned. A paragraph that exists only in the old text takes the number of the position
+     where it was; a deleted last paragraph is shown inside the paragraph before it. An
+     added or removed paragraph break is its own segment (`{+¶+}`, `[-¶-]`).
+   - **Cut.** In a returned paragraph, an unchanged run of more than 40 words is cut to its
+     first 10 words, ` … `, and its last 10 words, never inside a token.
 3. **Render.** On a colour TTY, deletions are red with strike-through and insertions green,
-   inline. Without colour, use `[-old-]{+new+}`. The header shows `+N words −M words`.
+   inline. Without colour, use `[-old-]{+new+}`, with a `¶ N` line before each paragraph
+   (trailing line breaks of a paragraph are not shown). Literal `[-`, `-]`, `{+` and `+}` in
+   the text are not escaped, as in git's `--word-diff`. The header shows `+N words −M words`
+   and is added by the front-end, not by the library's markup.
 
 ```
 sections/intro.tex  +12 words −4 words

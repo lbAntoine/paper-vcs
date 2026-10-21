@@ -411,6 +411,35 @@ fn a_real_edit_inside_a_rewrapped_paragraph_shows_only_the_changed_words() {
 }
 
 #[test]
+fn white_space_added_or_removed_at_the_very_end_is_layout_only() {
+    for (old, new) in [
+        ("a", "a\n"),
+        ("a", "a\n\n"),
+        ("a\n\n", "a"),
+        ("a\n", "a\n\n"),
+        ("a\n\nb", "a\n\nb\n\n"),
+    ] {
+        let d = diff_words(old, new, GEN);
+        assert!(d.paragraphs.is_empty(), "{old:?} -> {new:?}");
+        assert_eq!((d.added, d.removed), (0, 0), "{old:?} -> {new:?}");
+        assert!(d.layout_only, "{old:?} -> {new:?}");
+    }
+}
+
+#[test]
+fn a_trailing_newline_stays_in_the_data_and_is_trimmed_from_the_markup() {
+    let d = diff_words("a b\n", "a c\n", GEN);
+    assert_eq!(
+        d.paragraphs,
+        vec![para(
+            1,
+            vec![same("a "), removed("b"), added("c"), same("\n")]
+        )]
+    );
+    assert_eq!(to_word_markup(&d), "¶ 1\na [-b-]{+c+}\n");
+}
+
+#[test]
 fn a_paragraph_break_against_a_plain_space_is_a_change_not_layout() {
     let d = diff_words("a\n\nb", "a b", GEN);
     assert!(!d.layout_only);
