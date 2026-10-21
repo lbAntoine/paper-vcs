@@ -1,0 +1,7 @@
+---
+source: crates/paper-cli/tests/help.rs
+expression: run.stderr
+---
+error: `large-files` is a help topic; it takes no further words.
+  why:  a topic is read whole; only commands have sub-commands to look up.
+  next: paper help large-files  # read the topic

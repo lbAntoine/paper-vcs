@@ -29,7 +29,7 @@ pub fn human(error: &PaperError, style: Style) -> String {
         "{} {}\n  why:  {}\n",
         style.error_label("error:"),
         error.message,
-        error.why
+        error.why.replace('\n', "\n        ")
     );
     let width = error
         .next

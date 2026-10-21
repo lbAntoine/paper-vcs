@@ -85,15 +85,15 @@ options are.
 
 ## Acceptance criteria
 
-- [ ] `paper help large-files` prints the topic, exit 0. Every command and default in it is
+- [x] `paper help large-files` prints the topic, exit 0. Every command and default in it is
   correct against the binary.
-- [ ] `paper help` prints the general help plus the topic list. `paper help save` (and every
+- [x] `paper help` prints the general help plus the topic list. `paper help save` (and every
   other command) matches `paper save --help` exactly.
-- [ ] `paper help nonsense` is a three-part error listing the topics and commands, exit 1.
-- [ ] JSON shapes as decided, with fixed keys.
-- [ ] `paper status` with a too-large file ends the Skipped section with the `paper help large-files` hint, and a skip for another reason doesn't. JSON is unchanged.
-- [ ] Snapshot-tested: topic text, `paper help` output, the error.
-- [ ] Spec updated (only the listed bullet).
+- [x] `paper help nonsense` is a three-part error listing the topics and commands, exit 1.
+- [x] JSON shapes as decided, with fixed keys.
+- [x] `paper status` with a too-large file ends the Skipped section with the `paper help large-files` hint, and a skip for another reason doesn't. JSON is unchanged.
+- [x] Snapshot-tested: topic text, `paper help` output, the error.
+- [x] Spec updated (only the listed bullet).
 - [ ] fmt, clippy (`-D warnings`) and the full suite pass (CI on Linux, macOS and Windows).
 
 ## Test plan
@@ -108,6 +108,12 @@ options are.
 - The tests must fail on `origin/main`: there is no `help large-files` there.
 
 ## Summary
+
+`paper help [<topic|command>…]` replaces clap's help command: `help large-files` explains the
+two size limits and the options for a skipped file, `help <command>` (nested too) matches
+`<command> --help`, and `help` lists the topics. `paper status` ends its Skipped section with
+a pointer to the topic when a file is too large. Topics are a small table, ready for
+`concepts` and `git`. Large-file warnings are still missing (PV-047).
 
 ## Handoff log
 
@@ -179,3 +185,12 @@ options are.
 
 - Large-file warnings promised by 04-content (first snapshot, tracked file past `max_mb`) don't
   exist; the topic describes what happens today. Follow-up PV-047 (#89).
+
+### GREEN (post-approval) · rust-engineer · 2026-10-21
+
+- Help errors: extra words after a topic, extra words after a command without sub-commands, and
+  an unknown word under a parent now each have their own wording and next step; a top-level
+  unknown word keeps the topics-and-commands wording. `why` is plain (`\n`-separated, no
+  padding); `error::human` indents continuation lines of `why`, so `--json` carries no layout.
+- Tests: snapshots for `help help`, topic extra, command extra, nested extra, unknown under
+  parent, and the unknown-word JSON. Spec bullet rewrapped and retitled.

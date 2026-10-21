@@ -776,13 +776,15 @@ saved like any other. `ui.editor` is not a key yet.
   brings new commits, `status` shows their edits as your unsaved changes, `history` doesn't
   show their saves, and `paper save` refuses. Importing starts in v0.4 (see above);
   syncing with co-authors (`paper sync`) is v0.6 (roadmap § v0.6: Collaboration).
-- `paper help [<topic|command>]` replaces clap's built-in help command. `paper help` prints
+- `paper help [<topic|command>…]` replaces clap's built-in help command. `paper help` prints
   `paper --help` followed by the list of help topics; `paper help <command>` prints exactly
   `paper <command> --help` (nested commands too: `paper help config get`, which replaces
-  `paper config help get`); `-q` is ignored, like for `--help`; an unknown word is a three-part user error listing the topics and
-  the commands. `paper help --json` lists the topics and `paper help <topic> --json` gives
-  `{schema, topic, summary, text}`; `paper help <command> --json` is a user error (command
-  help is text only).
+  `paper config help get`). `-q` is ignored, like for `--help`. An unknown word, extra words
+  after a topic, or extra words after a command with no sub-commands are three-part user
+  errors; an unknown top-level word lists the topics and the commands, and an unknown word
+  under a command lists its sub-commands. `paper help --json` lists the topics and
+  `paper help <topic> --json` gives `{schema, topic, summary, text}`;
+  `paper help <command> --json` is a user error (command help is text only).
   - `paper help large-files` (shipped in v0.3) explains the two size limits, what "Skipped"
     means in `status` and the options for a skipped file.
   - *Planned:* `paper help concepts` and `paper help git` (the vocabulary mapping table from

@@ -1,0 +1,7 @@
+---
+source: crates/paper-cli/tests/help.rs
+expression: run.stderr
+---
+error: `paper save` has no sub-commands.
+  why:  `extra` does not follow `paper save`.
+  next: paper help save  # see how to use it

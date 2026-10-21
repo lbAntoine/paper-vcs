@@ -34,9 +34,10 @@ pub fn run(cli: &Cli, words: &[String]) -> Output {
             overview()
         });
     };
-    if rest.is_empty()
-        && let Some(topic) = TOPICS.iter().find(|topic| topic.name == first)
-    {
+    if let Some(topic) = TOPICS.iter().find(|topic| topic.name == first) {
+        if !rest.is_empty() {
+            return Err(topic_with_words(topic.name));
+        }
         return Ok(if cli.json {
             topic_json(topic)
         } else {
@@ -46,12 +47,17 @@ pub fn run(cli: &Cli, words: &[String]) -> Output {
     let mut root = Cli::command();
     root.build();
     let mut command = &mut root;
+    let mut path: Vec<&str> = Vec::new();
     for word in words {
         let known = command_names(command);
+        if known.is_empty() {
+            return Err(no_sub_commands(&path, word));
+        }
         command = match command.find_subcommand_mut(word) {
             Some(found) if word != "help" => found,
-            _ => return Err(unknown(word, &known)),
+            _ => return Err(unknown(&path, word, &known)),
         };
+        path.push(word);
     }
     if cli.json {
         return Err(text_only(&words.join(" ")));
@@ -117,15 +123,53 @@ fn text_only(command: &str) -> PaperError {
     }
 }
 
-fn unknown(word: &str, commands: &[String]) -> PaperError {
+fn topic_with_words(topic: &str) -> PaperError {
+    PaperError {
+        kind: ErrorKind::User,
+        message: format!("`{topic}` is a help topic; it takes no further words."),
+        why: "a topic is read whole; only commands have sub-commands to look up.".to_owned(),
+        next: vec![Suggestion {
+            command: format!("paper help {topic}"),
+            explanation: "read the topic".to_owned(),
+        }],
+    }
+}
+
+fn no_sub_commands(path: &[&str], word: &str) -> PaperError {
+    let command = path.join(" ");
+    PaperError {
+        kind: ErrorKind::User,
+        message: format!("`paper {command}` has no sub-commands."),
+        why: format!("`{word}` does not follow `paper {command}`."),
+        next: vec![Suggestion {
+            command: format!("paper help {command}"),
+            explanation: "see how to use it".to_owned(),
+        }],
+    }
+}
+
+/// An unknown word: at the top level the topics and commands, under a parent its sub-commands.
+fn unknown(path: &[&str], word: &str, commands: &[String]) -> PaperError {
+    if !path.is_empty() {
+        let parent = path.join(" ");
+        return PaperError {
+            kind: ErrorKind::User,
+            message: format!("`paper {parent}` has no command `{word}`."),
+            why: format!("Commands: {}", commands.join(", ")),
+            next: vec![Suggestion {
+                command: format!("paper help {parent}"),
+                explanation: "see how to use it".to_owned(),
+            }],
+        };
+    }
     let topics: Vec<&str> = TOPICS.iter().map(|t| t.name).collect();
     PaperError {
         kind: ErrorKind::User,
         message: format!("There is no help topic or command called `{word}`."),
         why: format!(
-            "`{word}` is neither a help topic ({}) nor a command.\n        Commands: {}",
+            "`{word}` is neither a help topic ({}) nor a command.\nCommands: {}",
             topics.join(", "),
-            wrap(&commands.join(", "), 70)
+            commands.join(", ")
         ),
         next: vec![
             Suggestion {
@@ -138,20 +182,4 @@ fn unknown(word: &str, commands: &[String]) -> PaperError {
             },
         ],
     }
-}
-
-/// Breaks `text` after a comma-and-space once a line passes `width`, indenting continuations.
-fn wrap(text: &str, width: usize) -> String {
-    let mut out = String::new();
-    let mut line_len = 0;
-    for word in text.split_inclusive(' ') {
-        if line_len + word.len() > width {
-            out.truncate(out.trim_end().len());
-            out.push_str("\n                  ");
-            line_len = 0;
-        }
-        out.push_str(word);
-        line_len += word.len();
-    }
-    out
 }

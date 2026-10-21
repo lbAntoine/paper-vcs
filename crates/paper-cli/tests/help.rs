@@ -369,3 +369,32 @@ fn help_for_a_nested_command_matches_its_command_help() {
     assert_eq!(via_help.stdout, direct.stdout);
     env.paper(&["help", "config", "nonsense"]).assert_code(1);
 }
+
+#[test]
+fn snapshot_help_error_cases() {
+    let env = Env::new();
+    for (name, args) in [
+        ("help_help", &["help", "help"][..]),
+        ("help_topic_extra", &["help", "large-files", "extra"]),
+        ("help_command_extra", &["help", "save", "extra"]),
+        ("help_nested_extra", &["help", "config", "get", "extra"]),
+        ("help_under_parent", &["help", "config", "nonsense"]),
+    ] {
+        let run = env.paper(args);
+        run.assert_three_part_error(1);
+        insta::assert_snapshot!(name, run.stderr);
+    }
+}
+
+#[test]
+fn the_unknown_word_json_error_has_no_layout_padding() {
+    let env = Env::new();
+
+    let run = env.paper(&["help", "nonsense", "--json"]);
+
+    run.assert_code(1);
+    let json = run.json();
+    let why = json["error"]["why"].as_str().unwrap();
+    assert!(!why.contains("  "), "{why:?}");
+    insta::assert_snapshot!("help_unknown_json", run.stdout);
+}
