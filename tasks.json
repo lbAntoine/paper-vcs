@@ -115,11 +115,11 @@
       "id": "e1a0c043",
       "title": "PV-043: paper help large-files (help topics)",
       "description": "GitHub issue #82. Wave 2, parallel with PV-041. Size S.",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "medium",
       "sprint": "v0.3-a",
       "created_at": "2026-10-20T19:03:13Z",
-      "updated_at": "2026-10-20T19:03:13Z"
+      "updated_at": "2026-10-21T08:08:02Z"
     },
     {
       "id": "e1a0c044",
