@@ -21,31 +21,40 @@ const ATOMS: [&str; 9] = ["ab", "cd", "한", "国", "\\emph", "%c", "😀", ",",
 const SPACES: [&str; 3] = [" ", "\r", "\u{a0}"];
 const BREAKS: [&str; 3] = ["\n\n", "\r\n\r\n", "\n\n\n"];
 
-/// Two documents built from the same atoms, the same plain space and the same
-/// paragraph break, plus that break. Atoms are CJK, a LaTeX command and
-/// comment, an emoji and punctuation as well as words.
-fn mixed_pair() -> impl Strategy<Value = (String, String, &'static str)> {
-    let paragraphs = || {
-        proptest::collection::vec(
-            proptest::collection::vec(proptest::sample::select(ATOMS.to_vec()), 1..6),
-            0..4,
-        )
-    };
-    (
-        paragraphs(),
-        paragraphs(),
-        proptest::sample::select(SPACES.to_vec()),
-        proptest::sample::select(BREAKS.to_vec()),
-    )
-        .prop_map(|(a, b, space, brk)| {
-            let build = |doc: Vec<Vec<&str>>| {
-                doc.iter()
-                    .map(|p| p.join(space))
-                    .collect::<Vec<_>>()
-                    .join(brk)
-            };
-            (build(a), build(b), brk)
-        })
+/// A document built from the same atoms on both sides, but with the plain
+/// space drawn again for every gap and the break for every paragraph, so that
+/// unchanged text is often spaced differently on the two sides. Atoms are
+/// CJK, a LaTeX command and comment, an emoji and punctuation as well as
+/// words.
+fn mixed_document() -> impl Strategy<Value = String> {
+    let atom = proptest::sample::select(ATOMS.to_vec());
+    let space = proptest::sample::select(SPACES.to_vec());
+    let paragraph = proptest::collection::vec((atom, space), 1..6).prop_map(|words| {
+        words
+            .iter()
+            .enumerate()
+            .map(|(i, (word, space))| {
+                if i + 1 < words.len() {
+                    format!("{word}{space}")
+                } else {
+                    (*word).to_owned()
+                }
+            })
+            .collect::<String>()
+    });
+    let break_ = proptest::sample::select(BREAKS.to_vec());
+    proptest::collection::vec((paragraph, break_), 0..4).prop_map(|ps| {
+        ps.iter()
+            .enumerate()
+            .map(|(i, (text, brk))| {
+                if i + 1 < ps.len() {
+                    format!("{text}{brk}")
+                } else {
+                    text.clone()
+                }
+            })
+            .collect()
+    })
 }
 
 proptest! {
@@ -53,11 +62,15 @@ proptest! {
 
     #[test]
     fn same_plus_removed_is_the_old_text_and_same_plus_added_is_the_new_text(
-        (old, new, brk) in mixed_pair(),
+        old in mixed_document(), new in mixed_document(),
     ) {
         for tok in [GEN, TEX] {
             let d = full(&old, &new, tok);
-            prop_assert_eq!(rebuild(&d, brk), (old.clone(), new.clone()));
+            // Unchanged text keeps the new side's spacing, so compare the
+            // old side by token keys: spacing is normalised on both.
+            let (rebuilt_old, rebuilt_new) = rebuild(&d, BREAK);
+            prop_assert_eq!(normalise(&rebuilt_old), normalise(&old));
+            prop_assert_eq!(normalise(&rebuilt_new), normalise(&new));
         }
     }
 

@@ -91,3 +91,32 @@ pub fn check_single(tok: Tokeniser, cases: &[Case<'_>]) {
         assert_eq!(to_word_markup(&d), c.markup, "{ctx}");
     }
 }
+
+/// The text with every run of white space written `" "`, or `"\n\n"` when it
+/// holds a paragraph break: two texts that differ only in spacing normalise
+/// equal.
+pub fn normalise(text: &str) -> String {
+    let mut out = String::new();
+    let mut gap = String::new();
+    for c in text.chars() {
+        if c.is_whitespace() {
+            gap.push(c);
+            continue;
+        }
+        flush_gap(&mut out, &mut gap);
+        out.push(c);
+    }
+    flush_gap(&mut out, &mut gap);
+    out
+}
+
+fn flush_gap(out: &mut String, gap: &mut String) {
+    if !gap.is_empty() {
+        out.push_str(if gap.matches('\n').count() >= 2 {
+            "\n\n"
+        } else {
+            " "
+        });
+        gap.clear();
+    }
+}

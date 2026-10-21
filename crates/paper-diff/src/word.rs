@@ -3,12 +3,10 @@
 //!
 //! Pure functions over strings: no I/O, no printing.
 
-use std::collections::{HashMap, HashSet};
-use std::fmt::Write as _;
-use std::ops::Range;
-use std::time::{Duration, Instant};
+mod align;
 
-use similar::{Algorithm, capture_diff_slices_deadline};
+use std::collections::HashMap;
+use std::fmt::Write as _;
 
 use crate::{Token, TokenKind, Tokeniser, tokenise};
 
@@ -96,20 +94,10 @@ impl WordDiffOptions {
     }
 }
 
-/// Longest time the alignment may take. Past it `similar` returns a coarser
-/// but valid diff; texts in the tests never get near it.
-const DEADLINE: Duration = Duration::from_secs(2);
-
-/// Replaced paragraph groups of different sizes are word-diffed together when
-/// the product of their token counts is at most this; otherwise they are
-/// shown as removed and added whole.
-const GROUP_LIMIT: usize = 4_000_000;
-
 /// Compare two versions of a text word by word.
 ///
-/// Paragraphs are lined up first (patience over paragraph keys), then words
-/// are diffed inside each pair of changed paragraphs. Tokens are equal when
-/// they have the same kind and text, except that two `Space` tokens are equal
+/// The whole texts are diffed token by token with a patience diff. Tokens
+/// are equal when they have the same kind and text, except that two `Space` tokens are equal
 /// when neither holds a paragraph break (two or more `\n`) or when both do.
 /// Moving line breaks, re-indenting or doubling a space is therefore not a
 /// change, and an unchanged run is reported with the new side's spacing.
@@ -122,8 +110,9 @@ const GROUP_LIMIT: usize = 4_000_000;
 /// the number the next new paragraph has (or, at the end, is shown inside the
 /// paragraph before it).
 ///
-/// Reads the clock to bound the alignment to about two seconds, after which
-/// the result is coarser but still correct.
+/// Reads the clock to bound the alignment of each call to about two seconds.
+/// Past that, `similar` returns a coarser but still correct diff; only a huge
+/// text with a tiny vocabulary gets there.
 ///
 /// # Panics
 ///
@@ -150,7 +139,7 @@ pub fn diff_words_with(
     let old_tokens = tokenise(old_core, tokeniser);
     let new_tokens = tokenise(new_core, tokeniser);
 
-    let marks = align(&old_tokens, &new_tokens);
+    let marks = align::align(&old_tokens, &new_tokens);
     let mut flow = Flow::default();
     flow.layout_text(new_lead);
     flow.walk(&old_tokens, &new_tokens, &marks);
@@ -255,7 +244,7 @@ fn is_plain_space(token: &Token<'_>) -> bool {
 }
 
 /// A key per token such that tokens that count as equal share a key.
-fn keys(tokens: &[Token<'_>], ids: &mut HashMap<(u8, String), u32>) -> Vec<u32> {
+pub(super) fn keys(tokens: &[Token<'_>], ids: &mut HashMap<(u8, String), u32>) -> Vec<u32> {
     tokens
         .iter()
         .map(|t| {
@@ -278,237 +267,8 @@ fn keys(tokens: &[Token<'_>], ids: &mut HashMap<(u8, String), u32>) -> Vec<u32> 
         .collect()
 }
 
-// --------------------------------------------------------------- alignment
-
-/// Which tokens are not part of the common text.
-struct Marks {
-    /// Per old token: removed.
-    del: Vec<bool>,
-    /// Per new token: added.
-    ins: Vec<bool>,
-}
-
-/// A maximal stretch of changed tokens, as ranges of old and new indices.
-#[derive(Clone)]
-struct Run {
-    old: Range<usize>,
-    new: Range<usize>,
-}
-
-/// The changed stretches of a pair of mark vectors. The unmarked elements of
-/// the two sides pair up in order.
-fn runs(del: &[bool], ins: &[bool]) -> Vec<Run> {
-    let (mut i, mut j) = (0, 0);
-    let mut out = Vec::new();
-    while i < del.len() || j < ins.len() {
-        if i < del.len() && del[i] || j < ins.len() && ins[j] {
-            let (os, ns) = (i, j);
-            while i < del.len() && del[i] {
-                i += 1;
-            }
-            while j < ins.len() && ins[j] {
-                j += 1;
-            }
-            out.push(Run {
-                old: os..i,
-                new: ns..j,
-            });
-        } else {
-            i += 1;
-            j += 1;
-        }
-    }
-    out
-}
-
-/// Patience diff of two key sequences. Returns which elements changed.
-///
-/// A common prefix and suffix are matched first. Elements whose key occurs on
-/// one side only are changed whatever the alignment, so they are taken out
-/// before the diff: an unrelated rewrite costs almost nothing.
-fn diff_keys(old: &[u32], new: &[u32], deadline: Instant) -> (Vec<bool>, Vec<bool>) {
-    let mut del = vec![true; old.len()];
-    let mut ins = vec![true; new.len()];
-    let prefix = old.iter().zip(new).take_while(|(a, b)| a == b).count();
-    let max_suffix = old.len().min(new.len()) - prefix;
-    let suffix = old
-        .iter()
-        .rev()
-        .zip(new.iter().rev())
-        .take(max_suffix)
-        .take_while(|(a, b)| a == b)
-        .count();
-    del[..prefix].fill(false);
-    ins[..prefix].fill(false);
-    del[old.len() - suffix..].fill(false);
-    ins[new.len() - suffix..].fill(false);
-
-    let old_mid = prefix..old.len() - suffix;
-    let new_mid = prefix..new.len() - suffix;
-    let old_set: HashSet<u32> = old[old_mid.clone()].iter().copied().collect();
-    let new_set: HashSet<u32> = new[new_mid.clone()].iter().copied().collect();
-    let old_at: Vec<usize> = old_mid.filter(|&i| new_set.contains(&old[i])).collect();
-    let new_at: Vec<usize> = new_mid.filter(|&j| old_set.contains(&new[j])).collect();
-    let old_common: Vec<u32> = old_at.iter().map(|&i| old[i]).collect();
-    let new_common: Vec<u32> = new_at.iter().map(|&j| new[j]).collect();
-
-    let ops = capture_diff_slices_deadline(
-        Algorithm::Patience,
-        &old_common,
-        &new_common,
-        Some(deadline),
-    );
-    for op in ops {
-        let (tag, o, n) = op.as_tag_tuple();
-        if tag == similar::DiffTag::Equal {
-            for (a, b) in o.zip(n) {
-                del[old_at[a]] = false;
-                ins[new_at[b]] = false;
-            }
-        }
-    }
-    (del, ins)
-}
-
-/// Token ranges of the paragraphs: each holds its tokens and the paragraph
-/// break that ends it.
-fn paragraph_ranges(tokens: &[Token<'_>]) -> Vec<Range<usize>> {
-    let mut out = Vec::new();
-    let mut start = 0;
-    for (i, token) in tokens.iter().enumerate() {
-        if token.kind == TokenKind::Space && is_break_text(token.text) {
-            out.push(start..i + 1);
-            start = i + 1;
-        }
-    }
-    if start < tokens.len() {
-        out.push(start..tokens.len());
-    }
-    out
-}
-
-fn align(old: &[Token<'_>], new: &[Token<'_>]) -> Marks {
-    let deadline = Instant::now() + DEADLINE;
-    let mut ids = HashMap::new();
-    let old_keys = keys(old, &mut ids);
-    let new_keys = keys(new, &mut ids);
-    let old_par = paragraph_ranges(old);
-    let new_par = paragraph_ranges(new);
-
-    // Level 1: line the paragraphs up.
-    let mut interned: HashMap<&[u32], u32> = HashMap::new();
-    let old_ids: Vec<u32> = old_par
-        .iter()
-        .map(|r| intern(&mut interned, &old_keys[r.clone()]))
-        .collect();
-    let new_ids: Vec<u32> = new_par
-        .iter()
-        .map(|r| intern(&mut interned, &new_keys[r.clone()]))
-        .collect();
-    let (par_del, par_ins) = diff_keys(&old_ids, &new_ids, deadline);
-
-    // Level 2: words, inside changed paragraphs only.
-    let mut marks = Marks {
-        del: vec![false; old.len()],
-        ins: vec![false; new.len()],
-    };
-    let word_diff = |marks: &mut Marks, o: Range<usize>, n: Range<usize>| {
-        let (d, i) = diff_keys(&old_keys[o.clone()], &new_keys[n.clone()], deadline);
-        marks.del[o].copy_from_slice(&d);
-        marks.ins[n].copy_from_slice(&i);
-    };
-    for run in runs(&par_del, &par_ins) {
-        let o = token_span(&old_par, &run.old);
-        let n = token_span(&new_par, &run.new);
-        if run.old.is_empty() || run.new.is_empty() {
-            // A paragraph added or removed whole.
-            marks.del[o].fill(true);
-            marks.ins[n].fill(true);
-        } else if run.old.len() == run.new.len() {
-            for (a, b) in run.old.clone().zip(run.new.clone()) {
-                word_diff(&mut marks, old_par[a].clone(), new_par[b].clone());
-            }
-        } else if o.len().saturating_mul(n.len()) <= GROUP_LIMIT {
-            word_diff(&mut marks, o, n);
-        } else {
-            marks.del[o].fill(true);
-            marks.ins[n].fill(true);
-        }
-    }
-    slide(&old_keys, &new_keys, old, new, &mut marks);
-    marks
-}
-
-fn intern<'a>(ids: &mut HashMap<&'a [u32], u32>, key: &'a [u32]) -> u32 {
-    let next = u32::try_from(ids.len()).unwrap_or(u32::MAX);
-    *ids.entry(key).or_insert(next)
-}
-
-/// The tokens of a range of paragraphs.
-fn token_span(paragraphs: &[Range<usize>], range: &Range<usize>) -> Range<usize> {
-    if range.is_empty() {
-        0..0
-    } else {
-        paragraphs[range.start].start..paragraphs[range.end - 1].end
-    }
-}
-
-fn is_break_token(token: &Token<'_>) -> bool {
+pub(crate) fn is_break_token(token: &Token<'_>) -> bool {
     token.kind == TokenKind::Space && is_break_text(token.text)
-}
-
-/// Move every pure insertion or deletion to the best of the places where it
-/// reads the same. A hunk can move while the token it would pass has the same
-/// key as the token it would leave. The best place ends with a paragraph
-/// break, else starts right after one, else it stays where the diff put it.
-/// So a deleted paragraph that starts like the next one is still shown whole.
-fn slide(
-    old_keys: &[u32],
-    new_keys: &[u32],
-    old: &[Token<'_>],
-    new: &[Token<'_>],
-    marks: &mut Marks,
-) {
-    let old_brk: Vec<bool> = old.iter().map(is_break_token).collect();
-    let new_brk: Vec<bool> = new.iter().map(is_break_token).collect();
-    for run in runs(&marks.del, &marks.ins) {
-        if run.old.is_empty() {
-            slide_hunk(new_keys, &new_brk, &mut marks.ins, &run.new);
-        } else if run.new.is_empty() {
-            slide_hunk(old_keys, &old_brk, &mut marks.del, &run.old);
-        }
-    }
-}
-
-fn slide_hunk(keys: &[u32], brk: &[bool], marks: &mut [bool], hunk: &Range<usize>) {
-    let (s, e) = (hunk.start, hunk.end);
-    let mut left = 0;
-    while s > left && !marks[s - left - 1] && keys[s - left - 1] == keys[e - left - 1] {
-        left += 1;
-    }
-    let mut right = 0;
-    while e + right < keys.len() && !marks[e + right] && keys[s + right] == keys[e + right] {
-        right += 1;
-    }
-    if left + right == 0 {
-        return;
-    }
-    // Candidate starts, nearest to where the hunk is first.
-    let starts: Vec<usize> = (0..=left.max(right))
-        .flat_map(|d| [(d <= left).then(|| s - d), (d <= right).then_some(s + d)])
-        .flatten()
-        .collect();
-    let len = e - s;
-    let pick = starts
-        .iter()
-        .find(|&&at| brk[at + len - 1])
-        .or_else(|| starts.iter().find(|&&at| at > 0 && brk[at - 1]))
-        .copied()
-        .unwrap_or(s);
-    if pick != s {
-        marks[s..e].fill(false);
-        marks[pick..pick + len].fill(true);
-    }
 }
 
 // ------------------------------------------------------------------- items
@@ -568,9 +328,9 @@ impl<'a> Flow<'a> {
 
     /// Turn the marks into items, in reading order. Within a change, removed
     /// items come before added ones.
-    fn walk(&mut self, old: &[Token<'a>], new: &[Token<'a>], marks: &Marks) {
+    fn walk(&mut self, old: &[Token<'a>], new: &[Token<'a>], marks: &align::Marks) {
         let mut at = 0;
-        for run in runs(&marks.del, &marks.ins) {
+        for run in align::runs(&marks.del, &marks.ins) {
             for token in &new[at..run.new.start] {
                 self.same(token);
             }

@@ -680,3 +680,66 @@ fn only_added_and_removed_breaks_are_break_segments() {
     assert!(!added(" ").is_break());
     assert!(!paper_diff::Segment::Cut.is_break());
 }
+
+// --------------------------------------- several edits and moved blocks
+
+/// `n` paragraphs of `w` words `p{p}w{i}`; word `w / 2` of each is `e{p}` when `edited`.
+fn paragraphs(n: usize, w: usize, edited: bool) -> Vec<String> {
+    (0..n)
+        .map(|p| {
+            (0..w)
+                .map(|i| {
+                    if edited && i == w / 2 {
+                        format!("e{p}")
+                    } else {
+                        format!("p{p}w{i}")
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .collect()
+}
+
+#[test]
+fn edits_in_every_paragraph_plus_one_inserted_paragraph_are_counted_exactly() {
+    for (n, w, added_words, removed_words) in [(6, 200, 36, 6), (12, 100, 42, 12)] {
+        let old = paragraphs(n, w, false);
+        let mut new = paragraphs(n, w, true);
+        new.insert(n / 2, run("n", 1, 30));
+        let d = diff_words(&old.join(BREAK), &new.join(BREAK), GEN);
+        assert_eq!(
+            (d.added, d.removed),
+            (added_words, removed_words),
+            "{n}x{w}"
+        );
+    }
+}
+
+#[test]
+fn swapping_the_last_two_paragraphs_reads_as_one_moved_block() {
+    let old = paragraphs(4, 5, false);
+    let mut new = old.clone();
+    new.swap(2, 3);
+    let d = diff_words(&old.join(BREAK), &new.join(BREAK), GEN);
+    assert_eq!((d.added, d.removed), (5, 5));
+    assert_eq!(
+        to_word_markup(&d),
+        "¶ 3\n{+p3w0 p3w1 p3w2 p3w3 p3w4+}{+¶+}\n¶ 4\np2w0 p2w1 p2w2 p2w3 p2w4[-¶-][-p3w0 p3w1 p3w2 p3w3 p3w4-]\n"
+    );
+}
+
+#[test]
+fn swapping_two_middle_paragraphs_that_are_both_edited_reads_as_moved_blocks() {
+    let old = paragraphs(5, 5, false);
+    let mut new = old.clone();
+    new.swap(1, 2);
+    new[1] = new[1].replace("p2w2", "E2");
+    new[2] = new[2].replace("p1w2", "E1");
+    let d = diff_words(&old.join(BREAK), &new.join(BREAK), GEN);
+    assert_eq!((d.added, d.removed), (6, 6));
+    assert_eq!(
+        to_word_markup(&d),
+        "¶ 2\n{+p2w0 p2w1 E2 p2w3 p2w4+}{+¶+}\n¶ 3\np1w0 p1w1 [-p1w2-]{+E1+} p1w3 p1w4\n¶ 4\n[-p2w0 p2w1 p2w2 p2w3 p2w4-][-¶-]\n"
+    );
+}
