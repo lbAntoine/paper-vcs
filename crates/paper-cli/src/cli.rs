@@ -6,7 +6,12 @@ use clap::{Parser, Subcommand, ValueEnum};
 
 /// Version control for researchers.
 #[derive(Debug, Parser)]
-#[command(name = "paper", version)]
+#[command(
+    name = "paper",
+    bin_name = "paper",
+    version,
+    disable_help_subcommand = true
+)]
 #[allow(clippy::struct_excessive_bools)] // global flags are independent switches
 pub struct Cli {
     /// Run as if started in this folder.
@@ -178,6 +183,11 @@ pub enum Command {
         /// The point to restore from (default: `last`).
         #[arg(long, value_name = "POINT")]
         from: Option<String>,
+    },
+    /// Explain a command or a topic (try `paper help large-files`).
+    Help {
+        /// A command (like `save` or `config get`) or a help topic (like `large-files`).
+        topic: Vec<String>,
     },
 }
 

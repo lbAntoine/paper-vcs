@@ -1,0 +1,27 @@
+Big files in a paper project
+
+Paper has two size limits for a single file. You can change both (see below).
+
+  warn_mb   10 MB   Above this a file is still saved. `paper status` lists it
+                    under "Large files", because big files make saves slow.
+  max_mb    100 MB  Above this a file is not saved at all.
+
+Skipped files
+  `paper status` lists such a file under "Skipped". It stays on your disk,
+  untouched, but it is not in your saves, so it is not shared with anyone.
+
+A saved file that grows
+  If a file already in your saves grows past max_mb, paper keeps saving it and
+  keeps listing it under "Large files". It never drops a file you had saved.
+
+What you can do about a skipped file
+  1. Leave it out on purpose, and stop seeing it in the list:
+       paper ignore <path>
+  2. Keep it somewhere made for data, such as Zenodo, OSF or DVC, and put a
+     link or a small description file in your project instead.
+  3. Raise the limit, knowing the cost: the project gets slower to share, and
+     hosts such as GitHub refuse files above 100 MB.
+       paper config set --project large_files.max_mb <N>
+     (<N> is in MB. The other limit is large_files.warn_mb.)
+
+Git LFS support, for sharing big files through GitHub, is planned after 1.0.

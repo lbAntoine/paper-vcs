@@ -1,0 +1,7 @@
+---
+source: crates/paper-cli/tests/help.rs
+expression: run.stderr
+---
+error: `paper config get` has no sub-commands.
+  why:  `extra` does not follow `paper config get`.
+  next: paper help config get  # see how to use it
