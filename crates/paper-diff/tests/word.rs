@@ -3,100 +3,16 @@
 //! Expected segments and markup strings in the tables are the specification.
 //! Texts avoid repeated tokens at the edit site (no `.` or doubled words next
 //! to a change), so that the expected alignment is the only reasonable one.
+//! Cuts, round trips and timings are in `word_cut.rs`, `word_props.rs` and
+//! `word_perf.rs`.
 
-use paper_diff::Segment::{Added, Removed, Same};
+mod common;
+
+use common::*;
+use paper_diff::Segment::{Added, Removed};
 use paper_diff::{
-    CUT_KEEP_WORDS, CUT_THRESHOLD_WORDS, Paragraph, Segment, Tokeniser, WordDiff, WordDiffOptions,
-    diff_words, diff_words_with, to_word_markup,
+    CUT_KEEP_WORDS, CUT_THRESHOLD_WORDS, WordDiff, WordDiffOptions, diff_words, to_word_markup,
 };
-use proptest::prelude::*;
-
-const GEN: Tokeniser = Tokeniser::Generic;
-const TEX: Tokeniser = Tokeniser::Latex;
-const BREAK: &str = "\n\n";
-
-// ---------------------------------------------------------------- helpers
-
-fn same(t: &str) -> Segment {
-    Same(t.to_owned())
-}
-fn removed(t: &str) -> Segment {
-    Removed(t.to_owned())
-}
-fn added(t: &str) -> Segment {
-    Added(t.to_owned())
-}
-fn para(number: usize, segments: Vec<Segment>) -> Paragraph {
-    Paragraph { number, segments }
-}
-
-/// `prefix` + each number from `from` to `to` inclusive, joined by one space.
-fn run(prefix: &str, from: usize, to: usize) -> String {
-    (from..=to)
-        .map(|i| format!("{prefix}{i}"))
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-/// `n` consecutive Hangul syllables with no space between them.
-fn hangul(from: u32, to: u32) -> String {
-    (from..to)
-        .map(|i| char::from_u32(0xAC00 + i).unwrap())
-        .collect()
-}
-
-/// Rebuild the old and the new text from a diff that keeps everything
-/// (`WordDiffOptions::keep_everything`). A paragraph that does not end in an
-/// added or removed break is followed by an unchanged paragraph break.
-fn rebuild(diff: &WordDiff) -> (String, String) {
-    let (mut old, mut new) = (String::new(), String::new());
-    for (i, p) in diff.paragraphs.iter().enumerate() {
-        for seg in &p.segments {
-            match seg {
-                Same(t) => {
-                    old.push_str(t);
-                    new.push_str(t);
-                }
-                Removed(t) => old.push_str(t),
-                Added(t) => new.push_str(t),
-            }
-        }
-        let closed_by_break = matches!(
-            p.segments.last(),
-            Some(Added(t) | Removed(t)) if t == BREAK
-        );
-        if i + 1 < diff.paragraphs.len() && !closed_by_break {
-            old.push_str(BREAK);
-            new.push_str(BREAK);
-        }
-    }
-    (old, new)
-}
-
-fn full(old: &str, new: &str, tok: Tokeniser) -> WordDiff {
-    diff_words_with(old, new, tok, &WordDiffOptions::keep_everything())
-}
-
-struct Case<'a> {
-    old: &'a str,
-    new: &'a str,
-    segments: Vec<Segment>,
-    added: usize,
-    removed: usize,
-    markup: &'a str,
-}
-
-/// One changed paragraph numbered 1.
-fn check_single(tok: Tokeniser, cases: &[Case<'_>]) {
-    for c in cases {
-        let d = diff_words(c.old, c.new, tok);
-        let ctx = format!("{:?} -> {:?}", c.old, c.new);
-        assert_eq!(d.paragraphs, vec![para(1, c.segments.clone())], "{ctx}");
-        assert_eq!((d.added, d.removed), (c.added, c.removed), "{ctx}");
-        assert!(!d.layout_only, "{ctx}");
-        assert_eq!(to_word_markup(&d), c.markup, "{ctx}");
-    }
-}
 
 // ------------------------------------------------- sanity tests of helpers
 
@@ -120,7 +36,10 @@ fn rebuild_joins_unchanged_paragraphs_with_a_break() {
         removed: 0,
         layout_only: false,
     };
-    assert_eq!(rebuild(&d), ("A\n\nB".to_owned(), "A\n\nB".to_owned()));
+    assert_eq!(
+        rebuild(&d, BREAK),
+        ("A\n\nB".to_owned(), "A\n\nB".to_owned())
+    );
 }
 
 #[test]
@@ -135,7 +54,7 @@ fn rebuild_does_not_double_a_break_that_is_a_segment() {
         removed: 0,
         layout_only: false,
     };
-    assert_eq!(rebuild(&d), ("A".to_owned(), "A\n\nB".to_owned()));
+    assert_eq!(rebuild(&d, BREAK), ("A".to_owned(), "A\n\nB".to_owned()));
 }
 
 #[test]
@@ -150,7 +69,10 @@ fn rebuild_handles_a_paragraph_that_exists_only_on_the_old_side() {
         removed: 1,
         layout_only: false,
     };
-    assert_eq!(rebuild(&d), ("A\n\nB\n\nC".to_owned(), "A\n\nC".to_owned()));
+    assert_eq!(
+        rebuild(&d, BREAK),
+        ("A\n\nB\n\nC".to_owned(), "A\n\nC".to_owned())
+    );
 }
 
 #[test]
@@ -161,7 +83,7 @@ fn rebuild_of_nothing_is_empty() {
         removed: 0,
         layout_only: false,
     };
-    assert_eq!(rebuild(&d), (String::new(), String::new()));
+    assert_eq!(rebuild(&d, BREAK), (String::new(), String::new()));
 }
 
 // ----------------------------------------------------------- options
@@ -292,7 +214,7 @@ fn inserting_a_word_in_the_middle_shows_one_added_run_of_that_word() {
             .any(|s| matches!(s, Removed(_)))
     );
     assert_eq!(
-        rebuild(&full(old, new, GEN)),
+        rebuild(&full(old, new, GEN), BREAK),
         (old.to_owned(), new.to_owned())
     );
 }
@@ -657,153 +579,104 @@ fn a_changed_word_in_latex_text_is_counted() {
     );
 }
 
-// ----------------------------------------------------------- long runs
-
-fn long_run_diff(words_in_run: usize) -> (WordDiff, String) {
-    // "start" + (words_in_run - 1) numbered words = words_in_run words, then a change.
-    let body = format!("start {}", run("w", 1, words_in_run - 1));
-    let d = diff_words(&format!("{body} end"), &format!("{body} fin"), GEN);
-    (d, body)
-}
+// ------------------------------------------------- the slide of hunks
 
 #[test]
-fn an_unchanged_run_of_exactly_forty_words_is_not_cut() {
-    let (d, body) = long_run_diff(40);
+fn a_deleted_paragraph_that_starts_like_the_next_one_is_shown_whole() {
+    let d = diff_words(
+        "Intro text.\n\nWe study x in detail.\n\nWe show y.\n",
+        "Intro text.\n\nWe show y.\n",
+        GEN,
+    );
     assert_eq!(
         d.paragraphs,
         vec![para(
-            1,
-            vec![same(&format!("{body} ")), removed("end"), added("fin")]
+            2,
+            vec![removed("We study x in detail."), removed(BREAK)]
         )]
     );
+    assert_eq!(to_word_markup(&d), "¶ 2\n[-We study x in detail.-][-¶-]\n");
 }
 
 #[test]
-fn an_unchanged_run_of_forty_one_words_is_cut_to_ten_and_ten() {
-    let (d, _) = long_run_diff(41);
-    // run = start w1..w40: keep start w1..w9, then w31..w40 and the space.
-    let expected = format!("start {} … {} ", run("w", 1, 9), run("w", 31, 40));
+fn an_added_paragraph_that_starts_like_the_next_one_is_shown_whole() {
+    let d = diff_words(
+        "Intro text.\n\nThe c three.\n",
+        "Intro text.\n\nThe new para.\n\nThe c three.\n",
+        GEN,
+    );
     assert_eq!(
         d.paragraphs,
-        vec![para(1, vec![same(&expected), removed("end"), added("fin")])]
+        vec![para(2, vec![added("The new para."), added(BREAK)])]
     );
-    assert_eq!((d.added, d.removed), (1, 1));
+    assert_eq!(to_word_markup(&d), "¶ 2\n{+The new para.+}{+¶+}\n");
 }
 
 #[test]
-fn a_long_unchanged_run_keeps_its_first_and_last_ten_words() {
-    let (d, _) = long_run_diff(51);
-    let expected = format!("start {} … {} ", run("w", 1, 9), run("w", 41, 50));
-    assert_eq!(
-        d.paragraphs[0].segments,
-        vec![same(&expected), removed("end"), added("fin")]
-    );
-    assert_eq!(
-        to_word_markup(&d),
-        format!("¶ 1\n{expected}[-end-]{{+fin+}}\n")
-    );
-}
-
-#[test]
-fn runs_on_both_sides_of_a_change_are_cut_separately() {
-    let old = format!("{} X {}", run("r", 1, 45), run("s", 1, 45));
-    let new = format!("{} Y {}", run("r", 1, 45), run("s", 1, 45));
-    let d = diff_words(&old, &new, GEN);
-    let before = format!("{} … {} ", run("r", 1, 10), run("r", 36, 45));
-    let after = format!(" {} … {}", run("s", 1, 10), run("s", 36, 45));
-    assert_eq!(
-        d.paragraphs[0].segments,
-        vec![same(&before), removed("X"), added("Y"), same(&after)]
-    );
-}
-
-#[test]
-fn a_cut_never_splits_a_token() {
-    // 50 Hangul syllables are 50 one-grapheme words with no space between.
-    let body = hangul(0, 50);
-    let d = diff_words(&format!("{body} end"), &format!("{body} fin"), GEN);
-    let expected = format!("{} … {} ", hangul(0, 10), hangul(40, 50));
-    assert_eq!(
-        d.paragraphs[0].segments,
-        vec![same(&expected), removed("end"), added("fin")]
-    );
-}
-
-#[test]
-fn keep_everything_does_not_cut_and_returns_unchanged_paragraphs() {
-    let body = format!("start {}", run("w", 1, 50));
-    let old = format!("{body} end\n\nB two");
-    let new = format!("{body} fin\n\nB two");
-    let d = full(&old, &new, GEN);
+fn a_deleted_first_paragraph_is_whole_when_both_start_with_the_same_word() {
+    let d = diff_words("The old one.\n\nThe next.\n", "The next.\n", GEN);
     assert_eq!(
         d.paragraphs,
-        vec![
-            para(
-                1,
-                vec![same(&format!("{body} ")), removed("end"), added("fin")]
-            ),
-            para(2, vec![same("B two")]),
-        ]
+        vec![para(1, vec![removed("The old one."), removed(BREAK)])]
     );
-    assert_eq!((d.added, d.removed), (1, 1));
+}
+
+// ------------------------------------------------ lone spaces and layout
+
+#[test]
+fn a_lone_space_removed_between_cjk_graphemes_is_a_change() {
+    let d = diff_words("한 국어", "한국어", GEN);
+    assert_eq!(
+        d.paragraphs,
+        vec![para(1, vec![same("한"), removed(" "), same("국어")])]
+    );
+    assert!(!d.layout_only);
+    assert_eq!((d.added, d.removed), (0, 0));
 }
 
 #[test]
-#[ignore = "timing check, run with: cargo test --release -p paper-diff -- --ignored"]
-fn a_one_megabyte_file_with_scattered_edits_diffs_in_well_under_a_second() {
-    let paragraph = format!("{}\n\n", run("word", 1, 120));
-    let old = paragraph.repeat(1_000_000 / paragraph.len());
-    let new = old.replace("word60 ", "changed ");
-    let start = std::time::Instant::now();
-    let d = diff_words(&old, &new, GEN);
-    assert!(start.elapsed() < std::time::Duration::from_secs(1));
-    assert!(!d.paragraphs.is_empty());
+fn a_lone_space_around_punctuation_is_a_change() {
+    let d = diff_words("a , b", "a, b", GEN);
+    assert_eq!(
+        d.paragraphs,
+        vec![para(1, vec![same("a"), removed(" "), same(", b")])]
+    );
+    assert_eq!(to_word_markup(&d), "¶ 1\na[- -], b\n");
+    let d = diff_words("a, b", "a , b", GEN);
+    assert_eq!(
+        d.paragraphs,
+        vec![para(1, vec![same("a"), added(" "), same(", b")])]
+    );
 }
 
-// ------------------------------------------------------------ proptests
-
-fn paragraph_text() -> impl Strategy<Value = String> {
-    proptest::collection::vec("[a-d]{2}", 1..6).prop_map(|words| words.join(" "))
+#[test]
+fn leading_blank_lines_are_layout() {
+    let d = diff_words("a b", "\n\na b", GEN);
+    assert!(d.paragraphs.is_empty());
+    assert!(d.layout_only);
+    let d = diff_words("\n\na b", "a b", GEN);
+    assert!(d.paragraphs.is_empty());
+    assert!(d.layout_only);
 }
 
-/// Paragraphs of single-spaced words joined by exactly one blank line, so
-/// that no unchanged spacing differs between the two sides.
-fn document() -> impl Strategy<Value = String> {
-    proptest::collection::vec(paragraph_text(), 0..4).prop_map(|ps| ps.join(BREAK))
+// --------------------------------------------------------- break markup
+
+#[test]
+fn an_unchanged_trailing_break_is_not_rendered_as_a_paragraph_mark() {
+    let d = diff_words("a b\n\n", "a\n\n", GEN);
+    assert_eq!(
+        d.paragraphs,
+        vec![para(1, vec![same("a"), removed(" b"), same(BREAK)])]
+    );
+    assert_eq!(to_word_markup(&d), "¶ 1\na[- b-]\n");
+    assert!(!d.paragraphs[0].segments[2].is_break());
 }
 
-proptest! {
-    #![proptest_config(ProptestConfig { failure_persistence: None, ..ProptestConfig::default() })]
-
-    #[test]
-    fn same_plus_removed_is_the_old_text_and_same_plus_added_is_the_new_text(
-        old in document(), new in document(),
-    ) {
-        for tok in [GEN, TEX] {
-            let d = full(&old, &new, tok);
-            prop_assert_eq!(rebuild(&d), (old.clone(), new.clone()));
-        }
-    }
-
-    #[test]
-    fn counts_do_not_depend_on_cutting_or_filtering(old in document(), new in document()) {
-        let cut = diff_words(&old, &new, GEN);
-        let all = full(&old, &new, GEN);
-        prop_assert_eq!(cut.added, all.added);
-        prop_assert_eq!(cut.removed, all.removed);
-        prop_assert_eq!(cut.layout_only, all.layout_only);
-        let added_words: usize = all.paragraphs.iter().flat_map(|p| &p.segments)
-            .map(|s| if let Added(t) = s { t.split_whitespace().count() } else { 0 }).sum();
-        let removed_words: usize = all.paragraphs.iter().flat_map(|p| &p.segments)
-            .map(|s| if let Removed(t) = s { t.split_whitespace().count() } else { 0 }).sum();
-        prop_assert_eq!(all.added, added_words);
-        prop_assert_eq!(all.removed, removed_words);
-    }
-
-    #[test]
-    fn identical_texts_never_produce_paragraphs(text in document()) {
-        let d = diff_words(&text, &text, GEN);
-        prop_assert!(d.paragraphs.is_empty());
-        prop_assert!(!d.layout_only);
-    }
+#[test]
+fn only_added_and_removed_breaks_are_break_segments() {
+    assert!(added(BREAK).is_break());
+    assert!(removed("\r\n\r\n").is_break());
+    assert!(!same(BREAK).is_break());
+    assert!(!added(" ").is_break());
+    assert!(!paper_diff::Segment::Cut.is_break());
 }

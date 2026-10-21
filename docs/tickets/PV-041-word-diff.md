@@ -56,6 +56,9 @@ changed paragraphs, the words added and removed in each, the totals, and a plain
   indentation or adding a double space is then not a change, which matters for hard-wrapped
   LaTeX. A `Same` segment uses the new side's text. If every difference is of this kind,
   `paragraphs` is empty and `layout_only` is true.
+- **Lone spaces (review round 1).** A space added or removed on its own counts as layout only
+  when both neighbours are words of a space-separated script; next to CJK or punctuation it is
+  shown. Leading and trailing white space of the text is layout.
 - **Counting.** `added` and `removed` count `Word` tokens only. Punctuation, spaces, commands
   and comments change the text but not the counts. A LaTeX command that changes is still
   shown, as `[-\emph-]{+\textbf+}`.
@@ -142,3 +145,14 @@ changed paragraphs, the words added and removed in each, the totals, and a plain
 - **Spec example markup:** `¶ 3\nRecent work has [-mostly-]{+largely+} focused on supervised settings{+, although self-supervised approaches are gaining traction+}.\n`
 - **Timing** (`cargo test --release -p paper-diff -- --ignored`, ~1 MB, scattered edit in each of ~1000 paragraphs, repeated words so patience has no unique anchors): the test passes, whole test (input build + diff) 0.08 s.
 - **Follow-ups:** a removed paragraph break can land before the removed text instead of after it when repeated words let the alignment shift (then it shows inside the previous paragraph, like a deleted last paragraph); a slide pass could normalise this if users notice.
+
+### GREEN (review round 1) · rust-engineer · 2026-10-21
+
+- **1 Slide.** `slide` moves every pure insertion or deletion across equal-keyed tokens to the place where it ends with a break, else starts right after one, else stays. Tests added for the "We..." delete, the "The new para" add and a deleted first paragraph starting with the same word.
+- **2 Time.** Two levels: paragraphs are lined up by patience over paragraph keys (interned key slices), then words are diffed inside 1:1 pairs of changed paragraphs; groups of different sizes are word-diffed together when old*new tokens <= 4M, else shown whole. Inside `diff_keys`, tokens whose key is on one side only are taken out before the diff (an unrelated rewrite is then cheap). A shared 2 s deadline goes to `capture_diff_slices_deadline`. Release timings (`cargo test --release -p paper-diff -- --ignored`): 1 MB with scattered edits, passes (whole test 0.08 s); 1 MB with 20% of words replaced 58 ms; a 3000-word unrelated paragraph rewrite in a 1 MB file 61 ms. No test reaches the deadline. Documented in 04-content.
+- **3 Bare break.** Break rendering is for Added and Removed segments only (`Segment::is_break`).
+- **4 Lone spaces.** Deviation from the wording of the request: "layout only when at least one neighbour is Latin" would make `a , b` -> `a, b` layout (the `a` is Latin), contradicting the examples. Implemented as layout only when BOTH neighbours are words of a space-separated script (Latin, Cyrillic, ...); both examples are shown. Tests and spec updated.
+- **5 API.** New `Segment::Cut` (unit variant, rendered ` … `) and `Segment::is_break()`. RED tests changed only as far as `Cut` requires (all in `word_cut.rs`): `an_unchanged_run_of_forty_one_words_is_cut_to_ten_and_ten`, `a_long_unchanged_run_keeps_its_first_and_last_ten_words` (data only; markup string unchanged), `runs_on_both_sides_of_a_change_are_cut_separately`, `a_cut_never_splits_a_token`. `rebuild` takes the break string and ignores `Cut`.
+- **6 Proptest.** Round trip now uses atoms `ab`, `cd`, `한`, `国`, `\emph`, `%c`, `😀`, `,`, a plain space from `" "`, `"\r"`, NBSP and a break from `"\n\n"`, `"\r\n\r\n"`, `"\n\n\n"` per case. The counts property keeps its narrow word alphabet (it counts with `split_whitespace`).
+- **7 Whitespace, files.** Leading and trailing layout split with `char::is_whitespace`, symmetric. Tests split: `word.rs`, `word_cut.rs`, `word_props.rs`, `word_perf.rs`, shared helpers in `tests/common/mod.rs`. Added tests for leading blank lines and the bare-break case.
+- **Not covered:** a sentence moved inside one paragraph is only helped where the hunk touches a break; sentence-level sliding is not implemented.

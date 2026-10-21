@@ -3,10 +3,12 @@
 //!
 //! Pure functions over strings: no I/O, no printing.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
+use std::ops::Range;
+use std::time::{Duration, Instant};
 
-use similar::{Algorithm, DiffTag, capture_diff_slices};
+use similar::{Algorithm, capture_diff_slices_deadline};
 
 use crate::{Token, TokenKind, Tokeniser, tokenise};
 
@@ -19,13 +21,27 @@ pub const CUT_KEEP_WORDS: usize = 10;
 /// One piece of a paragraph.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Segment {
-    /// Text on both sides (the new side's spelling of it). A cut run holds
-    /// its first words, ` … `, and its last words.
+    /// Text on both sides (the new side's spelling of it).
     Same(String),
-    /// Text only on the old side.
+    /// Text only on the old side. A paragraph break is a segment of its own.
     Removed(String),
-    /// Text only on the new side.
+    /// Text only on the new side. A paragraph break is a segment of its own.
     Added(String),
+    /// Where a long unchanged run was cut: the words between the `Same`
+    /// segment before it and the one after it are left out.
+    Cut,
+}
+
+impl Segment {
+    /// True for an added or removed paragraph break.
+    ///
+    /// # Panics
+    ///
+    /// Never panics.
+    #[must_use]
+    pub fn is_break(&self) -> bool {
+        matches!(self, Self::Added(t) | Self::Removed(t) if is_break_text(t))
+    }
 }
 
 /// A paragraph that contains a change.
@@ -80,19 +96,34 @@ impl WordDiffOptions {
     }
 }
 
+/// Longest time the alignment may take. Past it `similar` returns a coarser
+/// but valid diff; texts in the tests never get near it.
+const DEADLINE: Duration = Duration::from_secs(2);
+
+/// Replaced paragraph groups of different sizes are word-diffed together when
+/// the product of their token counts is at most this; otherwise they are
+/// shown as removed and added whole.
+const GROUP_LIMIT: usize = 4_000_000;
+
 /// Compare two versions of a text word by word.
 ///
-/// Tokens are compared with a patience diff. Two tokens are equal when they
-/// have the same kind and text, except that two `Space` tokens are equal when
-/// neither holds a paragraph break (two or more `\n`) or when both do. Moving
-/// line breaks, re-indenting or doubling a space is therefore not a change,
-/// and an unchanged run is reported with the new side's spacing. White space
-/// at the very end of a text is likewise layout.
+/// Paragraphs are lined up first (patience over paragraph keys), then words
+/// are diffed inside each pair of changed paragraphs. Tokens are equal when
+/// they have the same kind and text, except that two `Space` tokens are equal
+/// when neither holds a paragraph break (two or more `\n`) or when both do.
+/// Moving line breaks, re-indenting or doubling a space is therefore not a
+/// change, and an unchanged run is reported with the new side's spacing.
+/// White space at the very start or end of a text is likewise layout. A lone
+/// space added or removed between two tokens is layout only when both
+/// neighbours are words of a space-separated script (Latin, Cyrillic, …).
 ///
 /// A paragraph is a run of tokens between paragraph breaks. Its `number` is
 /// 1-based on the new side. A paragraph that exists only in the old text takes
 /// the number the next new paragraph has (or, at the end, is shown inside the
 /// paragraph before it).
+///
+/// Reads the clock to bound the alignment to about two seconds, after which
+/// the result is coarser but still correct.
 ///
 /// # Panics
 ///
@@ -114,29 +145,34 @@ pub fn diff_words_with(
     tokeniser: Tokeniser,
     options: &WordDiffOptions,
 ) -> WordDiff {
-    let (old_core, _) = split_trailing_layout(old);
-    let (new_core, new_trailing) = split_trailing_layout(new);
+    let (_, old_core, _) = split_layout(old);
+    let (new_lead, new_core, new_trail) = split_layout(new);
     let old_tokens = tokenise(old_core, tokeniser);
     let new_tokens = tokenise(new_core, tokeniser);
 
-    let (items, added, removed, changed) = align(&old_tokens, &new_tokens, new_trailing);
-    let paragraphs = group(items, *options);
+    let marks = align(&old_tokens, &new_tokens);
+    let mut flow = Flow::default();
+    flow.layout_text(new_lead);
+    flow.walk(&old_tokens, &new_tokens, &marks);
+    flow.layout_text(new_trail);
+
     WordDiff {
-        paragraphs,
-        added,
-        removed,
-        layout_only: !changed && old != new,
+        paragraphs: group(flow.items, *options),
+        added: flow.added_words,
+        removed: flow.removed_words,
+        layout_only: !flow.changed && old != new,
     }
 }
 
 /// Render the paragraphs of a word diff as plain text.
 ///
 /// Each paragraph is a `¶ N` line followed by its body and a newline.
-/// Removed text is `[-…-]`, added text is `{+…+}`, and an added or removed
-/// paragraph break is `{+¶+}` or `[-¶-]`. Trailing line breaks at the end of a
-/// body are not shown. Literal `[-`, `-]`, `{+` and `+}` in the text are not
-/// escaped (git's `--word-diff` does the same), so the markup can be
-/// ambiguous. The `+N words −M words` header is not part of it.
+/// Removed text is `[-…-]`, added text is `{+…+}`, an added or removed
+/// paragraph break is `{+¶+}` or `[-¶-]`, and a cut is ` … `. Line breaks at
+/// the start and end of a body are not shown. Literal `[-`, `-]`, `{+` and
+/// `+}` in the text are not escaped (git's `--word-diff` does the same), so
+/// the markup can be ambiguous. The `+N words −M words` header is not part of
+/// it.
 ///
 /// # Panics
 ///
@@ -152,22 +188,24 @@ pub fn to_word_markup(diff: &WordDiff) -> String {
                 Segment::Same(t) => ("", t.as_str(), ""),
                 Segment::Removed(t) => ("[-", t.as_str(), "-]"),
                 Segment::Added(t) => ("{+", t.as_str(), "+}"),
+                Segment::Cut => {
+                    out.push_str(" … ");
+                    continue;
+                }
             };
-            if is_break_text(text) {
-                out.push_str(open);
-                out.push('¶');
-                out.push_str(close);
+            if segment.is_break() {
+                let _ = write!(out, "{open}¶{close}");
                 continue;
             }
-            let text = if i == last {
-                text.trim_end_matches(['\n', '\r'])
-            } else {
-                text
-            };
+            let mut text = text;
+            if i == 0 && open.is_empty() {
+                text = text.trim_start_matches(['\n', '\r']);
+            }
+            if i == last {
+                text = text.trim_end_matches(['\n', '\r']);
+            }
             if !text.is_empty() {
-                out.push_str(open);
-                out.push_str(text);
-                out.push_str(close);
+                let _ = write!(out, "{open}{text}{close}");
             }
         }
         out.push('\n');
@@ -175,45 +213,45 @@ pub fn to_word_markup(diff: &WordDiff) -> String {
     out
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Op {
-    Same,
-    Removed,
-    Added,
-}
-
-/// One token with its fate.
-#[derive(Clone, Copy)]
-struct Item<'a> {
-    op: Op,
-    text: &'a str,
-    word: bool,
-    /// A `Space` token holding a paragraph break.
-    brk: bool,
-}
-
-impl<'a> Item<'a> {
-    fn new(op: Op, token: &Token<'a>) -> Self {
-        let space = token.kind == TokenKind::Space;
-        let brk = space && is_break_text(token.text);
-        Self {
-            op,
-            text: token.text,
-            word: token.kind == TokenKind::Word,
-            brk,
-        }
-    }
-}
+// ------------------------------------------------------------------ tokens
 
 /// True for white space holding at least two `\n`.
 fn is_break_text(text: &str) -> bool {
     text.bytes().filter(|&b| b == b'\n').count() >= 2 && text.chars().all(char::is_whitespace)
 }
 
-/// Split off the ASCII white space at the end of a text.
-fn split_trailing_layout(text: &str) -> (&str, &str) {
-    let core = text.trim_end_matches([' ', '\t', '\r', '\n']);
-    text.split_at(core.len())
+/// Split a text into its leading white space, its core and its trailing white
+/// space.
+fn split_layout(text: &str) -> (&str, &str, &str) {
+    let rest = text.trim_start();
+    let core = rest.trim_end();
+    let lead = &text[..text.len() - rest.len()];
+    (lead, core, &rest[core.len()..])
+}
+
+/// True for the scripts whose words are not separated by spaces.
+fn is_unspaced_script(c: char) -> bool {
+    matches!(u32::from(c),
+        0x1100..=0x11FF | 0x2E80..=0xA4CF | 0xA960..=0xA97F | 0xAC00..=0xD7FF
+        | 0xF900..=0xFAFF | 0xFF66..=0xFF9F | 0x20000..=0x3FFFF)
+}
+
+/// True when the token is a word of a space-separated script, looking at the
+/// character next to the space (`last`: the token's last character). No token
+/// at the edge of the text counts as true.
+fn spaced_word_at_edge(token: Option<&Token<'_>>, last: bool) -> bool {
+    let Some(token) = token else { return true };
+    let c = if last {
+        token.text.chars().next_back()
+    } else {
+        token.text.chars().next()
+    };
+    token.kind == TokenKind::Word
+        && c.is_some_and(|c| c.is_alphanumeric() && !is_unspaced_script(c))
+}
+
+fn is_plain_space(token: &Token<'_>) -> bool {
+    token.kind == TokenKind::Space && !is_break_text(token.text)
 }
 
 /// A key per token such that tokens that count as equal share a key.
@@ -240,81 +278,272 @@ fn keys(tokens: &[Token<'_>], ids: &mut HashMap<(u8, String), u32>) -> Vec<u32> 
         .collect()
 }
 
-/// Diff the tokens. Returns the items in reading order, the word counts and
-/// whether anything other than layout changed. Within a change, removed items
-/// come before added ones. A change made only of plain spaces is layout: an
-/// added space is kept as unchanged text, a removed one is dropped.
-fn align<'a>(
-    old: &[Token<'a>],
-    new: &[Token<'a>],
-    new_trailing: &'a str,
-) -> (Vec<Item<'a>>, usize, usize, bool) {
-    let mut ids = HashMap::new();
-    let old_keys = keys(old, &mut ids);
-    let new_keys = keys(new, &mut ids);
+// --------------------------------------------------------------- alignment
 
-    let prefix = old_keys
-        .iter()
-        .zip(&new_keys)
-        .take_while(|(a, b)| a == b)
-        .count();
-    let max_suffix = old_keys.len().min(new_keys.len()) - prefix;
-    let suffix = old_keys
+/// Which tokens are not part of the common text.
+struct Marks {
+    /// Per old token: removed.
+    del: Vec<bool>,
+    /// Per new token: added.
+    ins: Vec<bool>,
+}
+
+/// A maximal stretch of changed tokens, as ranges of old and new indices.
+#[derive(Clone)]
+struct Run {
+    old: Range<usize>,
+    new: Range<usize>,
+}
+
+/// The changed stretches of a pair of mark vectors. The unmarked elements of
+/// the two sides pair up in order.
+fn runs(del: &[bool], ins: &[bool]) -> Vec<Run> {
+    let (mut i, mut j) = (0, 0);
+    let mut out = Vec::new();
+    while i < del.len() || j < ins.len() {
+        if i < del.len() && del[i] || j < ins.len() && ins[j] {
+            let (os, ns) = (i, j);
+            while i < del.len() && del[i] {
+                i += 1;
+            }
+            while j < ins.len() && ins[j] {
+                j += 1;
+            }
+            out.push(Run {
+                old: os..i,
+                new: ns..j,
+            });
+        } else {
+            i += 1;
+            j += 1;
+        }
+    }
+    out
+}
+
+/// Patience diff of two key sequences. Returns which elements changed.
+///
+/// A common prefix and suffix are matched first. Elements whose key occurs on
+/// one side only are changed whatever the alignment, so they are taken out
+/// before the diff: an unrelated rewrite costs almost nothing.
+fn diff_keys(old: &[u32], new: &[u32], deadline: Instant) -> (Vec<bool>, Vec<bool>) {
+    let mut del = vec![true; old.len()];
+    let mut ins = vec![true; new.len()];
+    let prefix = old.iter().zip(new).take_while(|(a, b)| a == b).count();
+    let max_suffix = old.len().min(new.len()) - prefix;
+    let suffix = old
         .iter()
         .rev()
-        .zip(new_keys.iter().rev())
+        .zip(new.iter().rev())
         .take(max_suffix)
         .take_while(|(a, b)| a == b)
         .count();
-    let old_mid = prefix..old_keys.len() - suffix;
-    let new_mid = prefix..new_keys.len() - suffix;
+    del[..prefix].fill(false);
+    ins[..prefix].fill(false);
+    del[old.len() - suffix..].fill(false);
+    ins[new.len() - suffix..].fill(false);
 
-    let mut out = Flow::default();
-    for token in &new[..prefix] {
-        out.same(token);
-    }
-    let ops = capture_diff_slices(
+    let old_mid = prefix..old.len() - suffix;
+    let new_mid = prefix..new.len() - suffix;
+    let old_set: HashSet<u32> = old[old_mid.clone()].iter().copied().collect();
+    let new_set: HashSet<u32> = new[new_mid.clone()].iter().copied().collect();
+    let old_at: Vec<usize> = old_mid.filter(|&i| new_set.contains(&old[i])).collect();
+    let new_at: Vec<usize> = new_mid.filter(|&j| old_set.contains(&new[j])).collect();
+    let old_common: Vec<u32> = old_at.iter().map(|&i| old[i]).collect();
+    let new_common: Vec<u32> = new_at.iter().map(|&j| new[j]).collect();
+
+    let ops = capture_diff_slices_deadline(
         Algorithm::Patience,
-        &old_keys[old_mid.clone()],
-        &new_keys[new_mid.clone()],
+        &old_common,
+        &new_common,
+        Some(deadline),
     );
     for op in ops {
         let (tag, o, n) = op.as_tag_tuple();
-        match tag {
-            DiffTag::Equal => {
-                out.flush();
-                for token in &new[new_mid.start + n.start..new_mid.start + n.end] {
-                    out.same(token);
-                }
-            }
-            DiffTag::Delete | DiffTag::Insert | DiffTag::Replace => {
-                out.removed
-                    .extend(&old[old_mid.start + o.start..old_mid.start + o.end]);
-                out.added
-                    .extend(&new[new_mid.start + n.start..new_mid.start + n.end]);
+        if tag == similar::DiffTag::Equal {
+            for (a, b) in o.zip(n) {
+                del[old_at[a]] = false;
+                ins[new_at[b]] = false;
             }
         }
     }
-    out.flush();
-    for token in &new[new.len() - suffix..] {
-        out.same(token);
+    (del, ins)
+}
+
+/// Token ranges of the paragraphs: each holds its tokens and the paragraph
+/// break that ends it.
+fn paragraph_ranges(tokens: &[Token<'_>]) -> Vec<Range<usize>> {
+    let mut out = Vec::new();
+    let mut start = 0;
+    for (i, token) in tokens.iter().enumerate() {
+        if token.kind == TokenKind::Space && is_break_text(token.text) {
+            out.push(start..i + 1);
+            start = i + 1;
+        }
     }
-    if !new_trailing.is_empty() {
-        out.items.push(Item {
-            op: Op::Same,
-            text: new_trailing,
-            word: false,
-            brk: false,
-        });
+    if start < tokens.len() {
+        out.push(start..tokens.len());
     }
-    (out.items, out.added_words, out.removed_words, out.changed)
+    out
+}
+
+fn align(old: &[Token<'_>], new: &[Token<'_>]) -> Marks {
+    let deadline = Instant::now() + DEADLINE;
+    let mut ids = HashMap::new();
+    let old_keys = keys(old, &mut ids);
+    let new_keys = keys(new, &mut ids);
+    let old_par = paragraph_ranges(old);
+    let new_par = paragraph_ranges(new);
+
+    // Level 1: line the paragraphs up.
+    let mut interned: HashMap<&[u32], u32> = HashMap::new();
+    let old_ids: Vec<u32> = old_par
+        .iter()
+        .map(|r| intern(&mut interned, &old_keys[r.clone()]))
+        .collect();
+    let new_ids: Vec<u32> = new_par
+        .iter()
+        .map(|r| intern(&mut interned, &new_keys[r.clone()]))
+        .collect();
+    let (par_del, par_ins) = diff_keys(&old_ids, &new_ids, deadline);
+
+    // Level 2: words, inside changed paragraphs only.
+    let mut marks = Marks {
+        del: vec![false; old.len()],
+        ins: vec![false; new.len()],
+    };
+    let word_diff = |marks: &mut Marks, o: Range<usize>, n: Range<usize>| {
+        let (d, i) = diff_keys(&old_keys[o.clone()], &new_keys[n.clone()], deadline);
+        marks.del[o].copy_from_slice(&d);
+        marks.ins[n].copy_from_slice(&i);
+    };
+    for run in runs(&par_del, &par_ins) {
+        let o = token_span(&old_par, &run.old);
+        let n = token_span(&new_par, &run.new);
+        if run.old.is_empty() || run.new.is_empty() {
+            // A paragraph added or removed whole.
+            marks.del[o].fill(true);
+            marks.ins[n].fill(true);
+        } else if run.old.len() == run.new.len() {
+            for (a, b) in run.old.clone().zip(run.new.clone()) {
+                word_diff(&mut marks, old_par[a].clone(), new_par[b].clone());
+            }
+        } else if o.len().saturating_mul(n.len()) <= GROUP_LIMIT {
+            word_diff(&mut marks, o, n);
+        } else {
+            marks.del[o].fill(true);
+            marks.ins[n].fill(true);
+        }
+    }
+    slide(&old_keys, &new_keys, old, new, &mut marks);
+    marks
+}
+
+fn intern<'a>(ids: &mut HashMap<&'a [u32], u32>, key: &'a [u32]) -> u32 {
+    let next = u32::try_from(ids.len()).unwrap_or(u32::MAX);
+    *ids.entry(key).or_insert(next)
+}
+
+/// The tokens of a range of paragraphs.
+fn token_span(paragraphs: &[Range<usize>], range: &Range<usize>) -> Range<usize> {
+    if range.is_empty() {
+        0..0
+    } else {
+        paragraphs[range.start].start..paragraphs[range.end - 1].end
+    }
+}
+
+fn is_break_token(token: &Token<'_>) -> bool {
+    token.kind == TokenKind::Space && is_break_text(token.text)
+}
+
+/// Move every pure insertion or deletion to the best of the places where it
+/// reads the same. A hunk can move while the token it would pass has the same
+/// key as the token it would leave. The best place ends with a paragraph
+/// break, else starts right after one, else it stays where the diff put it.
+/// So a deleted paragraph that starts like the next one is still shown whole.
+fn slide(
+    old_keys: &[u32],
+    new_keys: &[u32],
+    old: &[Token<'_>],
+    new: &[Token<'_>],
+    marks: &mut Marks,
+) {
+    let old_brk: Vec<bool> = old.iter().map(is_break_token).collect();
+    let new_brk: Vec<bool> = new.iter().map(is_break_token).collect();
+    for run in runs(&marks.del, &marks.ins) {
+        if run.old.is_empty() {
+            slide_hunk(new_keys, &new_brk, &mut marks.ins, &run.new);
+        } else if run.new.is_empty() {
+            slide_hunk(old_keys, &old_brk, &mut marks.del, &run.old);
+        }
+    }
+}
+
+fn slide_hunk(keys: &[u32], brk: &[bool], marks: &mut [bool], hunk: &Range<usize>) {
+    let (s, e) = (hunk.start, hunk.end);
+    let mut left = 0;
+    while s > left && !marks[s - left - 1] && keys[s - left - 1] == keys[e - left - 1] {
+        left += 1;
+    }
+    let mut right = 0;
+    while e + right < keys.len() && !marks[e + right] && keys[s + right] == keys[e + right] {
+        right += 1;
+    }
+    if left + right == 0 {
+        return;
+    }
+    // Candidate starts, nearest to where the hunk is first.
+    let starts: Vec<usize> = (0..=left.max(right))
+        .flat_map(|d| [(d <= left).then(|| s - d), (d <= right).then_some(s + d)])
+        .flatten()
+        .collect();
+    let len = e - s;
+    let pick = starts
+        .iter()
+        .find(|&&at| brk[at + len - 1])
+        .or_else(|| starts.iter().find(|&&at| at > 0 && brk[at - 1]))
+        .copied()
+        .unwrap_or(s);
+    if pick != s {
+        marks[s..e].fill(false);
+        marks[pick..pick + len].fill(true);
+    }
+}
+
+// ------------------------------------------------------------------- items
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Op {
+    Same,
+    Removed,
+    Added,
+}
+
+/// One token with its fate.
+#[derive(Clone, Copy)]
+struct Item<'a> {
+    op: Op,
+    text: &'a str,
+    word: bool,
+    /// A `Space` token holding a paragraph break.
+    brk: bool,
+}
+
+impl<'a> Item<'a> {
+    fn new(op: Op, token: &Token<'a>) -> Self {
+        Self {
+            op,
+            text: token.text,
+            word: token.kind == TokenKind::Word,
+            brk: is_break_token(token),
+        }
+    }
 }
 
 #[derive(Default)]
 struct Flow<'a> {
     items: Vec<Item<'a>>,
-    removed: Vec<Token<'a>>,
-    added: Vec<Token<'a>>,
     added_words: usize,
     removed_words: usize,
     changed: bool,
@@ -325,30 +554,65 @@ impl<'a> Flow<'a> {
         self.items.push(Item::new(Op::Same, token));
     }
 
-    /// Close the pending change.
-    fn flush(&mut self) {
-        let removed = std::mem::take(&mut self.removed);
-        let added = std::mem::take(&mut self.added);
-        let layout = removed
-            .iter()
-            .chain(&added)
-            .all(|t| t.kind == TokenKind::Space && !is_break_text(t.text));
+    /// White space at the edge of the new text: unchanged, never a break.
+    fn layout_text(&mut self, text: &'a str) {
+        if !text.is_empty() {
+            self.items.push(Item {
+                op: Op::Same,
+                text,
+                word: false,
+                brk: false,
+            });
+        }
+    }
+
+    /// Turn the marks into items, in reading order. Within a change, removed
+    /// items come before added ones.
+    fn walk(&mut self, old: &[Token<'a>], new: &[Token<'a>], marks: &Marks) {
+        let mut at = 0;
+        for run in runs(&marks.del, &marks.ins) {
+            for token in &new[at..run.new.start] {
+                self.same(token);
+            }
+            let left = run.new.start.checked_sub(1).and_then(|i| new.get(i));
+            let right = new.get(run.new.end);
+            self.change(&old[run.old.clone()], &new[run.new.clone()], left, right);
+            at = run.new.end;
+        }
+        for token in &new[at..] {
+            self.same(token);
+        }
+    }
+
+    /// A change made only of plain spaces between two words of a
+    /// space-separated script is layout: an added space is kept as unchanged
+    /// text, a removed one is dropped.
+    fn change(
+        &mut self,
+        removed: &[Token<'a>],
+        added: &[Token<'a>],
+        left: Option<&Token<'a>>,
+        right: Option<&Token<'a>>,
+    ) {
+        let layout = removed.iter().chain(added).all(is_plain_space)
+            && spaced_word_at_edge(left, true)
+            && spaced_word_at_edge(right, false);
         if layout {
-            for token in &added {
+            for token in added {
                 self.same(token);
             }
             return;
         }
         self.changed = true;
-        for (tokens, op) in [(&removed, Op::Removed), (&added, Op::Added)] {
-            for token in tokens {
-                let item = Item::new(op, token);
-                match op {
-                    Op::Removed => self.removed_words += usize::from(item.word),
-                    _ => self.added_words += usize::from(item.word),
-                }
-                self.items.push(item);
-            }
+        for token in removed {
+            let item = Item::new(Op::Removed, token);
+            self.removed_words += usize::from(item.word);
+            self.items.push(item);
+        }
+        for token in added {
+            let item = Item::new(Op::Added, token);
+            self.added_words += usize::from(item.word);
+            self.items.push(item);
         }
     }
 }
@@ -413,11 +677,11 @@ fn segments(items: &[Item<'_>], cut: bool) -> Vec<Segment> {
             }
         }
         let run = &items[start..end];
-        out.push(match op {
-            Op::Same => Segment::Same(if cut { cut_run(run) } else { join(run) }),
-            Op::Removed => Segment::Removed(join(run)),
-            Op::Added => Segment::Added(join(run)),
-        });
+        match op {
+            Op::Same => push_same(&mut out, run, cut),
+            Op::Removed => out.push(Segment::Removed(join(run))),
+            Op::Added => out.push(Segment::Added(join(run))),
+        }
         start = end;
     }
     out
@@ -427,19 +691,22 @@ fn join(run: &[Item<'_>]) -> String {
     run.iter().map(|i| i.text).collect()
 }
 
-/// Shorten an unchanged run of more than [`CUT_THRESHOLD_WORDS`] words to its
-/// first and last [`CUT_KEEP_WORDS`] words, joined by ` … `.
-fn cut_run(run: &[Item<'_>]) -> String {
+/// Push an unchanged run. One of more than [`CUT_THRESHOLD_WORDS`] words
+/// becomes its first and last [`CUT_KEEP_WORDS`] words around a `Cut`.
+fn push_same(out: &mut Vec<Segment>, run: &[Item<'_>], cut: bool) {
     let words: Vec<usize> = run
         .iter()
         .enumerate()
         .filter(|(_, i)| i.word)
         .map(|(at, _)| at)
         .collect();
-    if words.len() <= CUT_THRESHOLD_WORDS {
-        return join(run);
+    if !cut || words.len() <= CUT_THRESHOLD_WORDS {
+        out.push(Segment::Same(join(run)));
+        return;
     }
     let head_end = words[CUT_KEEP_WORDS - 1] + 1;
     let tail_start = words[words.len() - CUT_KEEP_WORDS];
-    format!("{} … {}", join(&run[..head_end]), join(&run[tail_start..]))
+    out.push(Segment::Same(join(&run[..head_end])));
+    out.push(Segment::Cut);
+    out.push(Segment::Same(join(&run[tail_start..])));
 }
