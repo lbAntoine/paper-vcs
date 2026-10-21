@@ -164,3 +164,18 @@ options are.
   planned); `paper status` example updated to the real heading and hint.
 - **Deviation:** the "Help topics:" list is followed by one pointer line
   ("Run `paper help <topic>` ...").
+
+### GREEN (review round 1) · rust-engineer · 2026-10-21
+
+- Fixed `format_push_string` (writeln!), added `bin_name = "paper"` (checked with a copy named
+  `paper.exe`: `save --help` equals `help save`), `help` takes several words and walks nested
+  commands (new test; `paper config help ...` is gone, noted in 02-cli), topic text now
+  describes today's behaviour (the "Large files" section of `status`), `Help` moved last in the
+  enum, `-q` clause in 02-cli, unknown-word error reworded and wrapped.
+- Roadmap line (05-roadmap v0.3 `warn_mb` / `max_mb`, "Skipped", `help large-files`) NOT ticked:
+  the warnings it implies are missing (PV-047).
+
+## Known gaps
+
+- Large-file warnings promised by 04-content (first snapshot, tracked file past `max_mb`) don't
+  exist; the topic describes what happens today. Follow-up PV-047 (#89).

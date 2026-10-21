@@ -1,6 +1,8 @@
 //! `paper help [<topic|command>]`: our own help command, replacing clap's, so that topics such
 //! as `large-files` sit next to the per-command help.
 
+use std::fmt::Write as _;
+
 use clap::CommandFactory;
 use paper_core::{ErrorKind, PaperError, Suggestion};
 use serde_json::json;
@@ -23,16 +25,18 @@ const TOPICS: [Topic; 1] = [Topic {
 
 type Output = Result<String, PaperError>;
 
-/// Runs `paper help [<topic|command>]` and returns the text for stdout.
-pub fn run(cli: &Cli, word: Option<&str>) -> Output {
-    let Some(word) = word else {
+/// Runs `paper help [<topic|command>...]` and returns the text for stdout.
+pub fn run(cli: &Cli, words: &[String]) -> Output {
+    let Some((first, rest)) = words.split_first() else {
         return Ok(if cli.json {
             topic_list_json()
         } else {
             overview()
         });
     };
-    if let Some(topic) = TOPICS.iter().find(|topic| topic.name == word) {
+    if rest.is_empty()
+        && let Some(topic) = TOPICS.iter().find(|topic| topic.name == first)
+    {
         return Ok(if cli.json {
             topic_json(topic)
         } else {
@@ -41,17 +45,23 @@ pub fn run(cli: &Cli, word: Option<&str>) -> Output {
     }
     let mut root = Cli::command();
     root.build();
-    if let Some(command) = root.find_subcommand_mut(word) {
-        if cli.json {
-            return Err(text_only(word));
-        }
-        return Ok(command.render_help().to_string());
+    let mut command = &mut root;
+    for word in words {
+        let known = command_names(command);
+        command = match command.find_subcommand_mut(word) {
+            Some(found) if word != "help" => found,
+            _ => return Err(unknown(word, &known)),
+        };
     }
-    Err(unknown(word, &command_names(&root)))
+    if cli.json {
+        return Err(text_only(&words.join(" ")));
+    }
+    Ok(command.render_help().to_string())
 }
 
-fn command_names(root: &clap::Command) -> Vec<String> {
-    root.get_subcommands()
+fn command_names(command: &clap::Command) -> Vec<String> {
+    command
+        .get_subcommands()
         .map(|command| command.get_name().to_owned())
         .filter(|name| name != "help")
         .collect()
@@ -63,7 +73,7 @@ fn overview() -> String {
     out.push_str("\nHelp topics:\n");
     let width = TOPICS.iter().map(|t| t.name.len()).max().unwrap_or(0);
     for topic in &TOPICS {
-        out.push_str(&format!("  {:<width$}  {}\n", topic.name, topic.summary));
+        let _ = writeln!(out, "  {:<width$}  {}", topic.name, topic.summary);
     }
     out.push_str(
         "\nRun `paper help <topic>` to read one, or `paper help <command>` for a command.\n",
@@ -111,11 +121,11 @@ fn unknown(word: &str, commands: &[String]) -> PaperError {
     let topics: Vec<&str> = TOPICS.iter().map(|t| t.name).collect();
     PaperError {
         kind: ErrorKind::User,
-        message: format!("There is no help topic or command called '{word}'."),
+        message: format!("There is no help topic or command called `{word}`."),
         why: format!(
-            "the help topics are: {}. The commands are: {}.",
+            "`{word}` is neither a help topic ({}) nor a command.\n        Commands: {}",
             topics.join(", "),
-            commands.join(", ")
+            wrap(&commands.join(", "), 70)
         ),
         next: vec![
             Suggestion {
@@ -128,4 +138,20 @@ fn unknown(word: &str, commands: &[String]) -> PaperError {
             },
         ],
     }
+}
+
+/// Breaks `text` after a comma-and-space once a line passes `width`, indenting continuations.
+fn wrap(text: &str, width: usize) -> String {
+    let mut out = String::new();
+    let mut line_len = 0;
+    for word in text.split_inclusive(' ') {
+        if line_len + word.len() > width {
+            out.truncate(out.trim_end().len());
+            out.push_str("\n                  ");
+            line_len = 0;
+        }
+        out.push_str(word);
+        line_len += word.len();
+    }
+    out
 }

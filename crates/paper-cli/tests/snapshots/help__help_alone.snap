@@ -20,8 +20,8 @@ Commands:
   gc        Trim the undo history to a recent window, so git can reclaim old drafts and undone work
   ignore    Stop tracking files or folders, even saved ones; with no arguments, list the ignore rules
   unignore  Track files or folders again: remove their ignore rule, or add an exception
-  help      Explain a command or a topic (try `paper help large-files`)
   restore   Put files back the way they were at a point
+  help      Explain a command or a topic (try `paper help large-files`)
 
 Options:
   -C <PATH>            Run as if started in this folder

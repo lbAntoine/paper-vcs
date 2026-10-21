@@ -4,10 +4,10 @@ expression: topic(&env).stdout
 ---
 Big files in a paper project
 
-Paper keeps two limits on file size. You can change both (see below).
+Paper has two size limits for a single file. You can change both (see below).
 
-  warn_mb   10 MB   Above this a file is still saved, with a warning, because
-                    big files make the project slow to share.
+  warn_mb   10 MB   Above this a file is still saved. `paper status` lists it
+                    under "Large files", because big files make saves slow.
   max_mb    100 MB  Above this a file is not saved at all.
 
 Skipped files
@@ -16,7 +16,7 @@ Skipped files
 
 A saved file that grows
   If a file already in your saves grows past max_mb, paper keeps saving it and
-  warns you loudly. It never silently drops a file you had saved.
+  keeps listing it under "Large files". It never drops a file you had saved.
 
 What you can do about a skipped file
   1. Leave it out on purpose, and stop seeing it in the list:
@@ -26,6 +26,6 @@ What you can do about a skipped file
   3. Raise the limit, knowing the cost: the project gets slower to share, and
      hosts such as GitHub refuse files above 100 MB.
        paper config set --project large_files.max_mb <N>
-     (<N> is in MB. The warning limit is large_files.warn_mb.)
+     (<N> is in MB. The other limit is large_files.warn_mb.)
 
 Git LFS support, for sharing big files through GitHub, is planned after 1.0.

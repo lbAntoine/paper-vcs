@@ -357,3 +357,15 @@ fn snapshot_help_unknown_topic() {
         env.paper(&["help", "nonsense"]).stderr
     );
 }
+
+#[test]
+fn help_for_a_nested_command_matches_its_command_help() {
+    let env = Env::new();
+
+    let via_help = env.paper(&["help", "config", "get"]);
+    let direct = env.paper(&["config", "get", "--help"]);
+
+    via_help.assert_code(0);
+    assert_eq!(via_help.stdout, direct.stdout);
+    env.paper(&["help", "config", "nonsense"]).assert_code(1);
+}

@@ -778,7 +778,8 @@ saved like any other. `ui.editor` is not a key yet.
   syncing with co-authors (`paper sync`) is v0.6 (roadmap § v0.6: Collaboration).
 - `paper help [<topic|command>]` replaces clap's built-in help command. `paper help` prints
   `paper --help` followed by the list of help topics; `paper help <command>` prints exactly
-  `paper <command> --help`; an unknown word is a three-part user error listing the topics and
+  `paper <command> --help` (nested commands too: `paper help config get`, which replaces
+  `paper config help get`); `-q` is ignored, like for `--help`; an unknown word is a three-part user error listing the topics and
   the commands. `paper help --json` lists the topics and `paper help <topic> --json` gives
   `{schema, topic, summary, text}`; `paper help <command> --json` is a user error (command
   help is text only).
