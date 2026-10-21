@@ -1,0 +1,8 @@
+---
+source: crates/paper-cli/tests/help.rs
+expression: "env.paper(&[\"help\", \"nonsense\"]).stderr"
+---
+error: There is no help topic or command called 'nonsense'.
+  why:  the help topics are: large-files. The commands are: init, save, history, show, status, diff, config, activity, undo, redo, gc, ignore, unignore, restore.
+  next: paper help              # see the commands and the help topics
+        paper help large-files  # read a topic

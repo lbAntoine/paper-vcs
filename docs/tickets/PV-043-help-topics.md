@@ -144,3 +144,23 @@ options are.
   - `status_json_for_a_too_large_file_keeps_its_key_set`: passes by design (key set unchanged,
     no hint in the JSON).
 - No src/ changes. GREEN re-accepts the `status_skipped` snapshot.
+
+### GREEN · rust-engineer · 2026-10-21
+
+- **Implemented:** `disable_help_subcommand` plus our own `Command::Help { topic }`
+  (`crates/paper-cli/src/help/mod.rs`, topic table of `(name, summary, text)`, text in
+  `help/large_files.txt`, 27 lines, <= 80 columns). `help` = `--help` + "Help topics:" list;
+  `help <command>` renders the same clap command, built first so the usage line matches;
+  unknown word is a three-part user error; JSON shapes as decided.
+- **Status hint:** `render/status.rs` adds the hint line after the Skipped lines when any
+  skip is `TooLarge`. `human.rs` untouched. The `status_skipped` snapshot is a nested-repo skip
+  and did not change; no existing snapshot changed.
+- **Verified by hand** in a temp project outside any repo: `paper ignore big.bin` and
+  `paper config set --project large_files.max_mb 1` work; defaults 10 and 100 read from
+  `paper config get` and `settings.rs`.
+- **Snapshots added:** `help_large_files`, `help_alone`, `help_unknown_topic` (read before
+  accepting).
+- **Spec:** 02-cli `paper help` bullet rewritten (large-files shipped in v0.3, concepts and git
+  planned); `paper status` example updated to the real heading and hint.
+- **Deviation:** the "Help topics:" list is followed by one pointer line
+  ("Run `paper help <topic>` ...").

@@ -336,3 +336,24 @@ fn status_json_for_a_too_large_file_keeps_its_key_set() {
     );
     assert!(!run.stdout.contains("paper help large-files"), "{run:#?}");
 }
+
+#[test]
+fn snapshot_help_large_files() {
+    let env = Env::new();
+    insta::assert_snapshot!("help_large_files", topic(&env).stdout);
+}
+
+#[test]
+fn snapshot_help_alone() {
+    let env = Env::new();
+    insta::assert_snapshot!("help_alone", env.paper(&["help"]).stdout);
+}
+
+#[test]
+fn snapshot_help_unknown_topic() {
+    let env = Env::new();
+    insta::assert_snapshot!(
+        "help_unknown_topic",
+        env.paper(&["help", "nonsense"]).stderr
+    );
+}

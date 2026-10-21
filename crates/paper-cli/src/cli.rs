@@ -6,7 +6,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 
 /// Version control for researchers.
 #[derive(Debug, Parser)]
-#[command(name = "paper", version)]
+#[command(name = "paper", version, disable_help_subcommand = true)]
 #[allow(clippy::struct_excessive_bools)] // global flags are independent switches
 pub struct Cli {
     /// Run as if started in this folder.
@@ -169,6 +169,11 @@ pub enum Command {
         /// Work on your private rules in `.git/info/exclude`, not `.gitignore`.
         #[arg(long)]
         local: bool,
+    },
+    /// Explain a command or a topic (try `paper help large-files`).
+    Help {
+        /// A command (like `save`) or a help topic (like `large-files`).
+        topic: Option<String>,
     },
     /// Put files back the way they were at a point.
     Restore {

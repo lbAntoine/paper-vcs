@@ -4,6 +4,7 @@ mod cli;
 mod commands;
 mod config_cmd;
 mod error;
+mod help;
 mod inspect;
 mod panic;
 mod paths;
