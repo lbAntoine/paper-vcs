@@ -283,12 +283,14 @@ changed paragraph, a line `  ¶ N` (the number on the new side) and its text, in
 spaces and wrapped at the width of the terminal on stdout (80 when stdout is not a terminal,
 so `paper diff > file` and `| less` wrap at 80; a numeric `COLUMNS` sets the width by hand and
 wins). Width is counted in display columns, so Korean and Japanese text wraps where it fits and
-may break between any two Han or kana characters and between an edit and the CJK text next to it; inside unchanged or unedited Hangul text, lines break only at spaces. A line never breaks inside a word or between a
+may break between any two Han or kana characters and between an edit and the CJK text next to it; Hangul breaks only at spaces and at the edges of an edit. A line never breaks inside a word or between a
 `[-` or `{+` and the text it opens. Paragraphs that share a number (a deleted paragraph next to
 its neighbour) share one `¶ N` line. In a LaTeX file the first line break after a `%` comment, wherever it falls (in unchanged,
 added or removed text; a marker open there closes before the break and reopens after it), is
-kept as a line break, as are a paragraph break and a cut that follow a comment, so the text
-after a comment never reads as commented out. On a colour terminal removed words are
+kept as a line break, as are a paragraph break and a cut that follow a comment. This is judged
+on the new text: the text after a comment, as it now reads, never appears on the comment's
+line. Removed text is shown with the spacing paper-diff gives it
+([#93](https://github.com/lbAntoine/paper-vcs/issues/93)). On a colour terminal removed words are
 red and struck through, added words green and a cut dim. Without colour the text is the
 plain markup of [04-content](04-content.md#word-diff): `[-old-]{+new+}`, `{+¶+}`, `[-¶-]` and
 ` … `. A file whose only change is spacing or line breaks prints

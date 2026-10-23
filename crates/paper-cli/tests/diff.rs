@@ -1483,3 +1483,16 @@ fn a_line_may_break_after_the_closing_delimiter_of_an_added_run_that_ends_in_a_s
     );
     assert!(latin.stdout.contains("{+extraordinarily +}"), "{latin:#?}");
 }
+
+#[test]
+fn a_line_may_break_before_the_opening_delimiter_of_an_added_run_that_starts_with_a_space() {
+    // The mirror image: `{+ 라구연+}` follows its neighbour with no space in between.
+    let korean = assert_fits("바자구바.", "바자구바. 라구연", 20);
+    assert!(korean.stdout.contains("{+ 라구연+}"), "{korean:#?}");
+    let latin = assert_fits(
+        "supercalifragilistic",
+        "supercalifragilistic extraordinarily",
+        30,
+    );
+    assert!(latin.stdout.contains("{+ extraordinarily+}"), "{latin:#?}");
+}

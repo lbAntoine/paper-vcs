@@ -319,6 +319,11 @@ impl Builder {
                     self.out.push(Item::Joint);
                 }
                 El::Space if open || close => {
+                    if open {
+                        // The line may break before the opening delimiter.
+                        self.flush();
+                        self.out.push(Item::Joint);
+                    }
                     self.word.push(Piece {
                         kind,
                         text: " ".to_owned(),
@@ -598,16 +603,30 @@ mod tests {
                     None => String::new(),
                 },
                 3 => w.join(" 50\\% "),
+                // An escaped backslash, then a real comment.
+                5 => match w.split_first() {
+                    Some((first, rest)) => format!("{first} \\\\% {}", rest.join(" ")),
+                    None => String::new(),
+                },
+                // A comment glued to the word before it.
+                6 => match w.split_first() {
+                    Some((first, rest)) => format!("{first}%{}", rest.join(" ")),
+                    None => String::new(),
+                },
                 _ => String::new(),
             }
         }
     }
 
-    fn document(lines: &[Src], eol: &str) -> String {
-        lines.iter().map(|l| l.text() + eol).collect()
+    fn document(lines: &[Src], eol: &str, final_newline: bool) -> String {
+        let mut text: String = lines.iter().map(|l| l.text() + eol).collect();
+        if !final_newline {
+            text.truncate(text.trim_end_matches(['\r', '\n']).len());
+        }
+        text
     }
 
-    /// The (logical line, word) pairs of `l<id>w<n>` tokens in `text`.
+    /// The logical line ids of the `l<id>w<n>` tokens in `text`, in order.
     fn ids(text: &str) -> Vec<usize> {
         text.split(|c: char| !c.is_alphanumeric())
             .filter_map(|t| {
@@ -689,18 +708,33 @@ mod tests {
         open.is_none()
     }
 
-    fn check_pair(old: &[Src], new: &[Src], eol: &str) -> Result<(), String> {
-        let (before, after) = (document(old, eol), document(new, eol));
+    /// Renders the diff of two documents in full, one line per source line, at a huge width.
+    /// `None` when the only difference is layout.
+    fn render_pair(
+        old: &[Src],
+        new: &[Src],
+        eol: &str,
+        final_newline: bool,
+    ) -> (String, String, Option<String>) {
+        let (before, after) = (
+            document(old, eol, final_newline),
+            document(new, eol, final_newline),
+        );
         let diff = diff_words_with(
             &before,
             &after,
             Tokeniser::Latex,
             &WordDiffOptions::keep_everything(),
         );
-        let rendered = file("e.tex", &diff, plain(), 10_000);
-        if diff.layout_only {
+        let rendered = (!diff.layout_only).then(|| file("e.tex", &diff, plain(), 10_000));
+        (before, after, rendered)
+    }
+
+    fn check_pair(old: &[Src], new: &[Src], eol: &str, final_newline: bool) -> Result<(), String> {
+        let (before, after, rendered) = render_pair(old, new, eol, final_newline);
+        let Some(rendered) = rendered else {
             return Ok(());
-        }
+        };
         for line in rendered.lines() {
             if !markers_balance(line) {
                 return Err(format!("unbalanced markers in {line:?}\n{rendered}"));
@@ -710,9 +744,26 @@ mod tests {
             comment_is_contained(&new_side).map_err(|e| format!("{e} in {line:?}\n{rendered}"))?;
         }
         let shown = ids_with_words(&rendered);
-        for word in ids_with_words(&(before.clone() + &after)) {
+        for word in ids_with_words(&(before + &after)) {
             if !shown.contains(&word) {
                 return Err(format!("{word} is missing from\n{rendered}"));
+            }
+        }
+        Ok(())
+    }
+
+    /// The old side judged inside each single `[-…-]` span (see PV-049).
+    fn check_removed_spans(
+        old: &[Src],
+        new: &[Src],
+        eol: &str,
+        final_newline: bool,
+    ) -> Result<(), String> {
+        let (_, _, rendered) = render_pair(old, new, eol, final_newline);
+        for line in rendered.iter().flat_map(|r| r.lines()) {
+            for span in line.split("[-").skip(1) {
+                let span = span.split("-]").next().unwrap_or(span);
+                comment_is_contained(span).map_err(|e| format!("{e} in {line:?}"))?;
             }
         }
         Ok(())
@@ -725,15 +776,44 @@ mod tests {
             .collect()
     }
 
-    #[allow(clippy::type_complexity)]
-    fn scenario() -> impl Strategy<Value = (Vec<(u8, usize)>, Vec<(u8, u8, usize)>, bool)> {
+    type Scenario = (Vec<(u8, usize)>, Vec<(u8, u8, usize)>, bool, bool);
+
+    fn scenario() -> impl Strategy<Value = Scenario> {
         (
-            prop::collection::vec((0u8..5, 1usize..4), 1..8),
-            // per line: edit (0 keep, 1 remove, 2 change), kind and size of an inserted line
-            // after it (kind 5: none)
-            prop::collection::vec((0u8..7, 0u8..6, 1usize..4), 1..8),
+            prop::collection::vec((0u8..7, 1usize..4), 1..8),
+            // per line: its edit (0 to 3 keep, 4 remove, 5 and 6 replace by a new line), then the
+            // kind and size of a line inserted after it (kind 7: none)
+            prop::collection::vec((0u8..7, 0u8..8, 1usize..4), 1..8),
+            any::<bool>(),
             any::<bool>(),
         )
+    }
+
+    /// The old and the new lines of a scenario.
+    fn build(base: &[(u8, usize)], edits: &[(u8, u8, usize)]) -> (Vec<Src>, Vec<Src>) {
+        let mut next = 0;
+        let mut fresh = |kind: u8, words: usize| {
+            next += 1;
+            Src {
+                id: next,
+                kind,
+                words,
+            }
+        };
+        let old: Vec<Src> = base.iter().map(|(k, w)| fresh(*k, *w)).collect();
+        let mut new = Vec::new();
+        for (at, line) in old.iter().enumerate() {
+            let (edit, insert_kind, insert_words) = edits[at % edits.len()];
+            match edit {
+                0..=3 => new.push(line.clone()),
+                4 => {}
+                _ => new.push(fresh(line.kind, line.words)),
+            }
+            if insert_kind < 7 {
+                new.push(fresh(insert_kind, insert_words));
+            }
+        }
+        (old, new)
     }
 
     proptest! {
@@ -741,28 +821,23 @@ mod tests {
 
         #[test]
         fn a_comment_never_swallows_text_from_another_line(
-            (base, edits, crlf) in scenario()
+            (base, edits, crlf, final_newline) in scenario()
         ) {
-            let mut next = 0;
-            let mut fresh = |kind: u8, words: usize| {
-                next += 1;
-                Src { id: next, kind, words }
-            };
-            let old: Vec<Src> = base.iter().map(|(k, w)| fresh(*k, *w)).collect();
-            let mut new = Vec::new();
-            for (at, line) in old.iter().enumerate() {
-                let (edit, insert_kind, insert_words) = edits[at % edits.len()];
-                match edit {
-                    0..=3 => new.push(line.clone()),
-                    4 => {}
-                    _ => new.push(fresh(line.kind, line.words)),
-                }
-                if insert_kind < 5 {
-                    new.push(fresh(insert_kind, insert_words));
-                }
-            }
+            let (old, new) = build(&base, &edits);
             let eol = if crlf { "\r\n" } else { "\n" };
-            prop_assert!(check_pair(&old, &new, eol).is_ok(), "{}", check_pair(&old, &new, eol).unwrap_err());
+            let checked = check_pair(&old, &new, eol, final_newline);
+            prop_assert!(checked.is_ok(), "{}", checked.unwrap_err());
+        }
+
+        #[test]
+        #[ignore = "PV-049 (#93): removed text carries the new text's spacing"]
+        fn removed_text_never_runs_a_comment_into_another_line(
+            (base, edits, crlf, final_newline) in scenario()
+        ) {
+            let (old, new) = build(&base, &edits);
+            let eol = if crlf { "\r\n" } else { "\n" };
+            let checked = check_removed_spans(&old, &new, eol, final_newline);
+            prop_assert!(checked.is_ok(), "{}", checked.unwrap_err());
         }
     }
 
@@ -797,11 +872,12 @@ mod tests {
                 src(4, 0, 1),
             ],
             "\n",
+            true,
         )
         .unwrap();
         // A removed line after a trailing comment, then the end of the paragraph.
-        check_pair(&[src(1, 2, 2), src(2, 0, 1)], &[src(1, 2, 2)], "\n").unwrap();
+        check_pair(&[src(1, 2, 2), src(2, 0, 1)], &[src(1, 2, 2)], "\n", true).unwrap();
         // An added line at the end of the file.
-        check_pair(&[src(1, 2, 2)], &[src(1, 2, 2), src(3, 0, 1)], "\n").unwrap();
+        check_pair(&[src(1, 2, 2)], &[src(1, 2, 2), src(3, 0, 1)], "\n", true).unwrap();
     }
 }

@@ -160,6 +160,26 @@
       "sprint": "v0.3-b",
       "created_at": "2026-10-21T09:00:48Z",
       "updated_at": "2026-10-21T09:00:48Z"
+    },
+    {
+      "id": "e1a0c048",
+      "title": "PV-048: a rewritten paragraph splits into many pieces in the word diff",
+      "description": "GitHub issue #92. From the PV-042 review. Known limit of the v0.3 acceptance.",
+      "status": "todo",
+      "priority": "medium",
+      "sprint": "v0.3-b",
+      "created_at": "2026-10-23T13:35:49Z",
+      "updated_at": "2026-10-23T13:35:49Z"
+    },
+    {
+      "id": "e1a0c049",
+      "title": "PV-049: removed text in the word diff carries the new text's spacing",
+      "description": "GitHub issue #93. From the PV-042 review. Affects how removed text is shown next to comments.",
+      "status": "todo",
+      "priority": "medium",
+      "sprint": "v0.3-b",
+      "created_at": "2026-10-23T13:35:49Z",
+      "updated_at": "2026-10-23T13:35:49Z"
     }
   ]
 }

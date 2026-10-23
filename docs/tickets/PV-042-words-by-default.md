@@ -130,6 +130,8 @@ on a co-author's changes and read it as prose.
 - A change of file mode only (for example the executable bit) is listed as `modified` with `+0 words −0 words` in `status` and `diff`, and prints nothing with `--lines`. Left as is.
 - In a `.bib` file a `%` inside a value (for example `%20` in a URL) starts a comment for the renderer's line-break rule, so the line break after it is kept. Harmless but not exact.
 - A line can start with CJK closing punctuation (no kinsoku rules).
+- Removed text carries the new text's spacing (PV-049, #93), so on the old side a comment can still run into the next line. Two cases: `[-l3w0 % l3w1 l4w0-]` (two source lines shown as one removed run) and `Begin [-% note here-]{+added+} alpha[- beta-] gamma`. An ignored property test (`removed_text_never_runs_a_comment_into_another_line`) records it.
+- At narrow widths a long comment soft-wraps, and its continuation lines read as uncommented.
 - A fully rewritten paragraph can still split into pieces (PV-048, #92).
 
 ## Summary
@@ -247,3 +249,11 @@ Word diff is the default for text in `paper diff`, `paper show` and `paper statu
 - **Edge-space glue:** a `Joint` after the closing-edge space piece; tests for `{+라구연 +}바자구바.` at COLUMNS=20 and a Latin case at 30.
 - **CJK boundary test** now pads the text so the edit falls across the wrap point.
 - **Specs:** 02-cli and 04-content reworded (Hangul sentence, exact comment claim).
+
+### GREEN (final) · rust-engineer · 2026-10-23
+
+- **Spec honesty:** the comment claim in 02-cli and 04-content is limited to the new text, with a pointer to #93. Both reviewer cases and the soft-wrap gap are in Known gaps. The Hangul wording is now "Hangul breaks only at spaces and at the edges of an edit".
+- **Old-side check:** `removed_text_never_runs_a_comment_into_another_line` (per `[-…-]` span, `comment_is_contained`), `#[ignore = "PV-049 (#93): ..."]`. Run with `--ignored` it fails today (see the report), as intended.
+- **Opening-edge glue:** a `Joint` before an opening-edge space piece; tests `supercalifragilistic{+ extraordinarily+}` at 30 and `바자구바.{+ 라구연+}` at 20 columns, no overflow.
+- **Generator:** comments fixed (kinds, edit codes, kind 7 = no insertion); added `\\%` (escaped backslash then a comment), `word%c` and a file without a final newline; the `ids` doc fixed.
+- **Bookkeeping:** PV-048 (#92) and PV-049 (#93) added to tasks.json (v0.3-b, todo, medium). Summary filled in and acceptance criteria ticked earlier; CI left to the coordinator.
