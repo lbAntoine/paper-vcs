@@ -961,7 +961,7 @@ fn stat_keeps_the_sizes_line_of_a_binary_file() {
     assert!(!plot.contains("words"), "{run:#?}");
     assert!(
         run.stdout
-            .contains(&minus("2 files changed, +3 words -3 words\n")),
+            .contains(&minus("2 files changed, +3 words -1 word\n")),
         "binary files add nothing to the word total: {run:#?}"
     );
 }
@@ -978,13 +978,13 @@ fn stat_lines_keeps_the_line_counts() {
 #[test]
 fn diff_json_in_word_mode_has_unit_paragraphs_and_null_hunks() {
     let env = word_project();
-    env.write("sections/intro.tex", "Intro v3 more\n");
-    env.write_bytes("figures/plot.bin", &binary(2048, 7));
     env.write("layout.txt", "a b c\n");
     env.paper(&["save", "Add layout"]).assert_code(0);
+    env.write("sections/intro.tex", "Intro v3 more\n");
+    env.write_bytes("figures/plot.bin", &binary(2048, 7));
     env.write("layout.txt", "a\nb  c\n");
 
-    let run = env.paper(&["--json", "diff", "last~1"]);
+    let run = env.paper(&["--json", "diff"]);
 
     run.assert_code(0);
     let json = run.json();
