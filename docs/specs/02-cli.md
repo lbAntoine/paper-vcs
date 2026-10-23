@@ -86,9 +86,9 @@ the break). For a binary file `added` and `removed` are `null`, the byte sizes a
 `paper diff --json` prints `{schema, files}` (also with `--stat`), `paper show --json`
 adds `files` beside `save` and `changes`, and `paper status --json` prints
 `{schema, line, last, changes, skipped, large, outside_paper}`, where `last` has the shape of a save in
-`history` and each change has the file-diff keys without `hunks`, `layout_only` and
-`paragraphs`, plus `unit` (`"words"` for a text file, `null` for a binary one), so
-`added` and `removed` count words for text files.
+`history` and each change has the file-diff keys without `hunks` and `paragraphs`:
+`unit` is `"words"` for a text file (`null` for a binary one), so `added` and `removed` count
+words, and `layout_only` is `true` for a spacing-only change (`null` for a binary file).
 `paper restore --json` prints `{schema, from, changes: [{path, kind}], skipped: [{path, reason, bytes}]}`,
 with `from` the commit the files were restored from.
 
@@ -280,8 +280,13 @@ text file is compared with the empty text.
 **Word output.** Files are in path order with one blank line between them. Each starts with
 a header, `sections/intro.tex  +12 words −4 words` (`1 word` in the singular), then, for each
 changed paragraph, a line `  ¶ N` (the number on the new side) and its text, indented two
-spaces and wrapped at the terminal width (80 when stdout is not a terminal), never inside a
-word or between a `[-` or `{+` and the text it opens. On a colour terminal removed words are
+spaces and wrapped at the width of the terminal on stdout (80 when stdout is not a terminal,
+so `paper diff > file` and `| less` wrap at 80; a numeric `COLUMNS` sets the width by hand and
+wins). Width is counted in display columns, so Korean and Japanese text wraps where it fits and
+may break between any two of its characters. A line never breaks inside a word or between a
+`[-` or `{+` and the text it opens. Paragraphs that share a number (a deleted paragraph next to
+its neighbour) share one `¶ N` line. In a LaTeX file the line break that ends a `%` comment is
+kept as a line break, so the text after it never reads as commented out. On a colour terminal removed words are
 red and struck through, added words green and a cut dim. Without colour the text is the
 plain markup of [04-content](04-content.md#word-diff): `[-old-]{+new+}`, `{+¶+}`, `[-¶-]` and
 ` … `. A file whose only change is spacing or line breaks prints
@@ -302,7 +307,8 @@ components). A path that names no file in either save is an error listing every 
 so a typo never looks like "no differences"; a path that exists but is unchanged prints
 nothing. `--stat` prints one line per file, `+12 words −3 words` (`+12 −3` with `--lines`; a
 spacing-only file says `spacing and line breaks only`) or the binary sizes, then a total
-(`2 files changed, +13 words −3 words`). The front-end
+(`2 files changed, +13 words −3 words`). When only binary files changed there are no word
+counts, and the total is printed in line format (`1 file changed, +0 −0`). The front-end
 snapshots before comparing against `@`.
 
 ### `paper restore <paths>… [--from <point>]` (since v0.1)

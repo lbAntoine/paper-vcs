@@ -179,6 +179,7 @@ fn status_json_has_a_fixed_key_set() {
         "old_bytes",
         "new_bytes",
         "unit",
+        "layout_only",
     ];
     let changes = json["changes"].as_array().unwrap();
     assert_eq!(changes.len(), 3, "{run:#?}");
@@ -621,6 +622,7 @@ fn status_json_marks_layout_only_changes_with_zero_counts_in_words() {
     let change = &run.json()["changes"][0];
     assert_eq!(change["path"], "essay.txt");
     assert_eq!(change["unit"], "words");
+    assert_eq!(change["layout_only"], true);
     assert_eq!(
         (change["added"].clone(), change["removed"].clone()),
         (0.into(), 0.into())

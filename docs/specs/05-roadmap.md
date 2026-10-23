@@ -35,7 +35,7 @@ Word diff, profiles, large-file guard rails, `--json` everywhere.
 - [x] Six built-in profiles, idempotent `.gitignore` block, auto-detection (shipped early, in v0.1)
 - [ ] `warn_mb` / `max_mb`, "Skipped" in `status`, `help large-files`
 - [ ] README, a 2-minute asciinema demo, install docs
-- **Accept:** a PI can run `paper diff --since <point>` on a co-author's changes and read it as prose.
+- [x] **Accept** (met): a PI can run `paper diff --since <point>` on a co-author's changes and read it as prose. Known limit: a fully rewritten paragraph can still split into pieces (follow-up PV-048, #92).
 
 ## v0.4: Safe experiments
 

@@ -70,11 +70,13 @@ more readable hunks than Myers. The output is git's unified format with 3 lines 
      removed between two words of a space-separated script (Latin, Cyrillic, …). A lone space
      next to CJK or punctuation is shown (`한 국어` → `한국어`, `a , b` → `a, b`). If nothing
      else changed, the result has no paragraphs and `layout_only` is true.
-   - **Cleanup.** After alignment, an unchanged run between two changes that holds no
-     `Word` token and no paragraph break (single spaces, punctuation, or both) is absorbed:
+   - **Cleanup.** After alignment, an unchanged run between two changes (neither of them a
+     paragraph break) that holds no `Word`, `Command` or `Comment` token and no paragraph
+     break (single spaces, punctuation, or both) is absorbed:
      its text becomes part of the removed side and of the added side. A replaced sentence
      is then one removed run followed by one added run, not words interleaved with spaces.
-     An unchanged word between two changes is kept. Counts are unaffected.
+     An unchanged word, command or comment between two changes is kept. Counts are
+     unaffected.
    - **Counts.** `+N` and `−M` count `Word` tokens only (a CJK grapheme is one word).
      Punctuation, spaces, commands and comments change the text but not the counts.
    - **Paragraphs.** Numbers are 1-based on the new side. Only paragraphs with a change are
@@ -92,7 +94,10 @@ more readable hunks than Myers. The output is git's unified format with 3 lines 
    The CLI indents the text two spaces and wraps it at the terminal width (80 off a
    terminal): runs of white space inside a paragraph become one space or a line break, and a
    line never breaks inside a word or between a marker's delimiter and its text. It then
-   reads as the plain markup with line breaks added. A file that differs only in layout
+   reads as the plain markup with line breaks added. In a LaTeX file the line break that
+   ends a `%` comment is kept, since the rest of the file would otherwise read as commented
+   out; paper-diff gives the front-end the comment text and its line break, and the CLI
+   recognises the comment (a `%` not escaped by `\`) to the end of its line. A file that differs only in layout
    prints `spacing and line breaks only` instead of paragraphs.
 
 ```

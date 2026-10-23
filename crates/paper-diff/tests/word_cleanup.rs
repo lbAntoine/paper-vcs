@@ -41,3 +41,27 @@ fn counts_do_not_change() {
     let diff = diff_words("a b c", "x y z", Tokeniser::Generic);
     assert_eq!((diff.added, diff.removed), (3, 3));
 }
+
+#[test]
+fn a_run_next_to_a_paragraph_break_is_not_absorbed() {
+    let out = markup("、\n\nab", "ab\n\n、");
+    assert!(!out.contains("[-、-]{+、+}"), "{out}");
+}
+
+#[test]
+fn an_unchanged_comment_between_two_edits_is_kept() {
+    let diff = diff_words("alpha % note\nbeta", "ALPHA % note\nBETA", Tokeniser::Latex);
+    assert_eq!(
+        to_word_markup(&diff),
+        "¶ 1\n[-alpha-]{+ALPHA+} % note\n[-beta-]{+BETA+}\n"
+    );
+}
+
+#[test]
+fn an_unchanged_command_between_two_edits_is_kept() {
+    let diff = diff_words("alpha \\emph beta", "ALPHA \\emph BETA", Tokeniser::Latex);
+    assert_eq!(
+        to_word_markup(&diff),
+        "¶ 1\n[-alpha-]{+ALPHA+} \\emph [-beta-]{+BETA+}\n"
+    );
+}

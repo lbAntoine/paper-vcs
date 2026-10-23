@@ -101,6 +101,8 @@ struct StatusChange {
     old_bytes: Option<u64>,
     new_bytes: Option<u64>,
     unit: Option<&'static str>,
+    /// `null` for binary files.
+    layout_only: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -235,15 +237,32 @@ pub fn status(status: &Status) -> String {
         .changes
         .iter()
         .map(|change| {
-            let (binary, added, removed, old_bytes, new_bytes, unit) = match change.stat {
-                ChangeStat::Lines { added, removed } => {
-                    (false, Some(added), Some(removed), None, None, Some("lines"))
-                }
-                ChangeStat::Words { added, removed, .. } => {
-                    (false, Some(added), Some(removed), None, None, Some("words"))
-                }
-                ChangeStat::Bytes { old, new } => (true, None, None, old, new, None),
-            };
+            let (binary, added, removed, old_bytes, new_bytes, unit, layout_only) =
+                match change.stat {
+                    ChangeStat::Lines { added, removed } => (
+                        false,
+                        Some(added),
+                        Some(removed),
+                        None,
+                        None,
+                        Some("lines"),
+                        Some(false),
+                    ),
+                    ChangeStat::Words {
+                        added,
+                        removed,
+                        layout_only,
+                    } => (
+                        false,
+                        Some(added),
+                        Some(removed),
+                        None,
+                        None,
+                        Some("words"),
+                        Some(layout_only),
+                    ),
+                    ChangeStat::Bytes { old, new } => (true, None, None, old, new, None, None),
+                };
             StatusChange {
                 path: change.path.clone(),
                 kind: kind_name(change.kind),
@@ -253,6 +272,7 @@ pub fn status(status: &Status) -> String {
                 old_bytes,
                 new_bytes,
                 unit,
+                layout_only,
             }
         })
         .collect();

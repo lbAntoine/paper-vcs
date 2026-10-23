@@ -125,6 +125,11 @@ on a co-author's changes and read it as prose.
 - **Acceptance:** the test described in the Decisions.
 - **RED proof:** the tests must fail on `origin/main` for the stated reason.
 
+## Known gaps
+
+- A change of file mode only (for example the executable bit) is listed as `modified` with `+0 words −0 words` in `status` and `diff`, and prints nothing with `--lines`. Left as is.
+- A fully rewritten paragraph can still split into pieces (PV-048, #92).
+
 ## Summary
 
 ## Handoff log
@@ -205,3 +210,19 @@ on a co-author's changes and read it as prose.
 
 - `cli/tests/acceptance.rs::a_pi_reads_a_co_authors_changes_as_prose` re-expressed around readability (test file only). It keeps the header counts, silence for the re-wrapped paragraph and the `[-careful-]{+precise+}` / `[-three-]{+four+}` edits. It drops `¶ 3`/`¶ 4`, the period in the added run and any line position. New helper `assert_deleted_paragraph_and_added_sentence_read_as_prose` reads `--json diff --since` and checks: (a) the deleted paragraph's text is one removed run; (b) "They are stable across runs" is one added run; (c) that stretch holds at most one removed and one added non-break run; (d) a removed paragraph-break segment exists. The plain markup with the wrap undone (whitespace joined) is checked for `[-¶-]` and both phrases.
 - Passes on c2e9294. On a scratch copy of d69b360 (own target dir, removed after) it fails at (a): no single removed run holds the deleted paragraph. clippy and fmt clean.
+
+### GREEN (review round 1) · rust-engineer · 2026-10-23
+
+1. Roadmap Accept line ticked with the PV-048 (#92) limit.
+2. Width: `terminal_size_of(stdout)` (so only stdout counts), then numeric `COLUMNS` first; documented in 02-cli. Test `columns_sets_the_wrap_width` (a pty is not available, so the stderr/stdin case is covered by design: stdout is a pipe in tests and wraps at 80).
+3. Comments: the CLI renderer recognises a LaTeX `%` comment (not `\%`) and keeps the line break that ends it as a hard break. Deviation: it is done in `render/words.rs` from the segment text, not by a new marker in paper-diff (no API change); 04-content says so. Tests for a comment and for `100% sure` in a .txt file.
+4. Cleanup absorbs only when both neighbours are non-break changes; test `"、\n\nab"` to `"ab\n\n、"`.
+5. `Command` and `Comment` are never absorbed (`solid`); tests for an unchanged comment and command between edits; 04-content updated.
+6. Display width with `unicode-width` 0.2.2: **new dependency** (it was not in Cargo.lock; Cargo.lock changed only for it). Lines may break between CJK characters (a Joint between two CJK chars), never inside delimiters. Korean and Japanese wrapping tests.
+7. Paragraphs with the same number share one `¶ N`.
+8. Status JSON changes gain `layout_only` (`null` for binary files); `status_json` snapshot re-accepted (only the new key); `status_json_has_a_fixed_key_set` key list gained `layout_only` (needed by this decision).
+9. A cut at a line end loses its trailing space (test over widths 30 to 59).
+10. A removed or added run is painted whole, spaces included (test).
+11. 02-cli documents the binary-only `--stat` total; test added.
+12. Snapshots `diff_words_human` (plain markup: modified paragraph with an added clause, a spacing-only file, a new file) and `diff_words_json` (modified file with segments, layout-only file); both read before accepting.
+13. Mode-only change noted under Known gaps.

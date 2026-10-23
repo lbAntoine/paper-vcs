@@ -289,6 +289,9 @@ struct Item<'a> {
     op: Op,
     text: &'a str,
     word: bool,
+    /// A word, command or comment: text that makes sense on its own and is never absorbed
+    /// by the cleanup pass.
+    solid: bool,
     /// A `Space` token holding a paragraph break.
     brk: bool,
 }
@@ -299,6 +302,10 @@ impl<'a> Item<'a> {
             op,
             text: token.text,
             word: token.kind == TokenKind::Word,
+            solid: matches!(
+                token.kind,
+                TokenKind::Word | TokenKind::Command | TokenKind::Comment
+            ),
             brk: is_break_token(token),
         }
     }
@@ -324,6 +331,7 @@ impl<'a> Flow<'a> {
                 op: Op::Same,
                 text,
                 word: false,
+                solid: false,
                 brk: false,
             });
         }
@@ -380,8 +388,9 @@ impl<'a> Flow<'a> {
     }
 }
 
-/// Semantic cleanup of the aligned items. An unchanged run between two changes that holds no
-/// word and no paragraph break (single spaces, punctuation) belongs to both sides of the
+/// Semantic cleanup of the aligned items. An unchanged run between two changes (neither a
+/// paragraph break) that holds no word, command, comment or paragraph break (single spaces,
+/// punctuation) belongs to both sides of the
 /// change; the changed stretch then reads as one removed run followed by one added run.
 /// Counts are unaffected, as only non-word text is absorbed.
 fn cleanup<'a>(items: &[Item<'a>]) -> Vec<Item<'a>> {
@@ -399,8 +408,9 @@ fn cleanup<'a>(items: &[Item<'a>]) -> Vec<Item<'a>> {
             .position(|i| i.op != Op::Same)
             .map_or(n, |len| at + len);
         let run = &items[at..end];
-        let between = at > 0 && end < n;
-        if between && run.iter().all(|i| !i.word && !i.brk) {
+        // Both neighbours must be changes that are not paragraph breaks.
+        let between = at > 0 && end < n && !items[at - 1].brk && !items[end].brk;
+        if between && run.iter().all(|i| !i.solid && !i.brk) {
             marked.extend(run.iter().map(|i| {
                 (
                     Item {

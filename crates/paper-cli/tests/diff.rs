@@ -1118,3 +1118,238 @@ fn diff_help_describes_both_modes_and_no_longer_says_words_are_unavailable() {
         "{show:#?}"
     );
 }
+
+// ---------------------------------------------------------------- review round 1
+
+/// The display width of a line, in terminal columns.
+fn columns(line: &str) -> usize {
+    unicode_width::UnicodeWidthStr::width(line)
+}
+
+#[test]
+fn the_line_break_that_ends_a_latex_comment_stays_a_line_break() {
+    let env = word_project();
+    env.write(
+        "essay.tex",
+        "% keep this comment about the calibration\nThe old sentence here.\n",
+    );
+    env.paper(&["save", "Add essay"]).assert_code(0);
+    env.write(
+        "essay.tex",
+        "% keep this comment about the calibration\nThe new sentence here.\n",
+    );
+
+    let run = env.paper(&["diff"]);
+
+    run.assert_code(0);
+    assert!(
+        run.stdout.contains(
+            "  % keep this comment about the calibration\n  The [-old-]{+new+} sentence here.\n"
+        ),
+        "the next sentence must not read as commented out: {run:#?}"
+    );
+}
+
+#[test]
+fn a_line_break_after_text_that_is_not_a_comment_is_still_joined() {
+    let env = word_project();
+    env.write("essay.txt", "100% sure\nThe old sentence here.\n");
+    env.paper(&["save", "Add essay"]).assert_code(0);
+    env.write("essay.txt", "100% sure\nThe new sentence here.\n");
+
+    let run = env.paper(&["diff"]);
+
+    run.assert_code(0);
+    assert!(
+        run.stdout
+            .contains("  100% sure The [-old-]{+new+} sentence here.\n"),
+        "{run:#?}"
+    );
+}
+
+fn long_essay(env: &Env) {
+    let words: Vec<String> = (0..60).map(|i| format!("word{i:02}")).collect();
+    env.write("essay.txt", &format!("{}.\n", words.join(" ")));
+    env.paper(&["save", "Add essay"]).assert_code(0);
+    let mut changed = words.clone();
+    "CHANGED".clone_into(&mut changed[30]);
+    env.write("essay.txt", &format!("{}.\n", changed.join(" ")));
+}
+
+#[test]
+fn columns_sets_the_wrap_width() {
+    let env = word_project();
+    long_essay(&env);
+
+    let narrow = env.paper_in(&env.work, &[("COLUMNS", "40")], &["diff"]);
+    let nonsense = env.paper_in(&env.work, &[("COLUMNS", "wide")], &["diff"]);
+    let piped = env.paper(&["diff"]);
+
+    for (run, limit) in [(&narrow, 40), (&nonsense, 80), (&piped, 80)] {
+        run.assert_code(0);
+        let body = paragraph_lines(&run.stdout);
+        assert!(!body.is_empty(), "{run:#?}");
+        assert!(
+            body.iter().all(|l| columns(l) <= limit),
+            "limit {limit}: {run:#?}"
+        );
+    }
+    assert!(
+        paragraph_lines(&narrow.stdout).len() > paragraph_lines(&piped.stdout).len(),
+        "narrow wraps more: {narrow:#?}"
+    );
+    assert!(
+        paragraph_lines(&piped.stdout)
+            .iter()
+            .any(|l| columns(l) > 40),
+        "piped output wraps at 80, not at a terminal's width: {piped:#?}"
+    );
+}
+
+fn cjk_wrap(text: &str, replaced: char, with: char) {
+    let env = word_project();
+    env.write("essay.txt", &format!("{text}\n"));
+    env.paper(&["save", "Add essay"]).assert_code(0);
+    let new: String = text
+        .chars()
+        .enumerate()
+        .map(|(i, c)| if i == 30 && c == replaced { with } else { c })
+        .collect();
+    assert_ne!(new, text);
+    env.write("essay.txt", &format!("{new}\n"));
+
+    let run = env.paper(&["diff"]);
+
+    run.assert_code(0);
+    let body = paragraph_lines(&run.stdout);
+    assert!(body.len() >= 2, "wrapped: {run:#?}");
+    for line in &body {
+        assert!(columns(line) <= 80, "display width: {line:?}");
+        assert!(line.starts_with("  "), "{line:?}");
+        assert!(!line.trim_end().ends_with("[-"), "{line:?}");
+        assert!(!line.trim_end().ends_with("{+"), "{line:?}");
+        assert!(!line.trim_start().starts_with("-]"), "{line:?}");
+        assert!(!line.trim_start().starts_with("+}"), "{line:?}");
+    }
+    let joined: String = body.iter().map(|l| l.trim()).collect();
+    assert!(
+        joined.contains(&format!("[-{replaced}-]{{+{with}+}}")),
+        "{joined}"
+    );
+}
+
+#[test]
+fn korean_text_wraps_by_display_width_between_syllables() {
+    let text: String = "가나다라마바사아자차카타파하"
+        .chars()
+        .cycle()
+        .take(60)
+        .collect();
+    cjk_wrap(&text, '다', '힣');
+}
+
+#[test]
+fn japanese_text_wraps_by_display_width_between_characters() {
+    let text: String = "あいうえおかきくけこさしすせそ"
+        .chars()
+        .cycle()
+        .take(60)
+        .collect();
+    cjk_wrap(&text, 'あ', 'ん');
+}
+
+#[test]
+fn a_cut_at_the_end_of_a_line_leaves_no_trailing_space() {
+    let env = word_project();
+    let body: String = (0..120)
+        .map(|i| ["w", &i.to_string(), " "].concat())
+        .collect();
+    env.write("essay.txt", &format!("first {body}last\n"));
+    env.paper(&["save", "Add essay"]).assert_code(0);
+    env.write("essay.txt", &format!("FIRST {body}LAST\n"));
+
+    for width in 30..60 {
+        let run = env.paper_in(&env.work, &[("COLUMNS", &width.to_string())], &["diff"]);
+        run.assert_code(0);
+        for line in run.stdout.lines() {
+            assert_eq!(line, line.trim_end(), "width {width}: {run:#?}");
+        }
+    }
+}
+
+#[test]
+fn a_removed_run_is_painted_whole_spaces_included() {
+    let env = word_project();
+    env.write("essay.txt", "Hello big bad wolf here\n");
+    env.paper(&["save", "Add essay"]).assert_code(0);
+    env.write("essay.txt", "Hello tiny good fox here\n");
+
+    let run = env.paper(&["--color", "always", "diff"]);
+
+    run.assert_code(0);
+    assert!(
+        run.stdout.contains("\x1b[31;9m \x1b[0m"),
+        "the space inside a removed run is struck through: {run:#?}"
+    );
+    assert!(run.stdout.contains("\x1b[32m \x1b[0m"), "{run:#?}");
+}
+
+#[test]
+fn stat_of_only_binary_changes_totals_in_line_format() {
+    let env = project();
+    env.write_bytes("figures/plot.bin", &binary(2048, 7));
+    std::fs::remove_file(env.work.join("related.tex")).unwrap();
+    std::fs::remove_file(env.work.join("sections/intro.tex")).unwrap();
+    std::fs::remove_file(env.work.join("main.tex")).unwrap();
+    env.paper(&["save", "Only a plot"]).assert_code(0);
+    env.write_bytes("figures/plot.bin", &binary(4096, 9));
+
+    let run = env.paper(&["diff", "--stat"]);
+
+    run.assert_code(0);
+    assert!(
+        run.stdout.ends_with("1 file changed, +0 \u{2212}0\n"),
+        "{run:#?}"
+    );
+}
+
+#[test]
+fn word_output_in_plain_markup_is_snapshotted() {
+    let env = word_project();
+    env.write(
+        "essay.txt",
+        "First calm paragraph.\n\nSecond calm paragraph.\n\nThird calm paragraph.\n",
+    );
+    env.write("layout.txt", "one two three\nfour five\n");
+    env.paper(&["save", "Add essay"]).assert_code(0);
+    env.write(
+        "essay.txt",
+        "First calm paragraph.\n\nSecond stormy paragraph, with more.\n\nThird calm paragraph.\n",
+    );
+    env.write("layout.txt", "one two\nthree  four five\n");
+    env.write("new.txt", "A fresh file.\n");
+
+    let run = env.paper(&["diff"]);
+
+    run.assert_code(0);
+    settings().bind(|| {
+        insta::assert_snapshot!("diff_words_human", env.redact(&run.stdout));
+    });
+}
+
+#[test]
+fn word_json_is_snapshotted() {
+    let env = word_project();
+    env.write("essay.txt", "First calm paragraph.\n");
+    env.write("layout.txt", "a b\n");
+    env.paper(&["save", "Add essay"]).assert_code(0);
+    env.write("essay.txt", "First stormy paragraph.\n");
+    env.write("layout.txt", "a\nb\n");
+
+    let run = env.paper(&["--json", "diff"]);
+
+    run.assert_code(0);
+    settings().bind(|| {
+        insta::assert_snapshot!("diff_words_json", env.redact_json(&run.stdout));
+    });
+}
