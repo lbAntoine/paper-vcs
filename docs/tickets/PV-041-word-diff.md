@@ -1,6 +1,6 @@
 # PV-041: word diff with paragraph grouping and plain rendering
 
-- **Status:** In progress
+- **Status:** Done
 - **Issue:** #80
 - **Branch:** `feat/PV-041-word-diff`
 - **Depends on:** PV-040 (merged). Runs in parallel with PV-043 (`paper help`, CLI only).

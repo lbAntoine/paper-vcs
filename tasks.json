@@ -95,7 +95,7 @@
       "id": "e1a0c041",
       "title": "PV-041: word diff with paragraph grouping and rendering",
       "description": "GitHub issue #80. Wave 2, parallel with PV-043. Size M. Needs PV-040.",
-      "status": "in_progress",
+      "status": "done",
       "priority": "high",
       "sprint": "v0.3-a",
       "created_at": "2026-10-20T19:03:13Z",
