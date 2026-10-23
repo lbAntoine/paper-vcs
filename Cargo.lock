@@ -1383,6 +1383,7 @@ dependencies = [
  "paper-core",
  "paper-diff",
  "paper-git",
+ "proptest",
  "serde",
  "serde_json",
  "tempfile",

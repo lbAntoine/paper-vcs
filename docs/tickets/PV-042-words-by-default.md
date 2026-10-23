@@ -238,3 +238,12 @@ Word diff is the default for text in `paper diff`, `paper show` and `paper statu
 3. Hangul is not cut inside a run; it still breaks at piece boundaries and spaces. The Korean wrapping test now uses spaced words. 04-content and 02-cli updated.
 4. Known gaps added: `.bib` `%20`, CJK closing punctuation at line start.
 5. Summary filled; the acceptance criteria that hold are ticked; the last one (CI on three platforms) is left to the coordinator.
+
+### GREEN (comment rule) · rust-engineer · 2026-10-23
+
+- **One rule** in `render/words.rs`: the text of every segment is cut into elements (words, spaces, CJK break points and comment-ending line breaks); a line break is any whitespace run containing `\n` while a `%` comment is open. The comment state is kept per side (old, new), because unchanged text is spelled as in the new text. A segment is then split into spans at those breaks, and each span gets its own marker pair (`{+…+}` newline `{+…+}`). The edge branches of the earlier patches are gone. A paragraph-break marker and a cut that follow an open comment also start a new line.
+- **Repros** (plain, 80 columns): `Intro. % n` / `{+Added sentence.+}`; `A % n` / `[-B.-]`; `A % n` / `{+B.+}`, each on separate lines.
+- **Property test** (`render/words.rs`, proptest, 400 cases; also run at 20 000 cases) over random `.tex` pairs built from words, `%` comments, trailing comments, `\%`, blank lines, CRLF, and added, removed and changed lines, rendered at width 10 000. Asserts markers are balanced per line, every old and new word is shown, and no `%` comment is followed on its line by text of another source line, judged on the new side (unchanged text takes the new spelling, so the old side can't be judged). Verified in a scratch copy of 32ecbd3 with its own target dir: the property test and both repro tests fail there.
+- **Edge-space glue:** a `Joint` after the closing-edge space piece; tests for `{+라구연 +}바자구바.` at COLUMNS=20 and a Latin case at 30.
+- **CJK boundary test** now pads the text so the edit falls across the wrap point.
+- **Specs:** 02-cli and 04-content reworded (Hangul sentence, exact comment claim).

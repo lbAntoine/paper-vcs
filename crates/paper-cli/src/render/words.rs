@@ -151,7 +151,8 @@ struct Builder {
     out: Vec<Item>,
     word: Vec<Piece>,
     latex: bool,
-    in_comment: bool,
+    /// Whether the old and the new text are inside a `%` comment at this point.
+    comment: [bool; 2],
 }
 
 fn items(segments: &[Segment], latex: bool) -> Vec<Item> {
@@ -159,7 +160,7 @@ fn items(segments: &[Segment], latex: bool) -> Vec<Item> {
         out: Vec::new(),
         word: Vec::new(),
         latex,
-        in_comment: false,
+        comment: [false; 2],
     };
     for segment in segments {
         match segment {
@@ -171,15 +172,17 @@ fn items(segments: &[Segment], latex: bool) -> Vec<Item> {
                     open: false,
                     close: false,
                 }]));
+                // The cut may hide the end of a comment: the text after it starts a line.
+                b.end_comment_line([true, true]);
             }
             Segment::Same(text) => b.split(Kind::Same, text),
             Segment::Removed(_) | Segment::Added(_) if segment.is_break() => {
                 b.flush();
                 b.out.push(Item::Joint);
-                let kind = if matches!(segment, Segment::Added(_)) {
-                    Kind::Added
+                let (kind, sides) = if matches!(segment, Segment::Added(_)) {
+                    (Kind::Added, [false, true])
                 } else {
-                    Kind::Removed
+                    (Kind::Removed, [true, false])
                 };
                 b.out.push(Item::Word(vec![Piece {
                     kind,
@@ -188,6 +191,8 @@ fn items(segments: &[Segment], latex: bool) -> Vec<Item> {
                     close: true,
                 }]));
                 b.out.push(Item::Joint);
+                // A paragraph break ends a comment.
+                b.end_comment_line(sides);
             }
             Segment::Removed(text) => b.split(Kind::Removed, text),
             Segment::Added(text) => b.split(Kind::Added, text),
@@ -204,18 +209,28 @@ impl Builder {
         }
     }
 
-    /// Marks the last piece before a line break as the end of its marker pair.
-    fn close_last_piece(&mut self) {
-        let piece = match self.word.last_mut() {
-            Some(piece) => Some(piece),
-            None => match self.out.last_mut() {
-                Some(Item::Word(pieces)) => pieces.last_mut(),
-                _ => None,
-            },
-        };
-        if let Some(piece) = piece {
-            piece.close = true;
+    /// If a comment is open on one of the `sides` (old, new), it ends here: the text that
+    /// follows starts a new line.
+    fn end_comment_line(&mut self, sides: [bool; 2]) {
+        if self.close_comments(sides) {
+            self.flush();
+            self.out.push(Item::HardBreak);
         }
+    }
+
+    /// Ends the comments open on the `sides`; true if there was one.
+    fn close_comments(&mut self, sides: [bool; 2]) -> bool {
+        let mut was_open = false;
+        for (open, side) in self.comment.iter_mut().zip(sides) {
+            was_open |= side && *open;
+            *open &= !side;
+        }
+        was_open
+    }
+
+    /// The texts (old, new) a segment of this kind belongs to.
+    fn sides(kind: Kind) -> [bool; 2] {
+        [kind != Kind::Added, kind != Kind::Removed]
     }
 
     fn push_space(&mut self) {
@@ -224,67 +239,114 @@ impl Builder {
         }
     }
 
-    /// Splits one segment's text at white space. White space inside a marker pair is a place
-    /// to break; white space at its edge stays next to the delimiter so the delimiter never
-    /// starts or ends a line. A line break that ends a LaTeX comment stays a line break.
+    /// Splits one segment's text into words and break opportunities.
+    ///
+    /// White space inside a marker pair is a place to break; white space at the edge of a
+    /// marker pair stays next to its delimiter so the delimiter never starts or ends a line.
+    /// In a LaTeX file the first line break after a `%` comment, wherever it falls, stays a
+    /// line break: a marker open at that point closes before it and opens again after it.
     fn split(&mut self, kind: Kind, text: &str) {
-        let runs = runs(text);
+        let elements = self.elements(kind, text);
         let marked = kind != Kind::Same;
-        let last = runs.len().saturating_sub(1);
-        for (index, (is_space, run)) in runs.into_iter().enumerate() {
-            let (open, close) = (marked && index == 0, marked && index == last);
-            if is_space && close && self.in_comment && run.contains('\n') {
-                // The comment's line break ends the run: close the markers before it.
-                self.close_last_piece();
+        let mut start = 0;
+        for at in 0..=elements.len() {
+            if at < elements.len() && elements[at] != El::Break {
+                continue;
+            }
+            self.span(kind, marked, &elements[start..at]);
+            if at < elements.len() {
                 self.flush();
-                self.in_comment = false;
                 self.out.push(Item::HardBreak);
-            } else if is_space && !open && !close {
-                self.flush();
-                if self.in_comment && run.contains('\n') {
-                    self.in_comment = false;
-                    self.out.push(Item::HardBreak);
+            }
+            start = at + 1;
+        }
+    }
+
+    /// The text as words, spaces, break points and comment-ending line breaks.
+    fn elements(&mut self, kind: Kind, text: &str) -> Vec<El> {
+        let mut out = Vec::new();
+        for (is_space, run) in runs(text) {
+            if is_space {
+                if run.contains('\n') && self.close_comments(Self::sides(kind)) {
+                    out.push(El::Break);
                 } else {
-                    self.push_space();
+                    out.push(El::Space);
                 }
-            } else if is_space {
-                self.word.push(Piece {
-                    kind,
-                    text: " ".to_owned(),
-                    open,
-                    close,
-                });
-            } else {
-                if self.latex && !self.in_comment {
-                    self.in_comment = starts_comment(&run);
+                continue;
+            }
+            if self.latex && starts_comment(&run) {
+                for (open, side) in self.comment.iter_mut().zip(Self::sides(kind)) {
+                    *open |= side;
                 }
-                let parts = cjk_parts(&run);
-                let count = parts.len();
-                // An edit may break away from the text next to it, Hangul included.
-                let before = self.word.last().and_then(|p| p.text.chars().next_back());
-                let after = parts.first().and_then(|p| p.chars().next());
-                if before
-                    .zip(after)
-                    .is_some_and(|(b, a)| is_cjk(b) && is_cjk(a))
-                {
-                    self.flush();
-                    self.out.push(Item::Joint);
+            }
+            for (k, part) in cjk_parts(&run).into_iter().enumerate() {
+                if k > 0 {
+                    out.push(El::Joint);
                 }
-                for (k, part) in parts.into_iter().enumerate() {
-                    if k > 0 {
+                out.push(El::Text(part));
+            }
+        }
+        out
+    }
+
+    /// One stretch of a segment between line breaks, with its own marker pair.
+    fn span(&mut self, kind: Kind, marked: bool, elements: &[El]) {
+        let last = elements.len().saturating_sub(1);
+        for (k, element) in elements.iter().enumerate() {
+            let (open, close) = (marked && k == 0, marked && k == last);
+            match element {
+                El::Text(part) => {
+                    // An edit may break away from the text next to it, Hangul included.
+                    let before = self.word.last().and_then(|p| p.text.chars().next_back());
+                    let after = part.chars().next();
+                    if k == 0
+                        && before
+                            .zip(after)
+                            .is_some_and(|(b, a)| is_cjk(b) && is_cjk(a))
+                    {
                         self.flush();
                         self.out.push(Item::Joint);
                     }
                     self.word.push(Piece {
                         kind,
-                        text: part,
-                        open: open && k == 0,
-                        close: close && k + 1 == count,
+                        text: part.clone(),
+                        open,
+                        close,
                     });
                 }
+                El::Joint => {
+                    self.flush();
+                    self.out.push(Item::Joint);
+                }
+                El::Space if open || close => {
+                    self.word.push(Piece {
+                        kind,
+                        text: " ".to_owned(),
+                        open,
+                        close,
+                    });
+                    if close {
+                        // The line may break after the closing delimiter.
+                        self.flush();
+                        self.out.push(Item::Joint);
+                    }
+                }
+                El::Space => {
+                    self.flush();
+                    self.push_space();
+                }
+                El::Break => {}
             }
         }
     }
+}
+
+#[derive(PartialEq, Eq)]
+enum El {
+    Text(String),
+    Space,
+    Joint,
+    Break,
 }
 
 /// True when the text holds a `%` that is not escaped (`\%`).
@@ -508,5 +570,238 @@ mod tests {
         let rendered = file("a.txt", &diff, plain(), 80);
         assert_eq!(rendered.matches('\u{b6}').count(), 1, "{rendered}");
         assert!(rendered.contains("[-gone-]") && rendered.contains("{+new+}"));
+    }
+
+    // ------------------------------------------------ comments (property test)
+
+    use paper_diff::{WordDiffOptions, diff_words_with};
+    use proptest::prelude::*;
+
+    /// A source line with unique words `l<id>w<n>`.
+    #[derive(Clone, Debug)]
+    struct Src {
+        id: usize,
+        kind: u8,
+        words: usize,
+    }
+
+    impl Src {
+        fn text(&self) -> String {
+            let w: Vec<String> = (0..self.words)
+                .map(|n| format!("l{}w{n}", self.id))
+                .collect();
+            match self.kind {
+                0 => w.join(" "),
+                1 => format!("% {}", w.join(" ")),
+                2 => match w.split_first() {
+                    Some((first, rest)) => format!("{first} % {}", rest.join(" ")),
+                    None => String::new(),
+                },
+                3 => w.join(" 50\\% "),
+                _ => String::new(),
+            }
+        }
+    }
+
+    fn document(lines: &[Src], eol: &str) -> String {
+        lines.iter().map(|l| l.text() + eol).collect()
+    }
+
+    /// The (logical line, word) pairs of `l<id>w<n>` tokens in `text`.
+    fn ids(text: &str) -> Vec<usize> {
+        text.split(|c: char| !c.is_alphanumeric())
+            .filter_map(|t| {
+                let (a, b) = t.strip_prefix('l')?.split_once('w')?;
+                b.parse::<usize>().ok()?;
+                a.parse().ok()
+            })
+            .collect()
+    }
+
+    /// Splits a rendered line into its old-side and new-side text.
+    fn sides_of(line: &str) -> (String, String) {
+        let (mut old, mut new) = (String::new(), String::new());
+        let mut rest = line;
+        let mut mode = 'S';
+        while !rest.is_empty() {
+            if let Some(r) = rest.strip_prefix("[-") {
+                mode = 'R';
+                rest = r;
+            } else if let Some(r) = rest.strip_prefix("{+") {
+                mode = 'A';
+                rest = r;
+            } else if mode == 'R' && rest.starts_with("-]") || mode == 'A' && rest.starts_with("+}")
+            {
+                mode = 'S';
+                rest = &rest[2..];
+            } else {
+                let c = rest.chars().next().unwrap();
+                if mode != 'A' {
+                    old.push(c);
+                }
+                if mode != 'R' {
+                    new.push(c);
+                }
+                rest = &rest[c.len_utf8()..];
+            }
+        }
+        (old, new)
+    }
+
+    /// No word after a `%` comes from another line than the comment itself.
+    fn comment_is_contained(text: &str) -> Result<(), String> {
+        let mut parts: Vec<&str> = Vec::new();
+        let mut start = 0;
+        let mut backslashes = 0;
+        for (at, c) in text.char_indices() {
+            if c == '%' && backslashes % 2 == 0 {
+                parts.push(&text[start..at]);
+                start = at + 1;
+            }
+            backslashes = if c == '\\' { backslashes + 1 } else { 0 };
+        }
+        parts.push(&text[start..]);
+        for part in parts.iter().skip(1) {
+            let found = ids(part);
+            if found.windows(2).any(|w| w[0] != w[1]) {
+                return Err(format!("text of two lines after one comment: {part:?}"));
+            }
+        }
+        Ok(())
+    }
+
+    fn markers_balance(line: &str) -> bool {
+        let mut open: Option<&str> = None;
+        let mut rest = line;
+        while !rest.is_empty() {
+            match (open, rest.get(..2).unwrap_or("")) {
+                (None, "[-" | "{+") => open = Some(&rest[..2]),
+                (Some("[-"), "-]") | (Some("{+"), "+}") => open = None,
+                (Some(_), "[-" | "{+") | (None, "-]" | "+}") => return false,
+                _ => {
+                    let c = rest.chars().next().unwrap();
+                    rest = &rest[c.len_utf8()..];
+                    continue;
+                }
+            }
+            rest = &rest[2..];
+        }
+        open.is_none()
+    }
+
+    fn check_pair(old: &[Src], new: &[Src], eol: &str) -> Result<(), String> {
+        let (before, after) = (document(old, eol), document(new, eol));
+        let diff = diff_words_with(
+            &before,
+            &after,
+            Tokeniser::Latex,
+            &WordDiffOptions::keep_everything(),
+        );
+        let rendered = file("e.tex", &diff, plain(), 10_000);
+        if diff.layout_only {
+            return Ok(());
+        }
+        for line in rendered.lines() {
+            if !markers_balance(line) {
+                return Err(format!("unbalanced markers in {line:?}\n{rendered}"));
+            }
+            // Unchanged text is spelled as in the new text, so only the new side is judged.
+            let (_, new_side) = sides_of(line);
+            comment_is_contained(&new_side).map_err(|e| format!("{e} in {line:?}\n{rendered}"))?;
+        }
+        let shown = ids_with_words(&rendered);
+        for word in ids_with_words(&(before.clone() + &after)) {
+            if !shown.contains(&word) {
+                return Err(format!("{word} is missing from\n{rendered}"));
+            }
+        }
+        Ok(())
+    }
+
+    fn ids_with_words(text: &str) -> Vec<String> {
+        text.split(|c: char| !c.is_alphanumeric())
+            .filter(|t| t.starts_with('l') && t.contains('w') && ids(t).len() == 1)
+            .map(str::to_owned)
+            .collect()
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn scenario() -> impl Strategy<Value = (Vec<(u8, usize)>, Vec<(u8, u8, usize)>, bool)> {
+        (
+            prop::collection::vec((0u8..5, 1usize..4), 1..8),
+            // per line: edit (0 keep, 1 remove, 2 change), kind and size of an inserted line
+            // after it (kind 5: none)
+            prop::collection::vec((0u8..7, 0u8..6, 1usize..4), 1..8),
+            any::<bool>(),
+        )
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(400))]
+
+        #[test]
+        fn a_comment_never_swallows_text_from_another_line(
+            (base, edits, crlf) in scenario()
+        ) {
+            let mut next = 0;
+            let mut fresh = |kind: u8, words: usize| {
+                next += 1;
+                Src { id: next, kind, words }
+            };
+            let old: Vec<Src> = base.iter().map(|(k, w)| fresh(*k, *w)).collect();
+            let mut new = Vec::new();
+            for (at, line) in old.iter().enumerate() {
+                let (edit, insert_kind, insert_words) = edits[at % edits.len()];
+                match edit {
+                    0..=3 => new.push(line.clone()),
+                    4 => {}
+                    _ => new.push(fresh(line.kind, line.words)),
+                }
+                if insert_kind < 5 {
+                    new.push(fresh(insert_kind, insert_words));
+                }
+            }
+            let eol = if crlf { "\r\n" } else { "\n" };
+            prop_assert!(check_pair(&old, &new, eol).is_ok(), "{}", check_pair(&old, &new, eol).unwrap_err());
+        }
+    }
+
+    #[test]
+    fn the_reviewers_comment_repros_render_on_separate_lines() {
+        let render = |old: &str, new: &str| {
+            let diff = diff_words(old, new, Tokeniser::Latex);
+            file("e.tex", &diff, plain(), 80)
+        };
+        assert!(
+            render(
+                "Intro.\n% n\n\nP2.\n",
+                "Intro.\n% n\nAdded sentence.\n\nP2.\n"
+            )
+            .ends_with("  Intro. % n\n  {+Added sentence.+}\n")
+        );
+        assert!(render("A % n\nB.\n\nP2.\n", "A % n\n\nP2.\n").ends_with("  A % n\n  [-B.-]\n"));
+        assert!(render("A % n\n", "A % n\nB.\n").ends_with("  A % n\n  {+B.+}\n"));
+    }
+
+    #[test]
+    fn the_reviewers_comment_repros_hold() {
+        let src = |id, kind, words| Src { id, kind, words };
+        // A comment line, then an added line.
+        check_pair(
+            &[src(1, 0, 1), src(2, 1, 1), src(3, 4, 1), src(4, 0, 1)],
+            &[
+                src(1, 0, 1),
+                src(2, 1, 1),
+                src(5, 0, 2),
+                src(3, 4, 1),
+                src(4, 0, 1),
+            ],
+            "\n",
+        )
+        .unwrap();
+        // A removed line after a trailing comment, then the end of the paragraph.
+        check_pair(&[src(1, 2, 2), src(2, 0, 1)], &[src(1, 2, 2)], "\n").unwrap();
+        // An added line at the end of the file.
+        check_pair(&[src(1, 2, 2)], &[src(1, 2, 2), src(3, 0, 1)], "\n").unwrap();
     }
 }

@@ -3,7 +3,7 @@
 
 mod common;
 
-use common::{Env, assert_keys, binary, settings};
+use common::{Env, Run, assert_keys, binary, settings};
 
 fn project() -> Env {
     let env = Env::new();
@@ -1442,22 +1442,44 @@ fn a_removed_comment_line_does_not_swallow_the_next_line() {
     );
 }
 
+/// Diffs `old` against `new` at `width` columns and checks that no text line is wider.
+fn assert_fits(old: &str, new: &str, width: usize) -> Run {
+    let env = word_project();
+    env.write("essay.txt", &format!("{old}\n"));
+    env.paper(&["save", "Add essay"]).assert_code(0);
+    env.write("essay.txt", &format!("{new}\n"));
+
+    let run = env.paper_in(&env.work, &[("COLUMNS", &width.to_string())], &["diff"]);
+
+    run.assert_code(0);
+    for line in run.stdout.lines().skip(1) {
+        assert!(columns(line) <= width, "{width}: {line:?} in {run:#?}");
+    }
+    run
+}
+
 #[test]
 fn an_edit_between_cjk_characters_can_break_away_from_its_neighbours() {
-    for (old, new, width) in [
-        ("다.연구자", "다.연漢자", 20),
-        ("す。段落は", "すx段んは", 27),
-    ] {
-        let env = word_project();
-        env.write("essay.txt", &format!("{old}\n"));
-        env.paper(&["save", "Add essay"]).assert_code(0);
-        env.write("essay.txt", &format!("{new}\n"));
-
-        let run = env.paper_in(&env.work, &[("COLUMNS", &width.to_string())], &["diff"]);
-
-        run.assert_code(0);
-        for line in run.stdout.lines().skip(1) {
-            assert!(columns(line) <= width, "{width}: {line:?} in {run:#?}");
-        }
+    // The padding moves the edit across the wrap point, whatever the width.
+    for pad in 0..4 {
+        let pad = "가".repeat(pad);
+        assert_fits(&format!("{pad}다.연구자"), &format!("{pad}다.연漢자"), 20);
     }
+    for pad in 0..12 {
+        let pad = "あ".repeat(pad);
+        assert_fits(&format!("{pad}す。段落は"), &format!("{pad}すx段んは"), 27);
+    }
+}
+
+#[test]
+fn a_line_may_break_after_the_closing_delimiter_of_an_added_run_that_ends_in_a_space() {
+    // `{+라구연 +}바자구바.` is 20 columns wide: it needs a break after `+}` to fit in 18.
+    let korean = assert_fits("바자구바.", "라구연 바자구바.", 20);
+    assert!(korean.stdout.contains("{+라구연 +}"), "{korean:#?}");
+    let latin = assert_fits(
+        "supercalifragilistic",
+        "extraordinarily supercalifragilistic",
+        30,
+    );
+    assert!(latin.stdout.contains("{+extraordinarily +}"), "{latin:#?}");
 }

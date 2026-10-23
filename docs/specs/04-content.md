@@ -95,12 +95,14 @@ more readable hunks than Myers. The output is git's unified format with 3 lines 
    terminal): runs of white space inside a paragraph become one space or a line break, and a
    line never breaks inside a word or between a marker's delimiter and its text. Lines may
    also break between two Han or kana characters and between an edit and CJK text next to
-   it; Hangul, which is written with spaces, is broken only at spaces. It then
-   reads as the plain markup with line breaks added. In a LaTeX file the line break that
-   ends a `%` comment is kept, since the rest of the file would otherwise read as commented
-   out; paper-diff gives the front-end the comment text and its line break, and the CLI
-   recognises the comment (a `%` not escaped by `\`) to the end of its line. The break stays
-   even when it is the last character of an added or removed run. A file that differs only in layout
+   it; inside unchanged or unedited Hangul text, lines break only at spaces. A line may also
+   break after the closing delimiter of an edit whose text ends in a space. It then
+   reads as the plain markup with line breaks added. In a LaTeX file the first line break
+   after a `%` comment, wherever it falls (unchanged, added or removed text), is kept, since
+   the rest of the file would otherwise read as commented out; a marker open at that point
+   closes before the break and reopens after it, and a paragraph break or a cut that follows a
+   comment also starts a new line. The CLI recognises the comment itself (a `%` not escaped
+   by `\`, to the end of its line), tracking the old and the new text separately. A file that differs only in layout
    prints `spacing and line breaks only` instead of paragraphs.
 
 ```
