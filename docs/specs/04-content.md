@@ -93,11 +93,14 @@ more readable hunks than Myers. The output is git's unified format with 3 lines 
    (`1 word` in the singular) and is added by the front-end, not by the library's markup.
    The CLI indents the text two spaces and wraps it at the terminal width (80 off a
    terminal): runs of white space inside a paragraph become one space or a line break, and a
-   line never breaks inside a word or between a marker's delimiter and its text. It then
+   line never breaks inside a word or between a marker's delimiter and its text. Lines may
+   also break between two Han or kana characters and between an edit and CJK text next to
+   it; Hangul, which is written with spaces, is broken only at spaces. It then
    reads as the plain markup with line breaks added. In a LaTeX file the line break that
    ends a `%` comment is kept, since the rest of the file would otherwise read as commented
    out; paper-diff gives the front-end the comment text and its line break, and the CLI
-   recognises the comment (a `%` not escaped by `\`) to the end of its line. A file that differs only in layout
+   recognises the comment (a `%` not escaped by `\`) to the end of its line. The break stays
+   even when it is the last character of an added or removed run. A file that differs only in layout
    prints `spacing and line breaks only` instead of paragraphs.
 
 ```

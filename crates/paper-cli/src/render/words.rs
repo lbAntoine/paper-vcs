@@ -204,6 +204,20 @@ impl Builder {
         }
     }
 
+    /// Marks the last piece before a line break as the end of its marker pair.
+    fn close_last_piece(&mut self) {
+        let piece = match self.word.last_mut() {
+            Some(piece) => Some(piece),
+            None => match self.out.last_mut() {
+                Some(Item::Word(pieces)) => pieces.last_mut(),
+                _ => None,
+            },
+        };
+        if let Some(piece) = piece {
+            piece.close = true;
+        }
+    }
+
     fn push_space(&mut self) {
         if matches!(self.out.last(), Some(Item::Word(_) | Item::Joint)) {
             self.out.push(Item::Space);
@@ -219,7 +233,13 @@ impl Builder {
         let last = runs.len().saturating_sub(1);
         for (index, (is_space, run)) in runs.into_iter().enumerate() {
             let (open, close) = (marked && index == 0, marked && index == last);
-            if is_space && !open && !close {
+            if is_space && close && self.in_comment && run.contains('\n') {
+                // The comment's line break ends the run: close the markers before it.
+                self.close_last_piece();
+                self.flush();
+                self.in_comment = false;
+                self.out.push(Item::HardBreak);
+            } else if is_space && !open && !close {
                 self.flush();
                 if self.in_comment && run.contains('\n') {
                     self.in_comment = false;
@@ -240,6 +260,16 @@ impl Builder {
                 }
                 let parts = cjk_parts(&run);
                 let count = parts.len();
+                // An edit may break away from the text next to it, Hangul included.
+                let before = self.word.last().and_then(|p| p.text.chars().next_back());
+                let after = parts.first().and_then(|p| p.chars().next());
+                if before
+                    .zip(after)
+                    .is_some_and(|(b, a)| is_cjk(b) && is_cjk(a))
+                {
+                    self.flush();
+                    self.out.push(Item::Joint);
+                }
                 for (k, part) in parts.into_iter().enumerate() {
                     if k > 0 {
                         self.flush();
@@ -269,20 +299,33 @@ fn starts_comment(text: &str) -> bool {
     false
 }
 
-/// True for the scripts whose lines may break between any two characters.
+/// True for the scripts whose lines may break between any two characters at the edge of an
+/// edit: Han, kana and Hangul.
 fn is_cjk(c: char) -> bool {
     matches!(u32::from(c),
         0x1100..=0x11FF | 0x2E80..=0xA4CF | 0xA960..=0xA97F | 0xAC00..=0xD7FF
         | 0xF900..=0xFAFF | 0xFF66..=0xFF9F | 0x20000..=0x3FFFF)
 }
 
-/// Cuts a run of text between two CJK characters.
+/// Hangul is written with spaces between words, so it is not cut inside a run.
+fn is_hangul(c: char) -> bool {
+    matches!(u32::from(c), 0x1100..=0x11FF | 0x3130..=0x318F | 0xA960..=0xA97F | 0xAC00..=0xD7FF)
+}
+
+/// True when a line may break between two characters of one run: both Han or kana.
+fn breaks_between(a: char, b: char) -> bool {
+    [a, b].iter().all(|c| is_cjk(*c) && !is_hangul(*c))
+}
+
+/// Cuts a run of text between two Han or kana characters.
 fn cjk_parts(run: &str) -> Vec<String> {
     let mut parts: Vec<String> = Vec::new();
     let mut previous: Option<char> = None;
     for c in run.chars() {
         match (previous, parts.last_mut()) {
-            (Some(p), Some(part)) if !(is_cjk(p) && is_cjk(c)) => part.push(c),
+            (Some(p), Some(part)) if !breaks_between(p, c) => {
+                part.push(c);
+            }
             _ => parts.push(c.to_string()),
         }
         previous = Some(c);

@@ -1239,13 +1239,10 @@ fn cjk_wrap(text: &str, replaced: char, with: char) {
 }
 
 #[test]
-fn korean_text_wraps_by_display_width_between_syllables() {
-    let text: String = "가나다라마바사아자차카타파하"
-        .chars()
-        .cycle()
-        .take(60)
-        .collect();
-    cjk_wrap(&text, '다', '힣');
+fn korean_text_wraps_by_display_width_between_words() {
+    // Korean separates words with spaces, so lines break there.
+    let text = ["가나다라"; 20].join(" ");
+    cjk_wrap(&text, '가', '힣');
 }
 
 #[test]
@@ -1352,4 +1349,115 @@ fn word_json_is_snapshotted() {
     settings().bind(|| {
         insta::assert_snapshot!("diff_words_json", env.redact_json(&run.stdout));
     });
+}
+
+/// Removes colour codes.
+fn strip_ansi(text: &str) -> String {
+    let mut out = String::new();
+    let mut chars = text.chars();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            for c in chars.by_ref() {
+                if c == 'm' {
+                    break;
+                }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+fn tex_comment_project(old: &str, new: &str) -> Env {
+    let env = word_project();
+    env.write("essay.tex", old);
+    env.paper(&["save", "Add essay"]).assert_code(0);
+    env.write("essay.tex", new);
+    env
+}
+
+/// The text of the line after the one that holds `needle`.
+fn line_after<'a>(text: &'a str, needle: &str, run: &dyn std::fmt::Debug) -> &'a str {
+    let lines: Vec<&str> = text.lines().collect();
+    let at = lines
+        .iter()
+        .position(|l| l.contains(needle))
+        .unwrap_or_else(|| panic!("no {needle}: {run:#?}"));
+    lines[at + 1]
+}
+
+#[test]
+fn an_added_comment_line_does_not_swallow_the_next_line() {
+    let env = tex_comment_project(
+        "Keep this.\nEnd here.\n",
+        "Keep this.\n% TODO check with Ana\nEnd here.\n",
+    );
+
+    let plain = env.paper(&["diff"]);
+    let colour = env.paper(&["--color", "always", "diff"]);
+
+    plain.assert_code(0);
+    assert!(
+        plain.stdout.contains("{+% TODO check with Ana+}\n"),
+        "{plain:#?}"
+    );
+    assert_eq!(
+        line_after(&plain.stdout, "% TODO check with Ana", &plain),
+        "  End here.",
+        "{plain:#?}"
+    );
+    assert_eq!(
+        line_after(
+            &strip_ansi(&colour.stdout),
+            "% TODO check with Ana",
+            &colour
+        ),
+        "  End here.",
+        "{colour:#?}"
+    );
+}
+
+#[test]
+fn a_removed_comment_line_does_not_swallow_the_next_line() {
+    let env = tex_comment_project(
+        "Some text.\n% gone note\nThe end stays.\n",
+        "Some text.\nThe end stays.\n",
+    );
+
+    let plain = env.paper(&["diff"]);
+    let colour = env.paper(&["--color", "always", "diff"]);
+
+    plain.assert_code(0);
+    assert!(plain.stdout.contains("[-% gone note-]\n"), "{plain:#?}");
+    assert_eq!(
+        line_after(&plain.stdout, "% gone note", &plain),
+        "  The end stays.",
+        "{plain:#?}"
+    );
+    assert_eq!(
+        line_after(&strip_ansi(&colour.stdout), "% gone note", &colour),
+        "  The end stays.",
+        "{colour:#?}"
+    );
+}
+
+#[test]
+fn an_edit_between_cjk_characters_can_break_away_from_its_neighbours() {
+    for (old, new, width) in [
+        ("다.연구자", "다.연漢자", 20),
+        ("す。段落は", "すx段んは", 27),
+    ] {
+        let env = word_project();
+        env.write("essay.txt", &format!("{old}\n"));
+        env.paper(&["save", "Add essay"]).assert_code(0);
+        env.write("essay.txt", &format!("{new}\n"));
+
+        let run = env.paper_in(&env.work, &[("COLUMNS", &width.to_string())], &["diff"]);
+
+        run.assert_code(0);
+        for line in run.stdout.lines().skip(1) {
+            assert!(columns(line) <= width, "{width}: {line:?} in {run:#?}");
+        }
+    }
 }

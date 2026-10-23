@@ -101,13 +101,13 @@ on a co-author's changes and read it as prose.
 
 ## Acceptance criteria
 
-- [ ] `paper diff`, `diff <A> <B>`, `diff --since` and `paper show` use words for text by default. `--lines` and `diff.default = lines` give today's unified diff byte for byte, and `--words` works.
-- [ ] Human word output as decided: header counts, `¶ N`, wrapping, colour, plain markup, layout-only, cuts. `--stat` uses word counts and totals.
-- [ ] `paper status` shows word counts for text changes, and `spacing only` for layout changes.
-- [ ] The JSON keys are added as decided, with every existing key still present, and are snapshot-tested.
-- [ ] Binary and Office files are unchanged.
-- [ ] The acceptance test (PI reads a co-author's changes as prose) passes, and the roadmap line is ticked.
-- [ ] Specs are updated (only the listed sections).
+- [x] `paper diff`, `diff <A> <B>`, `diff --since` and `paper show` use words for text by default. `--lines` and `diff.default = lines` give today's unified diff byte for byte, and `--words` works.
+- [x] Human word output as decided: header counts, `¶ N`, wrapping, colour, plain markup, layout-only, cuts. `--stat` uses word counts and totals.
+- [x] `paper status` shows word counts for text changes, and `spacing only` for layout changes.
+- [x] The JSON keys are added as decided, with every existing key still present, and are snapshot-tested.
+- [x] Binary and Office files are unchanged.
+- [x] The acceptance test (PI reads a co-author's changes as prose) passes, and the roadmap line is ticked.
+- [x] Specs are updated (only the listed sections).
 - [ ] fmt, clippy (`-D warnings`, exit code checked) and the full suite pass (CI on Linux, macOS and Windows).
 
 ## Test plan
@@ -128,9 +128,13 @@ on a co-author's changes and read it as prose.
 ## Known gaps
 
 - A change of file mode only (for example the executable bit) is listed as `modified` with `+0 words −0 words` in `status` and `diff`, and prints nothing with `--lines`. Left as is.
+- In a `.bib` file a `%` inside a value (for example `%20` in a URL) starts a comment for the renderer's line-break rule, so the line break after it is kept. Harmless but not exact.
+- A line can start with CJK closing punctuation (no kinsoku rules).
 - A fully rewritten paragraph can still split into pieces (PV-048, #92).
 
 ## Summary
+
+Word diff is the default for text in `paper diff`, `paper show` and `paper status`. Core returns `EntryDiff::{Lines, Words}` per file (`DiffMode`, `show_diff(&point, mode)`) and `ChangeStat::Words`. The CLI renders a header with counts, numbered paragraphs wrapped by display width (terminal on stdout, `COLUMNS`, else 80), colour or plain markup, layout-only files, `--stat` word counts, and the additive JSON keys (`unit`, `layout_only`, `paragraphs`). `--lines` and `diff.default = lines` keep the unified diff. paper-diff gained a cleanup pass so a replaced stretch reads as one removed and one added run. New dependencies: `terminal_size` 0.4.4 and `unicode-width` 0.2.2. The PI acceptance test passes; 300 KB `.tex` diff takes 0.03 s in release.
 
 ## Handoff log
 
@@ -226,3 +230,11 @@ on a co-author's changes and read it as prose.
 11. 02-cli documents the binary-only `--stat` total; test added.
 12. Snapshots `diff_words_human` (plain markup: modified paragraph with an added clause, a spacing-only file, a new file) and `diff_words_json` (modified file with segments, layout-only file); both read before accepting.
 13. Mode-only change noted under Known gaps.
+
+### GREEN (review round 2) · rust-engineer · 2026-10-23
+
+1. A comment's line break that ends an added or removed run now closes the marker and is kept as a hard break (`close_last_piece`), so `{+% TODO check with Ana+}` is followed by a new line. Tests for an added and a removed comment line, plain and colour (line structure checked after stripping colour codes). 02-cli and 04-content say so.
+2. CJK: a Joint is pushed between a piece and the next piece when both edge characters are CJK, so edits break away from neighbours. Tests `다.연[-구-]{+漢+}자`-style (COLUMNS=20) and `す[-。-]{+x+}段[-落-]{+ん+}は`-style (COLUMNS=27): no line exceeds the width.
+3. Hangul is not cut inside a run; it still breaks at piece boundaries and spaces. The Korean wrapping test now uses spaced words. 04-content and 02-cli updated.
+4. Known gaps added: `.bib` `%20`, CJK closing punctuation at line start.
+5. Summary filled; the acceptance criteria that hold are ticked; the last one (CI on three platforms) is left to the coordinator.
