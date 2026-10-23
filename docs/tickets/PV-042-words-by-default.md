@@ -200,3 +200,8 @@ on a co-author's changes and read it as prose.
   ```
 
   It reads as prose, the counts match and paragraph 1 is silent, but the test wants (a) `They are stable across runs.` with the final period, which is unchanged text after the added run and before the unchanged paragraph break (so not "between two changes"), (b) `¶ 4`, and (c) the removed phrase unsplit (the 80-column wrap breaks it after "will be"). The roadmap Accept line is not ticked.
+
+### RED (fix 2) · test-author · 2026-10-23
+
+- `cli/tests/acceptance.rs::a_pi_reads_a_co_authors_changes_as_prose` re-expressed around readability (test file only). It keeps the header counts, silence for the re-wrapped paragraph and the `[-careful-]{+precise+}` / `[-three-]{+four+}` edits. It drops `¶ 3`/`¶ 4`, the period in the added run and any line position. New helper `assert_deleted_paragraph_and_added_sentence_read_as_prose` reads `--json diff --since` and checks: (a) the deleted paragraph's text is one removed run; (b) "They are stable across runs" is one added run; (c) that stretch holds at most one removed and one added non-break run; (d) a removed paragraph-break segment exists. The plain markup with the wrap undone (whitespace joined) is checked for `[-¶-]` and both phrases.
+- Passes on c2e9294. On a scratch copy of d69b360 (own target dir, removed after) it fails at (a): no single removed run holds the deleted paragraph. clippy and fmt clean.

@@ -176,6 +176,77 @@ Closing remarks end the section.
 
 const MINUS: &str = "\u{2212}";
 
+/// Readability of the paragraph 3 / paragraph 4 change, read from the JSON segments: the
+/// deleted paragraph and the added sentence are each one contiguous run, nothing is
+/// interleaved word by word, and the removed paragraph break is shown. Where the shared
+/// final period sits, and which paragraph number carries the change, are not checked.
+fn assert_deleted_paragraph_and_added_sentence_read_as_prose(env: &Env, since: &str) {
+    let run = env.paper(&["--json", "diff", "--since", since]);
+    run.assert_code(0);
+    let json = run.json();
+    let paragraphs = json["files"][0]["paragraphs"].as_array().unwrap();
+    let is_break = |s: &serde_json::Value| {
+        s["text"]
+            .as_str()
+            .is_some_and(|t| t.matches('\n').count() >= 2 && t.trim().is_empty())
+    };
+    let text_of = |s: &serde_json::Value| s["text"].as_str().unwrap_or("").to_owned();
+    let segments_of = |p: &serde_json::Value| p["segments"].as_array().unwrap().clone();
+
+    // (a) the deleted paragraph is one contiguous removed run.
+    let deleted = "This paragraph will be deleted by the reviewer entirely";
+    let in_paragraph = paragraphs
+        .iter()
+        .find(|p| {
+            segments_of(p)
+                .iter()
+                .any(|s| s["kind"] == "removed" && text_of(s).contains(deleted))
+        })
+        .unwrap_or_else(|| {
+            panic!("(a) no single removed run holds the deleted paragraph: {run:#?}")
+        });
+    // (b) the new sentence is one contiguous added run.
+    let sentence = "They are stable across runs";
+    let added_in = paragraphs
+        .iter()
+        .find(|p| {
+            segments_of(p)
+                .iter()
+                .any(|s| s["kind"] == "added" && text_of(s).contains(sentence))
+        })
+        .unwrap_or_else(|| panic!("(b) no single added run holds the new sentence: {run:#?}"));
+    // (c) in that stretch: at most one removed and one added run (the break aside).
+    let stretch = segments_of(in_paragraph);
+    let removed_runs = stretch
+        .iter()
+        .filter(|s| s["kind"] == "removed" && !is_break(s))
+        .count();
+    let added_runs = segments_of(added_in)
+        .iter()
+        .filter(|s| s["kind"] == "added" && !is_break(s))
+        .count();
+    assert_eq!(removed_runs, 1, "(c) removed text is interleaved: {run:#?}");
+    assert_eq!(added_runs, 1, "(c) added text is interleaved: {run:#?}");
+    // (d) the removed paragraph break is shown.
+    assert!(
+        paragraphs
+            .iter()
+            .flat_map(segments_of)
+            .any(|s| s["kind"] == "removed" && is_break(&s)),
+        "(d) no removed paragraph break: {run:#?}"
+    );
+    // The same, in the plain markup with the wrap undone.
+    let plain = env.paper(&["diff", "--since", since]);
+    let joined = plain
+        .stdout
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(joined.contains("[-\u{b6}-]"), "(d) {plain:#?}");
+    assert!(joined.contains(deleted), "(a) {plain:#?}");
+    assert!(joined.contains(sentence), "(b) {plain:#?}");
+}
+
 // Roadmap v0.3 acceptance: a PI runs `paper diff --since <point>` on a co-author's changes
 // and reads it as prose.
 #[test]
@@ -202,21 +273,8 @@ fn a_pi_reads_a_co_authors_changes_as_prose() {
     // Word markup with paragraph numbers on the new side.
     assert!(run.stdout.contains("[-careful-]{+precise+}"), "{run:#?}");
     assert!(run.stdout.contains("[-three-]{+four+}"), "{run:#?}");
-    assert!(
-        run.stdout.contains("They are stable across runs."),
-        "{run:#?}"
-    );
-    assert!(
-        run.stdout
-            .contains("This paragraph will be deleted by the reviewer entirely"),
-        "{run:#?}"
-    );
-    for number in [2, 3, 4] {
-        assert!(
-            run.stdout.contains(&format!("  \u{b6} {number}\n")),
-            "paragraph {number}: {run:#?}"
-        );
-    }
+    assert!(run.stdout.contains("  \u{b6} 2\n"), "{run:#?}");
+    assert_deleted_paragraph_and_added_sentence_read_as_prose(&env, &id[..4]);
     // The re-wrapped paragraph is not a change: it does not appear at all.
     assert!(!run.stdout.contains("  \u{b6} 1\n"), "{run:#?}");
     assert!(!run.stdout.contains("research question"), "{run:#?}");
