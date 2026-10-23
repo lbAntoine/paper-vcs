@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use paper_diff::{FileDiff, LineDiffOptions, diff_files};
+use paper_diff::{FileDiff, LineDiffOptions, WordDiff, diff_files};
 use paper_git::{GitError, GitRepo, TreeFile};
 
 use super::Project;
@@ -12,9 +12,21 @@ use super::save::matches;
 use crate::point::Point;
 use crate::snapshot::ChangeKind;
 
+/// How text files are compared (`diff.default`, `--lines`, `--words`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum DiffMode {
+    /// A unified line diff: `FileDiff::Text` with hunks.
+    Lines,
+    /// Word by word, grouped by paragraph (04-content.md, Word diff). The default.
+    #[default]
+    Words,
+}
+
 /// What to compare. Paths use the same rule as `save` (file or whole directory components).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DiffRequest {
+    /// How to compare text files. Binary files are the same in both modes.
+    pub mode: DiffMode,
     /// Defaults to `last`.
     pub from: Option<Point>,
     /// Defaults to `@`, the stored draft (the front-end snapshots first).
@@ -23,12 +35,22 @@ pub struct DiffRequest {
     pub paths: Vec<String>,
 }
 
-/// One changed file with its line diff.
+/// The comparison of one changed file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EntryDiff {
+    /// A line diff in [`DiffMode::Lines`]; also every binary file, in either mode.
+    Lines(FileDiff),
+    /// A word diff of a text file in [`DiffMode::Words`]. An added or deleted file is
+    /// compared with the empty text.
+    Words(WordDiff),
+}
+
+/// One changed file with its line or word diff.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileDiffEntry {
     pub path: String,
     pub kind: ChangeKind,
-    pub diff: FileDiff,
+    pub diff: EntryDiff,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -70,11 +92,11 @@ impl Project {
             return Err(DiffError::UnknownPaths { paths: unknown });
         }
 
-        Ok(self.entries(&old, &new, &request.paths)?)
+        Ok(self.entries(&old, &new, &request.paths, request.mode)?)
     }
 
     /// What one save (or the draft, for `@`) changed compared with its first parent, file by
-    /// file with line diffs; a first save is compared with nothing, so every file is added.
+    /// file, in `mode`; a first save is compared with nothing, so every file is added.
     ///
     /// # Errors
     ///
@@ -83,11 +105,15 @@ impl Project {
     /// # Panics
     ///
     /// Never.
-    pub fn show_diff(&self, point: &Point) -> Result<Vec<FileDiffEntry>, ShowError> {
+    pub fn show_diff(
+        &self,
+        point: &Point,
+        mode: DiffMode,
+    ) -> Result<Vec<FileDiffEntry>, ShowError> {
         let commit = self.repo.read_commit(&self.resolve(point)?.commit)?;
         let old = self.repo.tree_files(&self.parent_tree(&commit)?)?;
         let new = self.repo.tree_files(&commit.tree)?;
-        Ok(self.entries(&old, &new, &[])?)
+        Ok(self.entries(&old, &new, &[], mode)?)
     }
 
     fn entries(
@@ -95,6 +121,7 @@ impl Project {
         old: &BTreeMap<String, TreeFile>,
         new: &BTreeMap<String, TreeFile>,
         paths: &[String],
+        _mode: DiffMode,
     ) -> Result<Vec<FileDiffEntry>, GitError> {
         let all: BTreeSet<&String> = old.keys().chain(new.keys()).collect();
         let mut entries = Vec::new();
@@ -114,7 +141,7 @@ impl Project {
             entries.push(FileDiffEntry {
                 path: path.clone(),
                 kind,
-                diff: file_diff(&self.repo, before, after)?,
+                diff: EntryDiff::Lines(file_diff(&self.repo, before, after)?),
             });
         }
         Ok(entries)

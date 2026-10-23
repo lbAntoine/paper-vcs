@@ -44,6 +44,7 @@ pub fn status(status: &Status, now: i64, style: Style) -> String {
         for change in &status.changes {
             let detail = match change.stat {
                 ChangeStat::Lines { added, removed } => format!("{} lines", counts(added, removed)),
+                ChangeStat::Words { .. } => todo!("PV-042: word counts in status"),
                 ChangeStat::Bytes { old, new } => binary_sizes(old, new),
             };
             let _ = writeln!(

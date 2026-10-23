@@ -170,7 +170,7 @@ fn invalid_values_are_user_errors_that_say_what_is_allowed() {
 }
 
 #[test]
-fn words_for_diff_default_is_accepted_and_has_no_effect_yet() {
+fn words_is_the_default_for_diff_default_and_lines_stays_available() {
     assert_eq!(
         Key::DiffDefault.parse_value("words").unwrap(),
         text("words")
@@ -178,6 +178,19 @@ fn words_for_diff_default_is_accepted_and_has_no_effect_yet() {
     ConfigFile::empty()
         .with(Key::DiffDefault, text("words"))
         .unwrap();
+    ConfigFile::empty()
+        .with(Key::DiffDefault, text("lines"))
+        .unwrap();
+}
+
+#[test]
+fn the_diff_default_error_lists_both_values_and_no_longer_says_words_do_nothing() {
+    let error = Key::DiffDefault.parse_value("sentences").unwrap_err();
+    let shown = PaperError::from(error);
+    let all = format!("{} {} {:?}", shown.message, shown.why, shown.next);
+    assert!(all.contains("lines") && all.contains("words"), "{all}");
+    assert!(!all.contains("no effect"), "{all}");
+    assert!(!all.contains("v0.3"), "{all}");
 }
 
 #[test]
@@ -403,7 +416,7 @@ fn defaults_apply_when_nothing_is_set() {
     let diff = s.entry(Key::DiffDefault);
     assert_eq!(
         (diff.value.clone(), diff.source),
-        (Some(text("lines")), Source::Default)
+        (Some(text("words")), Source::Default)
     );
     assert_eq!(s.entry(Key::Profile).value, None);
     assert_eq!(s.entry(Key::UserName).value, None);

@@ -2,7 +2,7 @@
 
 use std::fmt::Write as _;
 
-use paper_core::project::FileDiffEntry;
+use paper_core::project::{EntryDiff, FileDiffEntry};
 use paper_core::snapshot::ChangeKind;
 use paper_diff::{FileDiff, to_unified};
 
@@ -35,7 +35,11 @@ pub fn counts(added: usize, removed: usize) -> String {
 pub fn unified(entries: &[FileDiffEntry], style: Style) -> String {
     let mut out = String::new();
     for entry in entries {
-        match &entry.diff {
+        let diff = match &entry.diff {
+            EntryDiff::Lines(diff) => diff,
+            EntryDiff::Words(_) => todo!("PV-042: human word output"),
+        };
+        match diff {
             FileDiff::Text(text) => {
                 let (old, new) = labels(entry);
                 out.push_str(&paint_unified(&to_unified(text, &old, &new), style));
@@ -101,7 +105,11 @@ pub fn stat(entries: &[FileDiffEntry]) -> String {
     let (mut added, mut removed) = (0, 0);
     let mut out = String::new();
     for entry in entries {
-        let detail = match &entry.diff {
+        let diff = match &entry.diff {
+            EntryDiff::Lines(diff) => diff,
+            EntryDiff::Words(_) => todo!("PV-042: word counts in --stat"),
+        };
+        let detail = match diff {
             FileDiff::Text(text) => {
                 added += text.added;
                 removed += text.removed;

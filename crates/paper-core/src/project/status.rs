@@ -31,6 +31,13 @@ impl Default for StatusOptions {
 pub enum ChangeStat {
     /// A text file: lines added and removed.
     Lines { added: usize, removed: usize },
+    /// A text file compared word by word. `layout_only` is set when the texts differ only in
+    /// spacing or line breaks (the counts are then 0).
+    Words {
+        added: usize,
+        removed: usize,
+        layout_only: bool,
+    },
     /// A binary file: sizes in bytes, `None` for an absent side.
     Bytes { old: Option<u64>, new: Option<u64> },
 }

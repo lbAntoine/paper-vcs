@@ -64,7 +64,7 @@ fn without_snapshot() -> StatusOptions {
 }
 
 #[test]
-fn status_reports_line_last_save_and_sorted_changes_with_counts() {
+fn status_reports_line_last_save_and_sorted_changes_with_word_counts() {
     let (dir, mut project) = project_with(&[
         ("b.tex", "1\n2\n"),
         ("fig.bin", "a\0b"),
@@ -90,17 +90,19 @@ fn status_reports_line_last_save_and_sorted_changes_with_counts() {
             (
                 "a.tex".to_owned(),
                 ChangeKind::Added,
-                ChangeStat::Lines {
+                ChangeStat::Words {
                     added: 1,
-                    removed: 0
+                    removed: 0,
+                    layout_only: false
                 }
             ),
             (
                 "b.tex".to_owned(),
                 ChangeKind::Modified,
-                ChangeStat::Lines {
+                ChangeStat::Words {
                     added: 2,
-                    removed: 1
+                    removed: 1,
+                    layout_only: false
                 }
             ),
             (
@@ -114,9 +116,10 @@ fn status_reports_line_last_save_and_sorted_changes_with_counts() {
             (
                 "gone.tex".to_owned(),
                 ChangeKind::Deleted,
-                ChangeStat::Lines {
+                ChangeStat::Words {
                     added: 0,
-                    removed: 1
+                    removed: 1,
+                    layout_only: false
                 }
             ),
         ]
@@ -365,5 +368,63 @@ fn status_reports_the_line_moved_after_git_commit_amend() {
     assert_eq!(
         status.outside_paper,
         Some(OutsidePaper::LineMoved { line: main_line() })
+    );
+}
+
+#[test]
+fn status_marks_a_rewrap_as_layout_only() {
+    let (dir, mut project) = project_with(&[("a.tex", "one two three\nfour five\n")]);
+    save_all(&mut project, "one");
+    write(dir.path(), "a.tex", "one two\nthree  four five\n");
+
+    let status = project.status(&StatusOptions::default()).unwrap();
+
+    assert_eq!(
+        stat_of(&status),
+        vec![(
+            "a.tex".to_owned(),
+            ChangeKind::Modified,
+            ChangeStat::Words {
+                added: 0,
+                removed: 0,
+                layout_only: true
+            }
+        )]
+    );
+}
+
+#[test]
+fn status_counts_only_words_not_latex_commands() {
+    let (dir, mut project) = project_with(&[("a.tex", "\\textbf{big} result\n")]);
+    save_all(&mut project, "one");
+    write(dir.path(), "a.tex", "\\emph{big} result\n");
+
+    let status = project.status(&StatusOptions::default()).unwrap();
+
+    assert_eq!(
+        status.changes[0].stat,
+        ChangeStat::Words {
+            added: 0,
+            removed: 0,
+            layout_only: false
+        }
+    );
+}
+
+#[test]
+fn status_counts_words_of_other_text_files_too() {
+    let (dir, mut project) = project_with(&[("notes.md", "alpha beta\n")]);
+    save_all(&mut project, "one");
+    write(dir.path(), "notes.md", "alpha beta gamma delta\n");
+
+    let status = project.status(&StatusOptions::default()).unwrap();
+
+    assert_eq!(
+        status.changes[0].stat,
+        ChangeStat::Words {
+            added: 2,
+            removed: 0,
+            layout_only: false
+        }
     );
 }

@@ -46,7 +46,7 @@ pub fn execute(cli: &Cli, style: Style) -> Output {
             limit,
             graph,
         } => history(cli, path.as_deref(), *all, *limit, *graph, verbosity, style),
-        Command::Show { point, stat } => inspect::show(cli, point, *stat, verbosity, style),
+        Command::Show { point, stat, .. } => inspect::show(cli, point, *stat, verbosity, style),
         Command::Status => inspect::status(cli, style),
         Command::Diff {
             args,

@@ -4,7 +4,8 @@ use std::fmt::Write as _;
 
 use paper_core::point::{ParsePointError, Point};
 use paper_core::project::{
-    DiffError, DiffRequest, FileDiffEntry, Project, ResolveError, RestoreRequest, StatusOptions,
+    DiffError, DiffMode, DiffRequest, FileDiffEntry, Project, ResolveError, RestoreRequest,
+    StatusOptions,
 };
 use paper_core::{ErrorKind, PaperError, Suggestion};
 
@@ -74,6 +75,7 @@ pub fn diff(
         (None, [from, to, ..]) => (Some(from.clone()), Some(to.clone())),
     };
     let request = DiffRequest {
+        mode: DiffMode::Lines,
         from,
         to,
         paths: project_paths(&locator, &paths)?,
@@ -201,7 +203,7 @@ pub fn show(cli: &Cli, point: &str, stat: bool, verbosity: Verbosity, style: Sty
     let point: Point = point.parse()?;
     let (project, _) = open_and_snapshot(cli)?;
     let shown = project.show(&point)?;
-    let diffs = project.show_diff(&point)?;
+    let diffs = project.show_diff(&point, DiffMode::Lines)?;
     Ok(finish(
         cli,
         || human::show(&shown, &diffs, stat, now(), verbosity, style),

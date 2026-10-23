@@ -99,7 +99,7 @@ fn a_researcher_can_init_save_restore_and_push_with_plain_git() {
         .find(|line| line.contains("sections/intro.tex"))
         .unwrap_or_else(|| panic!("intro not in status: {status:#?}"));
     assert!(intro_line.contains("modified"), "{status:#?}");
-    let diff = env.paper(&["diff"]);
+    let diff = env.paper(&["diff", "--lines"]);
     diff.assert_code(0);
     assert!(diff.stdout.contains("sections/intro.tex"), "{diff:#?}");
     assert!(
@@ -145,5 +145,123 @@ fn a_researcher_can_init_save_restore_and_push_with_plain_git() {
     assert!(!remote_refs.contains("refs/paper"), "{remote_refs}");
     env.git(&clone_dir, &["fsck", "--strict", "--no-progress"]);
     env.git(&bare, &["fsck", "--strict", "--no-progress"]);
+    env.fsck();
+}
+
+const PI_BEFORE: &str = "\
+The first paragraph states the research question and the motivation behind the whole study.
+
+Our method relies on careful measurements of the sample under three different conditions.
+
+Results are summarised in the next section.
+
+This paragraph will be deleted by the reviewer entirely.
+
+Closing remarks end the section.
+";
+
+/// The co-author re-wraps paragraph 1, swaps two words in paragraph 2, adds a sentence to
+/// paragraph 3 and deletes paragraph 4.
+const PI_AFTER: &str = "\
+The first paragraph states the research
+question and the motivation  behind the
+whole study.
+
+Our method relies on precise measurements of the sample under four different conditions.
+
+Results are summarised in the next section. They are stable across runs.
+
+Closing remarks end the section.
+";
+
+const MINUS: &str = "\u{2212}";
+
+// Roadmap v0.3 acceptance: a PI runs `paper diff --since <point>` on a co-author's changes
+// and reads it as prose.
+#[test]
+fn a_pi_reads_a_co_authors_changes_as_prose() {
+    let env = Env::new();
+    env.write("main.tex", MAIN_TEX);
+    env.write("sections/intro.tex", PI_BEFORE);
+    env.paper(&["init"]).assert_code(0);
+    env.paper(&["save", "Draft for the PI"]).assert_code(0);
+    let id = env.change_id("HEAD");
+
+    env.write("sections/intro.tex", PI_AFTER);
+    let run = env.paper(&["diff", "--since", &id[..4]]);
+
+    run.assert_code(0);
+    assert_eq!(run.stderr, "", "{run:#?}");
+    assert!(!run.stdout.contains('\x1b'), "no colour: {run:#?}");
+    // The header counts only the real edits: 2 + 5 words added, 2 + 9 removed.
+    assert!(
+        run.stdout
+            .contains(&format!("sections/intro.tex  +7 words {MINUS}11 words\n")),
+        "{run:#?}"
+    );
+    // Word markup with paragraph numbers on the new side.
+    assert!(run.stdout.contains("[-careful-]{+precise+}"), "{run:#?}");
+    assert!(run.stdout.contains("[-three-]{+four+}"), "{run:#?}");
+    assert!(
+        run.stdout.contains("They are stable across runs."),
+        "{run:#?}"
+    );
+    assert!(
+        run.stdout
+            .contains("This paragraph will be deleted by the reviewer entirely"),
+        "{run:#?}"
+    );
+    for number in [2, 3, 4] {
+        assert!(
+            run.stdout.contains(&format!("  \u{b6} {number}\n")),
+            "paragraph {number}: {run:#?}"
+        );
+    }
+    // The re-wrapped paragraph is not a change: it does not appear at all.
+    assert!(!run.stdout.contains("  \u{b6} 1\n"), "{run:#?}");
+    assert!(!run.stdout.contains("research question"), "{run:#?}");
+    assert!(!run.stdout.contains("motivation"), "{run:#?}");
+    // Only this one file changed, and it is prose, not a patch.
+    assert!(!run.stdout.contains("@@"), "{run:#?}");
+    assert_eq!(
+        run.stdout
+            .lines()
+            .filter(|l| !l.starts_with(' ') && !l.is_empty())
+            .count(),
+        1,
+        "one file header: {run:#?}"
+    );
+
+    let stat = env.paper(&["diff", "--stat", "--since", &id[..4]]);
+    stat.assert_code(0);
+    assert!(
+        stat.stdout
+            .contains(&format!("1 file changed, +7 words {MINUS}11 words")),
+        "{stat:#?}"
+    );
+    env.fsck();
+}
+
+#[test]
+fn a_pure_re_wrap_diffs_to_spacing_only() {
+    let env = Env::new();
+    env.write("main.tex", MAIN_TEX);
+    env.write("sections/intro.tex", PI_BEFORE);
+    env.paper(&["init"]).assert_code(0);
+    env.paper(&["save", "Draft for the PI"]).assert_code(0);
+    env.write(
+        "sections/intro.tex",
+        &PI_BEFORE.replace("states the research", "states\nthe  research"),
+    );
+
+    let diff = env.paper(&["diff", "--since", "last"]);
+    let status = env.paper(&["status"]);
+
+    diff.assert_code(0);
+    assert_eq!(
+        diff.stdout, "sections/intro.tex  spacing and line breaks only\n",
+        "{diff:#?}"
+    );
+    assert!(status.stdout.contains("spacing only"), "{status:#?}");
     env.fsck();
 }

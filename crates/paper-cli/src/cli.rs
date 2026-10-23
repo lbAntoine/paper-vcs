@@ -88,6 +88,12 @@ pub enum Command {
         /// Print the per-file line counts instead of the diffs.
         #[arg(long)]
         stat: bool,
+        /// Compare line by line.
+        #[arg(long, conflicts_with = "words")]
+        lines: bool,
+        /// Compare word by word.
+        #[arg(long)]
+        words: bool,
     },
     /// List the unsaved changes in the draft.
     Status,

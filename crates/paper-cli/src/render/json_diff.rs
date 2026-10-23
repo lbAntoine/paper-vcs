@@ -2,7 +2,7 @@
 //! Shapes are documented in `docs/specs/02-cli.md` (JSON output).
 
 use paper_core::project::{
-    ChangeStat, FileDiffEntry, OutsidePaper, RestoreSkip, Restored, SkippedPath, Status,
+    ChangeStat, EntryDiff, FileDiffEntry, OutsidePaper, RestoreSkip, Restored, SkippedPath, Status,
 };
 use paper_diff::{FileDiff, LineKind};
 use serde::Serialize;
@@ -104,7 +104,11 @@ pub fn files(entries: &[FileDiffEntry]) -> Vec<DiffFile> {
 }
 
 fn file(entry: &FileDiffEntry) -> DiffFile {
-    let (binary, added, removed, old_bytes, new_bytes, hunks) = match &entry.diff {
+    let diff = match &entry.diff {
+        EntryDiff::Lines(diff) => diff,
+        EntryDiff::Words(_) => todo!("PV-042: word diff in JSON"),
+    };
+    let (binary, added, removed, old_bytes, new_bytes, hunks) = match diff {
         FileDiff::Text(text) => {
             let hunks = text
                 .hunks
@@ -167,6 +171,7 @@ pub fn status(status: &Status) -> String {
                 ChangeStat::Lines { added, removed } => {
                     (false, Some(added), Some(removed), None, None)
                 }
+                ChangeStat::Words { .. } => todo!("PV-042: word counts in status JSON"),
                 ChangeStat::Bytes { old, new } => (true, None, None, old, new),
             };
             StatusChange {
