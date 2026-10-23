@@ -1,6 +1,6 @@
 # PV-042: word diff is the default for text in diff, show and status
 
-- **Status:** In progress
+- **Status:** Done
 - **Issue:** #81
 - **Branch:** `feat/PV-042-words-by-default`
 - **Depends on:** PV-040 (tokenisers) and PV-041 (word diff), both merged. Wave 3 of v0.3-a, alone.
