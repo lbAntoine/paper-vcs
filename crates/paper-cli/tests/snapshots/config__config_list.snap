@@ -7,5 +7,5 @@ user.email           mina@uni.example  git
 ui.color             never             user
 large_files.warn_mb  2                 env
 large_files.max_mb   7                 project
-diff.default         lines             default
+diff.default         words             default
 profile              latex             project

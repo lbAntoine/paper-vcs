@@ -3,7 +3,7 @@
 use paper_git::GitError;
 
 use super::Project;
-use super::diff::file_diff;
+use super::diff::{DiffMode, EntryDiff, entry_diff};
 use super::history::HistoryEntry;
 use super::resolve::ResolveError;
 use super::save::SaveError;
@@ -109,17 +109,28 @@ impl Project {
 
         let mut changes = Vec::new();
         for change in diff_trees(&self.repo, &tip_tree, &draft_tree)? {
-            let diff = file_diff(&self.repo, old.get(&change.path), new.get(&change.path))?;
+            let diff = entry_diff(
+                &self.repo,
+                &change.path,
+                old.get(&change.path),
+                new.get(&change.path),
+                DiffMode::Words,
+            )?;
             let stat = match diff {
-                FileDiff::Text(text) => ChangeStat::Lines {
+                EntryDiff::Words(words) => ChangeStat::Words {
+                    added: words.added,
+                    removed: words.removed,
+                    layout_only: words.layout_only,
+                },
+                EntryDiff::Lines(FileDiff::Text(text)) => ChangeStat::Lines {
                     added: text.added,
                     removed: text.removed,
                 },
-                FileDiff::Identical => ChangeStat::Lines {
+                EntryDiff::Lines(FileDiff::Identical) => ChangeStat::Lines {
                     added: 0,
                     removed: 0,
                 },
-                FileDiff::Binary { old_size, new_size } => ChangeStat::Bytes {
+                EntryDiff::Lines(FileDiff::Binary { old_size, new_size }) => ChangeStat::Bytes {
                     old: old_size,
                     new: new_size,
                 },

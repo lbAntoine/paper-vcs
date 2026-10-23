@@ -463,7 +463,7 @@ warn_mb = 10
 max_mb  = 100          # GitHub's hard limit; files above are skipped (I7)
 
 [diff]
-default = "lines"      # lines (words arrives in v0.3)
+default = "words"      # words or lines
 ```
 
 ```toml

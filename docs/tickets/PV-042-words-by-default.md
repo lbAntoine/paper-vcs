@@ -58,7 +58,8 @@ on a co-author's changes and read it as prose.
   - `DiffRequest` gains `mode: DiffMode { Lines, Words }`.
   - `FileDiffEntry` carries either the line diff or a word diff: an enum, or a new variant next to `FileDiff`. Use `tokeniser_for(path)`.
   - An added or deleted text file is a word diff against the empty text.
-  - `status`'s `ChangeStat` gains `Words { added, removed }`.
+  - `status`'s `ChangeStat` gains `Words { added, removed, layout_only }`. `layout_only` lets status say `spacing only` for a spacing change, while a punctuation- or command-only change counts 0 words and shows `+0 words −0 words`.
+  - `FileDiffEntry.diff` is `EntryDiff { Lines(FileDiff), Words(WordDiff) }` (binary files are `Lines(FileDiff::Binary)`), and `show_diff(&point, mode)`.
   - Core never prints.
 
 ### Human output
@@ -156,3 +157,20 @@ on a co-author's changes and read it as prose.
   - `paper show --stat` in word mode: `1 file changed, +1 word −1 word`.
   - No insta snapshots were written by hand. GREEN re-accepts `diff_json`, `show_json`, `status_human`, `status_json`, `config_list` (and any help snapshot) after reading them.
   - Performance (300 KB `.tex`, under 0.5 s release) is GREEN's to measure.
+
+### GREEN · rust-engineer · 2026-10-23
+
+- **State: BLOCKED on three RED tests** (details below). Everything else is implemented; fmt and clippy (`-D warnings`) exit 0; the full suite passes except those three.
+- **Implemented**
+  - core: `entry_diff()` in `project/diff.rs` (word diff via `tokeniser_for(path)`, absent side = empty text, binary stays `Lines(Binary)`); `status` always compares in words and builds `ChangeStat::Words`; `diff.default` defaults to `words` and its description lost "no effect until v0.3".
+  - CLI: mode from `--lines`/`--words`, else `diff.default` (`inspect::diff_mode`); the "words not available" error and the config words note are gone; `render/words.rs` (header, `¶ N`, wrap, colour or plain markup, layout-only, singular); `diff`/`show`/`--stat`/`status` use it; JSON gains `unit`, `layout_only`, `paragraphs` (and `unit` in status), `hunks` null in word mode.
+  - Deviation from Touches: a new dependency, `terminal_size` 0.4 (workspace `Cargo.toml`, `paper-cli/Cargo.toml`, `Cargo.lock`), to read the terminal width. Off a terminal the width is 80. `docs/specs/03-architecture.md` config sample line updated too.
+  - Wrapping: white space runs in a paragraph become one space or a line break (so wrapped output is the plain markup with re-flowed white space). A removed/added segment's edge white space stays glued to its delimiter, so a delimiter never starts or ends a line; a paragraph-break marker is a zero-width break point.
+  - `--stat`: a spacing-only file shows `spacing and line breaks only`. Total uses word counts when any entry is a word diff (a stat of only binary files prints `+0 −0`).
+- **Snapshots re-accepted** (each diff read): `config_list` and `config_list_json` (`diff.default` value `lines` to `words`); `diff_json` and `show_json` (each text file gains `layout_only: false`, `paragraphs: null`, `unit: "lines"`; the binary file gains `unit: null`; hunks unchanged; both run in `--lines`); `status_human` (`+0 −1 lines`, `+2 −1 lines` became `+0 words −2 words`, `+3 words −1 word`); `status_json` (`unit` added; counts now words: related.tex removed 2, intro added 3). Help snapshots did not change.
+- **Performance:** release build, 300 KB `.tex` (about 300 paragraphs, scattered single-word edits in every 7th): `paper diff` 0.033 s, `diff --stat` 0.027 s, `status` 0.026 s.
+- **Specs updated:** 02-cli (status, show, diff, JSON output, config table and notes), 04-content (Word diff step 3), 05-roadmap (`paper-diff` line ticked; the Accept line is NOT ticked, see below), 03-architecture (config sample).
+- **Failing RED tests (not touched):**
+  1. `acceptance::a_pi_reads_a_co_authors_changes_as_prose`. Cause is the word diff's alignment in `paper-diff` (off limits). Old `...next section.¶This paragraph will be deleted by the reviewer entirely.¶Closing`, new `...next section. They are stable across runs.¶Closing`. The `Space` tokens and the final `.` align as unchanged, so the segments of paragraph 3 interleave: `Same("Results ... section.") Removed("¶") Removed("This paragraph") Same(" ") Removed("will") Added("They") Same(" ") Removed("be") Added("are") ...`. Neither "This paragraph will be deleted by the reviewer entirely" nor "They are stable across runs." is contiguous (to_word_markup gives the same interleaving), and there is no `¶ 4`. The test expects the replaced region as one removed run and one added run. Fix options: change paper-diff alignment so a changed run is not split by equal single spaces/punctuation (preferred), or the coordinator relaxes the test. I did not touch either.
+  2. `diff::stat_keeps_the_sizes_line_of_a_binary_file` expects `-3 words` in the total. `main.tex` was `\documentclass{article}`: the LaTeX tokeniser counts one word (`article`), so the total is `+3 words −1 word` (consistent with the status test that says commands are not counted). The assertion's constant looks wrong.
+  3. `diff::diff_json_in_word_mode_has_unit_paragraphs_and_null_hunks` expects `layout.txt` to be `layout_only: true` in `diff last~1`, but `layout.txt` is created in the "Add layout" save, so against `last~1` it is an added file (`+3 words`). Either the diff must be `last` (and the `intro`/`plot` expectations moved) or the file saved earlier.

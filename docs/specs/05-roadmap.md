@@ -31,7 +31,7 @@ own. Since v0.1, users can already share work by running `git push`.
 
 Word diff, profiles, large-file guard rails, `--json` everywhere.
 
-- [ ] `paper-diff`: generic, CJK and LaTeX tokenisers, paragraph grouping, colour and plain rendering
+- [x] `paper-diff`: generic, CJK and LaTeX tokenisers, paragraph grouping, colour and plain rendering
 - [x] Six built-in profiles, idempotent `.gitignore` block, auto-detection (shipped early, in v0.1)
 - [ ] `warn_mb` / `max_mb`, "Skipped" in `status`, `help large-files`
 - [ ] README, a 2-minute asciinema demo, install docs

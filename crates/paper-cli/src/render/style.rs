@@ -56,6 +56,16 @@ impl Style {
         self.paint("31", text)
     }
 
+    /// Removed words in a word diff: red and struck through.
+    pub fn removed_words(self, text: &str) -> String {
+        self.paint("31;9", text)
+    }
+
+    /// Whether colour codes are written at all.
+    pub fn enabled(self) -> bool {
+        self.enabled
+    }
+
     /// An added line in a diff.
     pub fn added(self, text: &str) -> String {
         self.paint("32", text)

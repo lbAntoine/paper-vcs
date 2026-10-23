@@ -85,13 +85,13 @@ pub enum Command {
     Show {
         /// A short save ID, `last`, `last~N`, `@` (the draft), a line name or `date:YYYY-MM-DD`.
         point: String,
-        /// Print the per-file line counts instead of the diffs.
+        /// Print the per-file counts instead of the diffs.
         #[arg(long)]
         stat: bool,
-        /// Compare line by line.
+        /// Compare line by line as a unified diff, whatever `diff.default` says.
         #[arg(long, conflicts_with = "words")]
         lines: bool,
-        /// Compare word by word.
+        /// Compare word by word; the default unless `diff.default` is `lines`.
         #[arg(long)]
         words: bool,
     },
@@ -105,13 +105,13 @@ pub enum Command {
         /// Files or folders after `--`: always paths, even when named like a point.
         #[arg(last = true)]
         paths: Vec<String>,
-        /// Compare line by line (the default).
+        /// Compare line by line as a unified diff, whatever `diff.default` says.
         #[arg(long, conflicts_with = "words")]
         lines: bool,
-        /// Compare word by word. Not yet available (v0.3).
+        /// Compare word by word; the default unless `diff.default` is `lines`.
         #[arg(long)]
         words: bool,
-        /// Print the per-file line counts instead of the diffs.
+        /// Print the per-file counts instead of the diffs.
         #[arg(long)]
         stat: bool,
         /// Compare this point with the draft; the same as `paper diff <point> @`.

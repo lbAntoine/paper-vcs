@@ -2,7 +2,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use paper_diff::{FileDiff, LineDiffOptions, WordDiff, diff_files};
+use paper_diff::{
+    Content, FileDiff, LineDiffOptions, WordDiff, classify, diff_files, diff_words, tokeniser_for,
+};
 use paper_git::{GitError, GitRepo, TreeFile};
 
 use super::Project;
@@ -121,7 +123,7 @@ impl Project {
         old: &BTreeMap<String, TreeFile>,
         new: &BTreeMap<String, TreeFile>,
         paths: &[String],
-        _mode: DiffMode,
+        mode: DiffMode,
     ) -> Result<Vec<FileDiffEntry>, GitError> {
         let all: BTreeSet<&String> = old.keys().chain(new.keys()).collect();
         let mut entries = Vec::new();
@@ -141,7 +143,7 @@ impl Project {
             entries.push(FileDiffEntry {
                 path: path.clone(),
                 kind,
-                diff: EntryDiff::Lines(file_diff(&self.repo, before, after)?),
+                diff: entry_diff(&self.repo, path, before, after, mode)?,
             });
         }
         Ok(entries)
@@ -149,7 +151,7 @@ impl Project {
 }
 
 /// The line diff of one file between two tree entries (`None` for an absent side).
-pub(super) fn file_diff(
+fn file_diff(
     repo: &GitRepo,
     before: Option<&TreeFile>,
     after: Option<&TreeFile>,
@@ -161,4 +163,37 @@ pub(super) fn file_diff(
         new.as_deref(),
         &LineDiffOptions::default(),
     ))
+}
+
+/// The comparison of one file in `mode`. Binary files are a line-diff summary in both modes;
+/// an absent side is the empty text.
+pub(super) fn entry_diff(
+    repo: &GitRepo,
+    path: &str,
+    before: Option<&TreeFile>,
+    after: Option<&TreeFile>,
+    mode: DiffMode,
+) -> Result<EntryDiff, GitError> {
+    if mode == DiffMode::Lines {
+        return Ok(EntryDiff::Lines(file_diff(repo, before, after)?));
+    }
+    let read = |file: Option<&TreeFile>| file.map(|f| repo.read_blob(&f.blob)).transpose();
+    let (old, new) = (read(before)?, read(after)?);
+    Ok(match (text_of(old.as_deref()), text_of(new.as_deref())) {
+        (Some(old), Some(new)) => EntryDiff::Words(diff_words(old, new, tokeniser_for(path))),
+        _ => EntryDiff::Lines(diff_files(
+            old.as_deref(),
+            new.as_deref(),
+            &LineDiffOptions::default(),
+        )),
+    })
+}
+
+/// The text of a side (empty when absent), or `None` for binary content.
+fn text_of(bytes: Option<&[u8]>) -> Option<&str> {
+    match bytes.map(classify) {
+        None => Some(""),
+        Some(Content::Text(text)) => Some(text),
+        Some(Content::Binary) => None,
+    }
 }

@@ -17,6 +17,7 @@ clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 jiff.workspace = true
+terminal_size.workspace = true
 
 [lints]
 workspace = true

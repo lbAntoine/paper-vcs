@@ -9,10 +9,13 @@ expression: env.redact_json(&run.stdout)
       "binary": true,
       "hunks": [],
       "kind": "added",
+      "layout_only": false,
       "new_bytes": 2048,
       "old_bytes": null,
+      "paragraphs": null,
       "path": "figures/plot.bin",
-      "removed": null
+      "removed": null,
+      "unit": null
     },
     {
       "added": 2,
@@ -43,10 +46,13 @@ expression: env.redact_json(&run.stdout)
         }
       ],
       "kind": "modified",
+      "layout_only": false,
       "new_bytes": null,
       "old_bytes": null,
+      "paragraphs": null,
       "path": "sections/intro.tex",
-      "removed": 1
+      "removed": 1,
+      "unit": "lines"
     }
   ],
   "schema": 1

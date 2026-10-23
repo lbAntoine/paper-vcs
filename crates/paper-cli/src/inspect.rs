@@ -2,20 +2,23 @@
 
 use std::fmt::Write as _;
 
+use paper_core::config::{Key, Value};
 use paper_core::point::{ParsePointError, Point};
 use paper_core::project::{
     DiffError, DiffMode, DiffRequest, FileDiffEntry, Project, ResolveError, RestoreRequest,
     StatusOptions,
 };
 use paper_core::{ErrorKind, PaperError, Suggestion};
+use paper_git::GitRepo;
 
 use crate::cli::Cli;
-use crate::commands::{finish, now, open, open_and_snapshot};
+use crate::commands::{finish, now, open, open_and_snapshot, start_dir};
 use crate::paths::Paths;
 use crate::render::style::Style;
 use crate::render::{
     Verbosity, diff as human_diff, human, json, json_diff, status as human_status,
 };
+use crate::settings;
 
 type Output = Result<String, PaperError>;
 
@@ -32,29 +35,35 @@ pub fn status(cli: &Cli, style: Style) -> Output {
     ))
 }
 
+/// How to compare text: `--lines` or `--words` if given, else `diff.default` (`words` unless
+/// the settings say otherwise).
+fn diff_mode(cli: &Cli, (lines, words): (bool, bool)) -> Result<DiffMode, PaperError> {
+    if lines {
+        return Ok(DiffMode::Lines);
+    }
+    if words {
+        return Ok(DiffMode::Words);
+    }
+    let start = start_dir(cli)?;
+    let workdir = GitRepo::enclosing_workdir(&start);
+    let settings = settings::resolve(workdir.as_deref(), &start)?;
+    Ok(match settings.entry(Key::DiffDefault).value {
+        Some(Value::Text(ref text)) if text == "lines" => DiffMode::Lines,
+        _ => DiffMode::Words,
+    })
+}
+
 /// `paper diff`: sort the arguments into points and paths, then print the unified diffs (or
 /// `--stat`).
 pub fn diff(
     cli: &Cli,
     args: &[String],
     forced_paths: &[String],
-    words: bool,
+    flags: (bool, bool),
     stat: bool,
     since: Option<&str>,
     style: Style,
 ) -> Output {
-    if words {
-        return Err(PaperError {
-            kind: ErrorKind::User,
-            message: "paper diff --words is not yet available".to_owned(),
-            why: "Word-by-word comparison arrives in v0.3; for now the comparison is line by line."
-                .to_owned(),
-            next: vec![Suggestion {
-                command: "paper diff".to_owned(),
-                explanation: "compare line by line".to_owned(),
-            }],
-        });
-    }
     let (project, locator) = open_and_snapshot(cli)?;
     let (points, mut paths) = split_args(&project, args)?;
     // A word that sat where a point could be, and is neither a point nor a file. A word with
@@ -75,7 +84,7 @@ pub fn diff(
         (None, [from, to, ..]) => (Some(from.clone()), Some(to.clone())),
     };
     let request = DiffRequest {
-        mode: DiffMode::Lines,
+        mode: diff_mode(cli, flags)?,
         from,
         to,
         paths: project_paths(&locator, &paths)?,
@@ -199,11 +208,18 @@ pub fn restore(cli: &Cli, paths: &[String], from: Option<&str>) -> Output {
 }
 
 /// `paper show`: metadata, then the diffs (or `--stat`).
-pub fn show(cli: &Cli, point: &str, stat: bool, verbosity: Verbosity, style: Style) -> Output {
+pub fn show(
+    cli: &Cli,
+    point: &str,
+    stat: bool,
+    flags: (bool, bool),
+    verbosity: Verbosity,
+    style: Style,
+) -> Output {
     let point: Point = point.parse()?;
     let (project, _) = open_and_snapshot(cli)?;
     let shown = project.show(&point)?;
-    let diffs = project.show_diff(&point, DiffMode::Lines)?;
+    let diffs = project.show_diff(&point, diff_mode(cli, flags)?)?;
     Ok(finish(
         cli,
         || human::show(&shown, &diffs, stat, now(), verbosity, style),

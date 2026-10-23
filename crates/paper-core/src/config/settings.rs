@@ -150,7 +150,7 @@ fn resolve_key<E: Fn(&str) -> Option<String>>(
     }
     let default = match key {
         Key::UiColor => Some(Value::Text("auto".to_owned())),
-        Key::DiffDefault => Some(Value::Text("lines".to_owned())),
+        Key::DiffDefault => Some(Value::Text("words".to_owned())),
         Key::LargeFilesWarnMb => Some(Value::Megabytes(10)),
         Key::LargeFilesMaxMb => Some(Value::Megabytes(100)),
         Key::UserName | Key::UserEmail | Key::Profile => None,

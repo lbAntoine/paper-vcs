@@ -186,8 +186,8 @@ impl Key {
                     .to_owned()
             }
             Key::DiffDefault => {
-                "`lines` or `words` (`words` has no effect until v0.3; comparisons \
-                                 stay line by line)"
+                "`words` or `lines` (how `paper diff` and `paper show` compare text; \
+                 `words` is the default)"
                     .to_owned()
             }
             Key::Profile => format!("one of {}", Profile::names().collect::<Vec<_>>().join(", ")),

@@ -34,7 +34,7 @@ more readable hunks than Myers. The output is git's unified format with 3 lines 
   binary. If either side is binary, no hunks are produced: the result is a one-line summary
   with the old and new sizes in bytes.
 
-### Word diff (default for text from v0.3)
+### Word diff (default for text)
 
 1. **Tokenise** each version. The tokeniser is chosen by file extension:
    - **Generic** (all text): Unicode word boundaries (UAX #29) via `unicode-segmentation`.
@@ -80,10 +80,15 @@ more readable hunks than Myers. The output is git's unified format with 3 lines 
      first 10 words, a cut marker, and its last 10 words, never inside a token. The cut is
      its own segment (`Cut`), so front-ends decide how to show it.
 3. **Render.** On a colour TTY, deletions are red with strike-through and insertions green,
-   inline. Without colour, use `[-old-]{+new+}`, with a `¶ N` line before each paragraph
+   inline, and a cut is dim. Without colour, use `[-old-]{+new+}`, with a `¶ N` line before each paragraph
    (line breaks at the start and end of a paragraph are not shown) and ` … ` for a cut. Literal `[-`, `-]`, `{+` and `+}` in
    the text are not escaped, as in git's `--word-diff`. The header shows `+N words −M words`
-   and is added by the front-end, not by the library's markup.
+   (`1 word` in the singular) and is added by the front-end, not by the library's markup.
+   The CLI indents the text two spaces and wraps it at the terminal width (80 off a
+   terminal): runs of white space inside a paragraph become one space or a line break, and a
+   line never breaks inside a word or between a marker's delimiter and its text. It then
+   reads as the plain markup with line breaks added. A file that differs only in layout
+   prints `spacing and line breaks only` instead of paragraphs.
 
 ```
 sections/intro.tex  +12 words −4 words

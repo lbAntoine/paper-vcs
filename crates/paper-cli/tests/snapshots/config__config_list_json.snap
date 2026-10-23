@@ -34,7 +34,7 @@ expression: env.redact_json(&run.stdout)
     {
       "key": "diff.default",
       "source": "default",
-      "value": "lines"
+      "value": "words"
     },
     {
       "key": "profile",
