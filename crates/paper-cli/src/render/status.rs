@@ -9,6 +9,7 @@ use super::diff::{binary_sizes, counts};
 use super::human::{change_lines, files, large_lines, size, skipped_lines};
 use super::style::Style;
 use super::time::relative_time;
+use super::words;
 
 fn status_kind(kind: ChangeKind) -> &'static str {
     match kind {
@@ -44,6 +45,10 @@ pub fn status(status: &Status, now: i64, style: Style) -> String {
         for change in &status.changes {
             let detail = match change.stat {
                 ChangeStat::Lines { added, removed } => format!("{} lines", counts(added, removed)),
+                ChangeStat::Words {
+                    layout_only: true, ..
+                } => "spacing only".to_owned(),
+                ChangeStat::Words { added, removed, .. } => words::counts(added, removed),
                 ChangeStat::Bytes { old, new } => binary_sizes(old, new),
             };
             let _ = writeln!(

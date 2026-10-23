@@ -137,7 +137,7 @@ fn the_json_scan_for_an_argument_error_stops_at_double_dash() {
 fn diff_status_and_restore_errors_are_json_too() {
     let env = project();
     for args in [
-        &["--json", "diff", "--words"][..],
+        &["--json", "diff", "--since", "nope"][..],
         &["--json", "diff", "nope.tex"],
         &["--json", "restore", "nope.tex"],
         &["--json", "restore", "--from", "nope", "main.tex"],

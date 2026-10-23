@@ -2,9 +2,9 @@
 //! Shapes are documented in `docs/specs/02-cli.md` (JSON output).
 
 use paper_core::project::{
-    ChangeStat, FileDiffEntry, OutsidePaper, RestoreSkip, Restored, SkippedPath, Status,
+    ChangeStat, EntryDiff, FileDiffEntry, OutsidePaper, RestoreSkip, Restored, SkippedPath, Status,
 };
-use paper_diff::{FileDiff, LineKind};
+use paper_diff::{FileDiff, LineKind, Segment, WordDiff};
 use serde::Serialize;
 
 use super::json::{
@@ -38,7 +38,57 @@ pub struct DiffFile {
     removed: Option<usize>,
     old_bytes: Option<u64>,
     new_bytes: Option<u64>,
-    hunks: Vec<Hunk>,
+    /// `null` in word mode.
+    hunks: Option<Vec<Hunk>>,
+    /// `"words"` or `"lines"`; `null` for binary files.
+    unit: Option<&'static str>,
+    layout_only: bool,
+    /// `null` in line mode.
+    paragraphs: Option<Vec<ParagraphOut>>,
+}
+
+#[derive(Serialize)]
+pub struct ParagraphOut {
+    number: usize,
+    segments: Vec<SegmentOut>,
+}
+
+/// `text` is `null` only for a `cut`.
+#[derive(Serialize)]
+pub struct SegmentOut {
+    kind: &'static str,
+    text: Option<String>,
+}
+
+fn paragraphs(diff: &WordDiff) -> Vec<ParagraphOut> {
+    diff.paragraphs
+        .iter()
+        .map(|paragraph| ParagraphOut {
+            number: paragraph.number,
+            segments: paragraph
+                .segments
+                .iter()
+                .map(|segment| match segment {
+                    Segment::Same(text) => SegmentOut {
+                        kind: "same",
+                        text: Some(text.clone()),
+                    },
+                    Segment::Removed(text) => SegmentOut {
+                        kind: "removed",
+                        text: Some(text.clone()),
+                    },
+                    Segment::Added(text) => SegmentOut {
+                        kind: "added",
+                        text: Some(text.clone()),
+                    },
+                    Segment::Cut => SegmentOut {
+                        kind: "cut",
+                        text: None,
+                    },
+                })
+                .collect(),
+        })
+        .collect()
 }
 
 #[derive(Serialize)]
@@ -50,6 +100,9 @@ struct StatusChange {
     removed: Option<usize>,
     old_bytes: Option<u64>,
     new_bytes: Option<u64>,
+    unit: Option<&'static str>,
+    /// `null` for binary files.
+    layout_only: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -104,7 +157,25 @@ pub fn files(entries: &[FileDiffEntry]) -> Vec<DiffFile> {
 }
 
 fn file(entry: &FileDiffEntry) -> DiffFile {
-    let (binary, added, removed, old_bytes, new_bytes, hunks) = match &entry.diff {
+    let diff = match &entry.diff {
+        EntryDiff::Lines(diff) => diff,
+        EntryDiff::Words(words) => {
+            return DiffFile {
+                path: entry.path.clone(),
+                kind: kind_name(entry.kind),
+                binary: false,
+                added: Some(words.added),
+                removed: Some(words.removed),
+                old_bytes: None,
+                new_bytes: None,
+                hunks: None,
+                unit: Some("words"),
+                layout_only: words.layout_only,
+                paragraphs: Some(paragraphs(words)),
+            };
+        }
+    };
+    let (binary, added, removed, old_bytes, new_bytes, hunks) = match diff {
         FileDiff::Text(text) => {
             let hunks = text
                 .hunks
@@ -147,7 +218,10 @@ fn file(entry: &FileDiffEntry) -> DiffFile {
         removed,
         old_bytes,
         new_bytes,
-        hunks,
+        unit: (!binary).then_some("lines"),
+        hunks: Some(hunks),
+        layout_only: false,
+        paragraphs: None,
     }
 }
 
@@ -163,12 +237,32 @@ pub fn status(status: &Status) -> String {
         .changes
         .iter()
         .map(|change| {
-            let (binary, added, removed, old_bytes, new_bytes) = match change.stat {
-                ChangeStat::Lines { added, removed } => {
-                    (false, Some(added), Some(removed), None, None)
-                }
-                ChangeStat::Bytes { old, new } => (true, None, None, old, new),
-            };
+            let (binary, added, removed, old_bytes, new_bytes, unit, layout_only) =
+                match change.stat {
+                    ChangeStat::Lines { added, removed } => (
+                        false,
+                        Some(added),
+                        Some(removed),
+                        None,
+                        None,
+                        Some("lines"),
+                        Some(false),
+                    ),
+                    ChangeStat::Words {
+                        added,
+                        removed,
+                        layout_only,
+                    } => (
+                        false,
+                        Some(added),
+                        Some(removed),
+                        None,
+                        None,
+                        Some("words"),
+                        Some(layout_only),
+                    ),
+                    ChangeStat::Bytes { old, new } => (true, None, None, old, new, None, None),
+                };
             StatusChange {
                 path: change.path.clone(),
                 kind: kind_name(change.kind),
@@ -177,6 +271,8 @@ pub fn status(status: &Status) -> String {
                 removed,
                 old_bytes,
                 new_bytes,
+                unit,
+                layout_only,
             }
         })
         .collect();

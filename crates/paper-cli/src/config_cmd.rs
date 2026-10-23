@@ -63,10 +63,7 @@ fn get(cli: &Cli, key: &str) -> Output {
             }],
         });
     };
-    let mut notes = ignored_notes(&settings, Some(key));
-    if key == Key::DiffDefault {
-        notes.extend(words_note(&settings));
-    }
+    let notes = ignored_notes(&settings, Some(key));
     emit_notes(cli, &notes);
     Ok(finish(
         cli,
@@ -170,8 +167,7 @@ fn no_settings_folder() -> PaperError {
 
 fn list(cli: &Cli) -> Output {
     let settings = effective(cli)?;
-    let mut notes = ignored_notes(&settings, None);
-    notes.extend(words_note(&settings));
+    let notes = ignored_notes(&settings, None);
     emit_notes(cli, &notes);
     Ok(finish(
         cli,
@@ -258,11 +254,4 @@ fn ignored_notes(settings: &Settings, only: Option<Key>) -> Vec<String> {
             )
         })
         .collect()
-}
-
-/// `diff.default = words` is accepted but has no effect before v0.3.
-fn words_note(settings: &Settings) -> Option<String> {
-    (settings.entry(Key::DiffDefault).value == Some(Value::Text("words".to_owned()))).then(|| {
-        "`diff.default = words` has no effect until v0.3; comparisons stay line by line.".to_owned()
-    })
 }

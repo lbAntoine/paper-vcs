@@ -1,0 +1,13 @@
+---
+source: crates/paper-cli/tests/diff.rs
+expression: env.redact(&run.stdout)
+---
+essay.txt  +3 words −1 word
+  ¶ 2
+  Second [-calm-]{+stormy+} paragraph{+, with more+}.
+
+layout.txt  spacing and line breaks only
+
+new.txt  +3 words −0 words
+  ¶ 1
+  {+A fresh file.+}

@@ -2,12 +2,13 @@
 
 use std::fmt::Write as _;
 
-use paper_core::project::FileDiffEntry;
+use paper_core::project::{EntryDiff, FileDiffEntry};
 use paper_core::snapshot::ChangeKind;
 use paper_diff::{FileDiff, to_unified};
 
 use super::human::size;
 use super::style::Style;
+use super::words;
 
 /// The old and new sizes of a binary file: `2 KB → 4 KB`, or `(2 KB)` when one side is absent.
 pub fn binary_sizes(old: Option<u64>, new: Option<u64>) -> String {
@@ -33,9 +34,18 @@ pub fn counts(added: usize, removed: usize) -> String {
 
 /// The unified diff of every file, in order; a binary file is one summary line.
 pub fn unified(entries: &[FileDiffEntry], style: Style) -> String {
+    if entries
+        .iter()
+        .any(|e| matches!(e.diff, EntryDiff::Words(_)))
+    {
+        return word_blocks(entries, style, words::terminal_width());
+    }
     let mut out = String::new();
     for entry in entries {
-        match &entry.diff {
+        let EntryDiff::Lines(diff) = &entry.diff else {
+            continue;
+        };
+        match diff {
             FileDiff::Text(text) => {
                 let (old, new) = labels(entry);
                 out.push_str(&paint_unified(&to_unified(text, &old, &new), style));
@@ -51,6 +61,34 @@ pub fn unified(entries: &[FileDiffEntry], style: Style) -> String {
             }
             FileDiff::Identical => {}
         }
+    }
+    out
+}
+
+/// Word diffs, one block per file with a blank line between blocks. A binary file is its
+/// one-line summary, and two of those in a row stay together.
+fn word_blocks(entries: &[FileDiffEntry], style: Style, width: usize) -> String {
+    let mut out = String::new();
+    let mut previous_binary = None;
+    for entry in entries {
+        let (block, binary) = match &entry.diff {
+            EntryDiff::Words(diff) => (words::file(&entry.path, diff, style, width), false),
+            EntryDiff::Lines(FileDiff::Binary { old_size, new_size }) => (
+                format!(
+                    "{}  {}  {}\n",
+                    entry.path,
+                    binary_kind(entry.kind),
+                    binary_sizes(*old_size, *new_size)
+                ),
+                true,
+            ),
+            EntryDiff::Lines(_) => continue,
+        };
+        if previous_binary.is_some_and(|prev| !(prev && binary)) {
+            out.push('\n');
+        }
+        out.push_str(&block);
+        previous_binary = Some(binary);
     }
     out
 }
@@ -98,17 +136,29 @@ pub fn stat(entries: &[FileDiffEntry]) -> String {
         .map(|e| e.path.chars().count())
         .max()
         .unwrap_or(0);
+    let in_words = entries
+        .iter()
+        .any(|e| matches!(e.diff, EntryDiff::Words(_)));
     let (mut added, mut removed) = (0, 0);
     let mut out = String::new();
     for entry in entries {
         let detail = match &entry.diff {
-            FileDiff::Text(text) => {
+            EntryDiff::Words(diff) => {
+                added += diff.added;
+                removed += diff.removed;
+                if diff.layout_only {
+                    "spacing and line breaks only".to_owned()
+                } else {
+                    words::counts(diff.added, diff.removed)
+                }
+            }
+            EntryDiff::Lines(FileDiff::Text(text)) => {
                 added += text.added;
                 removed += text.removed;
                 counts(text.added, text.removed)
             }
-            FileDiff::Identical => counts(0, 0),
-            FileDiff::Binary { old_size, new_size } => format!(
+            EntryDiff::Lines(FileDiff::Identical) => counts(0, 0),
+            EntryDiff::Lines(FileDiff::Binary { old_size, new_size }) => format!(
                 "{}  {}",
                 binary_kind(entry.kind),
                 binary_sizes(*old_size, *new_size)
@@ -116,11 +166,15 @@ pub fn stat(entries: &[FileDiffEntry]) -> String {
         };
         let _ = writeln!(out, "{:<width$}  {detail}", entry.path);
     }
+    let total = if in_words {
+        words::counts(added, removed)
+    } else {
+        counts(added, removed)
+    };
     let _ = writeln!(
         out,
-        "{} changed, {}",
+        "{} changed, {total}",
         super::human::files(entries.len()),
-        counts(added, removed)
     );
     out
 }

@@ -246,15 +246,30 @@ fn an_unknown_key_names_the_known_keys() {
 }
 
 #[test]
-fn diff_default_words_is_accepted_and_says_it_has_no_effect_yet() {
+fn diff_default_words_is_accepted_and_has_no_caveat_any_more() {
     let env = project();
     set(&env, &["diff.default", "words"]);
     let run = env.paper(&["config", "get", "diff.default"]);
     run.assert_code(0);
     assert_eq!(run.stdout.trim(), "words");
-    assert!(run.stderr.contains("v0.3"), "{run:#?}");
+    assert_eq!(run.stderr, "", "{run:#?}");
     let list = env.paper(&["config", "list"]);
-    assert!(list.stderr.contains("v0.3"), "{list:#?}");
+    list.assert_code(0);
+    assert!(!list.stderr.contains("v0.3"), "{list:#?}");
+    assert!(!list.stderr.contains("no effect"), "{list:#?}");
+}
+
+#[test]
+fn diff_default_rejects_other_values_without_the_old_caveat() {
+    let env = project();
+    let run = env.paper(&["config", "set", "diff.default", "sentences"]);
+    run.assert_three_part_error(1);
+    assert!(
+        run.stderr.contains("lines") && run.stderr.contains("words"),
+        "{run:#?}"
+    );
+    assert!(!run.stderr.contains("v0.3"), "{run:#?}");
+    assert!(!run.stderr.contains("no effect"), "{run:#?}");
 }
 
 #[test]
@@ -337,7 +352,7 @@ fn get_prints_the_effective_value() {
         ("ui.color", "auto"),
         ("large_files.warn_mb", "10"),
         ("large_files.max_mb", "100"),
-        ("diff.default", "lines"),
+        ("diff.default", "words"),
         ("user.name", "Mina Park"),
         ("user.email", "mina@uni.example"),
     ];
@@ -422,7 +437,7 @@ fn list_shows_every_key_with_its_value_and_source() {
         row("large_files.max_mb").contains('7') && row("large_files.max_mb").contains("project")
     );
     assert!(row("large_files.warn_mb").contains('2') && row("large_files.warn_mb").contains("env"));
-    assert!(row("diff.default").contains("lines") && row("diff.default").contains("default"));
+    assert!(row("diff.default").contains("words") && row("diff.default").contains("default"));
     settings().bind(|| {
         insta::assert_snapshot!("config_list", env.redact(&run.stdout));
     });
@@ -714,11 +729,10 @@ fn set_project_profile_with_a_gitignore_that_is_not_utf8_is_a_user_error() {
 
 // ---- review follow-ups (PV-014) ----
 
-const WORDS_NOTE: &str =
-    "`diff.default = words` has no effect until v0.3; comparisons stay line by line.";
+const OLD_WORDS_NOTE: &str = "has no effect until v0.3";
 
 #[test]
-fn the_words_note_is_one_clear_sentence() {
+fn diff_default_words_prints_no_note_on_get_or_list() {
     let env = project();
     set(&env, &["diff.default", "words"]);
 
@@ -727,11 +741,8 @@ fn the_words_note_is_one_clear_sentence() {
 
     for run in [&get, &list] {
         run.assert_code(0);
-        assert!(
-            run.stderr.contains(&format!("note: {WORDS_NOTE}")),
-            "{run:#?}"
-        );
-        assert!(!run.stderr.contains("(lines until v0.3)"), "{run:#?}");
+        assert!(!run.stderr.contains(OLD_WORDS_NOTE), "{run:#?}");
+        assert!(!run.stderr.contains("note:"), "{run:#?}");
     }
 }
 
@@ -788,7 +799,7 @@ fn get_json_carries_the_privacy_note_and_keeps_stderr_empty() {
 }
 
 #[test]
-fn get_json_carries_the_words_note() {
+fn get_json_has_no_words_note() {
     let env = project();
     set(&env, &["diff.default", "words"]);
 
@@ -796,7 +807,7 @@ fn get_json_carries_the_words_note() {
 
     run.assert_code(0);
     assert_eq!(run.stderr, "");
-    assert_eq!(run.json()["notes"], serde_json::json!([WORDS_NOTE]));
+    assert_eq!(run.json()["notes"], serde_json::json!([]));
 }
 
 #[test]
@@ -820,7 +831,7 @@ fn list_json_carries_every_note_and_keeps_stderr_empty() {
         .iter()
         .map(|n| n.as_str().unwrap())
         .collect();
-    assert_eq!(notes.len(), 3, "{json}");
+    assert_eq!(notes.len(), 2, "{json}");
     assert!(
         notes
             .iter()
@@ -831,5 +842,5 @@ fn list_json_carries_every_note_and_keeps_stderr_empty() {
             .iter()
             .any(|n| n.contains("user.email in paper.toml is ignored"))
     );
-    assert!(notes.contains(&WORDS_NOTE), "{json}");
+    assert!(!notes.iter().any(|n| n.contains("v0.3")), "{json}");
 }

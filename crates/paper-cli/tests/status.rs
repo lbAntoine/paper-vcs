@@ -45,7 +45,7 @@ fn status_shows_the_header_and_each_change_with_counts_or_sizes_sorted() {
         "{run:#?}"
     );
     assert!(
-        line_for("sections/intro.tex").contains("+2 \u{2212}1 lines"),
+        line_for("sections/intro.tex").contains("+3 words \u{2212}1 word"),
         "{run:#?}"
     );
     assert!(line_for("figures/plot.bin").contains("new"), "{run:#?}");
@@ -178,6 +178,8 @@ fn status_json_has_a_fixed_key_set() {
         "removed",
         "old_bytes",
         "new_bytes",
+        "unit",
+        "layout_only",
     ];
     let changes = json["changes"].as_array().unwrap();
     assert_eq!(changes.len(), 3, "{run:#?}");
@@ -190,7 +192,11 @@ fn status_json_has_a_fixed_key_set() {
     assert_eq!(changes[0]["new_bytes"], 2048);
     assert_eq!(changes[0]["added"], serde_json::Value::Null);
     assert_eq!(changes[2]["path"], "sections/intro.tex");
-    assert_eq!(changes[2]["added"], 2);
+    assert_eq!(changes[0]["unit"], serde_json::Value::Null);
+    assert_eq!(changes[1]["unit"], "words");
+    assert_eq!(changes[1]["removed"], 2);
+    assert_eq!(changes[2]["unit"], "words");
+    assert_eq!(changes[2]["added"], 3);
     assert_eq!(changes[2]["removed"], 1);
     assert_eq!(changes[2]["binary"], false);
     assert_eq!(changes[2]["old_bytes"], serde_json::Value::Null);
@@ -532,4 +538,93 @@ fn no_outside_paper_block_right_after_restore() {
     env.paper(&["restore", "--from", "last~2", "sections/intro.tex"])
         .assert_code(0);
     assert_no_outside_paper(&env);
+}
+
+// ---- words by default (PV-042) ----
+
+#[test]
+fn status_counts_words_with_the_singular_for_one() {
+    let env = project();
+    env.write("sections/intro.tex", "Intro v3\n");
+    env.write("new.txt", "fresh\n");
+
+    let run = env.paper(&["status"]);
+
+    run.assert_code(0);
+    let line_for = |needle: &str| {
+        run.stdout
+            .lines()
+            .find(|line| line.contains(needle))
+            .unwrap_or_else(|| panic!("no line for {needle}: {run:#?}"))
+    };
+    assert!(
+        line_for("sections/intro.tex").ends_with("+1 word \u{2212}1 word"),
+        "{run:#?}"
+    );
+    assert!(
+        line_for("new.txt").ends_with("+1 word \u{2212}0 words"),
+        "{run:#?}"
+    );
+    assert!(!run.stdout.contains("lines"), "{run:#?}");
+}
+
+#[test]
+fn status_says_spacing_only_for_a_rewrap() {
+    let env = project();
+    env.write("essay.txt", "one two three\nfour five\n");
+    env.paper(&["save", "Add essay"]).assert_code(0);
+    env.write("essay.txt", "one two\nthree  four five\n");
+
+    let run = env.paper(&["status"]);
+
+    run.assert_code(0);
+    let line = run
+        .stdout
+        .lines()
+        .find(|l| l.contains("essay.txt"))
+        .unwrap_or_else(|| panic!("{run:#?}"));
+    assert!(line.contains("modified"), "{run:#?}");
+    assert!(line.ends_with("spacing only"), "{run:#?}");
+    assert!(!line.contains("words"), "{run:#?}");
+}
+
+#[test]
+fn status_ignores_diff_default_lines() {
+    let env = project();
+    env.paper(&["config", "set", "diff.default", "lines"])
+        .assert_code(0);
+    env.write("sections/intro.tex", "Intro v3\n");
+
+    let run = env.paper(&["status"]);
+
+    run.assert_code(0);
+    assert!(run.stdout.contains("+1 word \u{2212}1 word"), "{run:#?}");
+    assert!(!run.stdout.contains("lines"), "{run:#?}");
+}
+
+#[test]
+fn status_lines_is_not_a_flag() {
+    let env = project();
+    let run = env.paper(&["status", "--lines"]);
+    assert_ne!(run.code, 0, "{run:#?}");
+}
+
+#[test]
+fn status_json_marks_layout_only_changes_with_zero_counts_in_words() {
+    let env = project();
+    env.write("essay.txt", "one two three\nfour five\n");
+    env.paper(&["save", "Add essay"]).assert_code(0);
+    env.write("essay.txt", "one two\nthree  four five\n");
+
+    let run = env.paper(&["--json", "status"]);
+
+    run.assert_code(0);
+    let change = &run.json()["changes"][0];
+    assert_eq!(change["path"], "essay.txt");
+    assert_eq!(change["unit"], "words");
+    assert_eq!(change["layout_only"], true);
+    assert_eq!(
+        (change["added"].clone(), change["removed"].clone()),
+        (0.into(), 0.into())
+    );
 }

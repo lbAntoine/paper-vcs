@@ -71,16 +71,24 @@ in the author's UTC offset. Change kinds are `added`, `modified` or `deleted`. E
 when a value doesn't apply (e.g. the ID of a save that wasn't made).
 
 *File diffs* (`diff`, and `files` in `show`) share one shape, an array of
-`{path, kind, binary, added, removed, old_bytes, new_bytes, hunks}`. For a text file `added`
-and `removed` are line counts, the byte sizes are `null` and `hunks` lists
-`{old_start, old_len, new_start, new_len, lines}`, each line being
-`{kind: "context"|"added"|"removed", text, missing_newline}` (`missing_newline` marks the
-file's last line when it has no trailing newline). For a binary file `added` and `removed`
-are `null`, the byte sizes are set (`null` for an absent side) and `hunks` is `[]`.
+`{path, kind, binary, added, removed, old_bytes, new_bytes, hunks, unit, layout_only,
+paragraphs}`. `unit` is `"words"` or `"lines"` for a text file (the comparison used) and
+`null` for a binary file; `added` and `removed` count in that unit and the byte sizes are
+`null`. In line mode `hunks` lists `{old_start, old_len, new_start, new_len, lines}`, each
+line being `{kind: "context"|"added"|"removed", text, missing_newline}` (`missing_newline`
+marks the file's last line when it has no trailing newline), `layout_only` is `false` and
+`paragraphs` is `null`. In word mode `hunks` is `null`, `layout_only` is `true` when the two
+versions differ only in spacing or line breaks, and `paragraphs` lists the changed paragraphs
+as `{number, segments}`, each segment `{kind: "same"|"removed"|"added"|"cut", text}` (`text`
+is `null` only for a `cut`; an added or removed paragraph break is a segment whose text is
+the break). For a binary file `added` and `removed` are `null`, the byte sizes are set
+(`null` for an absent side), `hunks` is `[]` and `paragraphs` is `null`.
 `paper diff --json` prints `{schema, files}` (also with `--stat`), `paper show --json`
 adds `files` beside `save` and `changes`, and `paper status --json` prints
 `{schema, line, last, changes, skipped, large, outside_paper}`, where `last` has the shape of a save in
-`history` and each change has the file-diff keys without `hunks`.
+`history` and each change has the file-diff keys without `hunks` and `paragraphs`:
+`unit` is `"words"` for a text file (`null` for a binary one), so `added` and `removed` count
+words, and `layout_only` is `true` for a spacing-only change (`null` for a binary file).
 `paper restore --json` prints `{schema, from, changes: [{path, kind}], skipped: [{path, reason, bytes}]}`,
 with `from` the commit the files were restored from.
 
@@ -134,7 +142,7 @@ On main · last save kmrwxq "Rewrite related work" (2 hours ago)
 Draft (unsaved):
   modified  sections/intro.tex        +42 words −17 words
   new       figures/ablation.pdf      (318 KB)
-  deleted   notes/old-outline.md      +0 −85 lines
+  deleted   notes/old-outline.md      +0 words −85 words
 
 Skipped (paper leaves these out of the draft):
   data/raw_scans.h5  (too large to track, 2.1 GB)
@@ -162,10 +170,12 @@ Other states it reports:
   apply, only the another-branch block shows. The draft is still compared with paper's last
   save, and nothing is written to git. Importing those commits is v0.4.
 
-Until word diffs arrive (v0.3), each change shows line counts (`+12 −3 lines`, also for a deleted
-text file: `+0 −85 lines`) for text and
-sizes for binary files (`(318 KB)` for a new or deleted one, `318 KB → 331 KB` for a changed
-one), taken from the line diff. `paper status` snapshots first (I1);
+Each text change shows word counts (`+12 words −3 words`, `1 word` in the singular, also for
+a deleted text file: `+0 words −85 words`), always by word whatever `diff.default` says. A
+file whose only change is spacing or line breaks shows `spacing only`. A change to
+punctuation or commands alone counts no words and shows `+0 words −0 words`. Binary files show
+sizes (`(318 KB)` for a new or deleted one, `318 KB → 331 KB` for a changed one).
+`paper status` snapshots first (I1);
 `--no-snapshot` reads the stored draft instead and lists no skipped or large files.
 
 `paper status --json` always has an `outside_paper` key: `null` when nothing moved,
@@ -233,17 +243,18 @@ a user error. The draft is not a save and is
 not listed. IDs are the shortest unique change-ID prefix (min 4 letters), or 7 hash characters
 for saves made with plain git.
 
-### `paper show <point>` (since v0.1)
+### `paper show <point> [--lines|--words] [--stat]` (since v0.1)
 
 Metadata for the save (author, date, change ID, message, milestones), the list of changed
 files with their kind (`added`, `modified`, `deleted`), then the diff of each file against the
 save's first parent in the same format as `paper diff` (the first save shows every file as
-added). `--stat` prints the per-file counts, as `paper diff --stat` does, instead of the list
-and the diffs. The date reads like `history` times; `--json` has the exact timestamp.
+added). Words or lines are chosen as for `paper diff`: `--lines` or `--words`, else
+`diff.default`. `--stat` prints the per-file counts, as `paper diff --stat` does, instead of
+the list and the diffs. The date reads like `history` times; `--json` has the exact timestamp.
 `paper show @` shows the draft's unsaved changes against `last`. `<point>` follows the
 [points](01-concepts.md#points-how-you-name-a-state) rules.
 
-### `paper diff [<from>] [<to>] [<paths>…] [--lines|--words] [--stat] [--since <point>]` (since v0.1, words in v0.3)
+### `paper diff [<from>] [<to>] [<paths>…] [--lines|--words] [--stat] [--since <point>]` (since v0.1, words by default since v0.3)
 
 | Invocation | Compares |
 |---|---|
@@ -262,8 +273,31 @@ matches", with `paper status` and `paper show <point>`). A name that is both a p
 file is a point; `--` forces everything after it to be paths (`paper diff -- last` diffs the
 file called `last`). `--since <point>` can't be combined with points.
 
-Text defaults to `--words` from v0.3 on. Until then the comparison is by line (`--lines`, the
-default) and `--words` fails with a user error saying it is not yet available. The output
+Text is compared word by word unless `--lines` is given or `diff.default` is `lines`;
+`--words` and `--lines` override `diff.default` and exclude each other. An added or deleted
+text file is compared with the empty text.
+
+**Word output.** Files are in path order with one blank line between them. Each starts with
+a header, `sections/intro.tex  +12 words −4 words` (`1 word` in the singular), then, for each
+changed paragraph, a line `  ¶ N` (the number on the new side) and its text, indented two
+spaces and wrapped at the width of the terminal on stdout (80 when stdout is not a terminal,
+so `paper diff > file` and `| less` wrap at 80; a numeric `COLUMNS` sets the width by hand and
+wins). Width is counted in display columns, so Korean and Japanese text wraps where it fits and
+may break between any two Han or kana characters and between an edit and the CJK text next to it; Hangul breaks only at spaces and at the edges of an edit. A line never breaks inside a word or between a
+`[-` or `{+` and the text it opens. Paragraphs that share a number (a deleted paragraph next to
+its neighbour) share one `¶ N` line. In a LaTeX file the first line break after a `%` comment, wherever it falls (in unchanged,
+added or removed text; a marker open there closes before the break and reopens after it), is
+kept as a line break, as are a paragraph break and a cut that follow a comment. This is judged
+on the new text: the text after a comment, as it now reads, never appears on the comment's
+line. Removed text is shown with the spacing paper-diff gives it
+([#93](https://github.com/lbAntoine/paper-vcs/issues/93)). On a colour terminal removed words are
+red and struck through, added words green and a cut dim. Without colour the text is the
+plain markup of [04-content](04-content.md#word-diff): `[-old-]{+new+}`, `{+¶+}`, `[-¶-]` and
+` … `. A file whose only change is spacing or line breaks prints
+`path  spacing and line breaks only` and no paragraphs. A binary file is the same one-line
+summary as in line mode.
+
+**Line output.** The output
 is git's unified diff with `a/<path>` and `b/<path>` labels (`/dev/null` for an added or
 deleted file), in path order, coloured red and green only on a colour terminal; it applies
 with `git apply`. A binary file is one line: `figures/plot.bin  changed  318 KB → 331 KB`
@@ -275,8 +309,10 @@ diff of the extracted text, which is handy for piping.
 Paths restrict the output to those files, or to everything under a directory (whole path
 components). A path that names no file in either save is an error listing every such path,
 so a typo never looks like "no differences"; a path that exists but is unchanged prints
-nothing. `--stat` prints one line per file, `+12 −3` or the binary sizes, then a total
-(`2 files changed, +13 −3`). The front-end
+nothing. `--stat` prints one line per file, `+12 words −3 words` (`+12 −3` with `--lines`; a
+spacing-only file says `spacing and line breaks only`) or the binary sizes, then a total
+(`2 files changed, +13 words −3 words`). When only binary files changed there are no word
+counts, and the total is printed in line format (`1 file changed, +0 −0`). The front-end
 snapshots before comparing against `@`.
 
 ### `paper restore <paths>… [--from <point>]` (since v0.1)
@@ -727,8 +763,7 @@ are local until `paper share <line>`. This means experiments are private by defa
   `{"schema":1,"key","value","file"}`.
 - Personal keys (`user.*`, `ui.*`) found in `paper.toml` are ignored, never read; `get` and
   `list` print a note on stderr saying so and to remove them, because `paper.toml` is saved
-  with the project and may be shared. `diff.default = words` gets a note too: it "has no
-  effect until v0.3; comparisons stay line by line". With `--json` the notes are not
+  with the project and may be shared. With `--json` the notes are not
   printed; they are the strings in the `notes` array of the output (always present, `[]` when
   there are none, and not affected by `-q`), so scripts need not read stderr.
 - A bad value found in the environment or a file is a user error that names its origin (the
@@ -754,7 +789,7 @@ A malformed file is a user error naming the file and line. See
 | `ui.color` | `auto` / `always` / `never` | user only | default for `--color` |
 | `large_files.warn_mb` | integer ≥ 1 | project or user | snapshot warning threshold |
 | `large_files.max_mb` | integer ≥ 1, not below `warn_mb` in the same file | project or user | snapshot skip threshold |
-| `diff.default` | `lines` or `words` | project or user | none until v0.3 (comparisons stay by line; `get` and `list` say so) |
+| `diff.default` | `words` (default) or `lines` | project or user | how `paper diff` and `paper show` compare text; `--lines` and `--words` override it |
 | `profile` | the six profile names | project only | the project's profile; setting it also replaces the block in `.gitignore` |
 
 Identity and looks are never written to `paper.toml`: it is saved with the project, which

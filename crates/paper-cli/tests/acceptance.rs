@@ -99,7 +99,7 @@ fn a_researcher_can_init_save_restore_and_push_with_plain_git() {
         .find(|line| line.contains("sections/intro.tex"))
         .unwrap_or_else(|| panic!("intro not in status: {status:#?}"));
     assert!(intro_line.contains("modified"), "{status:#?}");
-    let diff = env.paper(&["diff"]);
+    let diff = env.paper(&["diff", "--lines"]);
     diff.assert_code(0);
     assert!(diff.stdout.contains("sections/intro.tex"), "{diff:#?}");
     assert!(
@@ -145,5 +145,181 @@ fn a_researcher_can_init_save_restore_and_push_with_plain_git() {
     assert!(!remote_refs.contains("refs/paper"), "{remote_refs}");
     env.git(&clone_dir, &["fsck", "--strict", "--no-progress"]);
     env.git(&bare, &["fsck", "--strict", "--no-progress"]);
+    env.fsck();
+}
+
+const PI_BEFORE: &str = "\
+The first paragraph states the research question and the motivation behind the whole study.
+
+Our method relies on careful measurements of the sample under three different conditions.
+
+Results are summarised in the next section.
+
+This paragraph will be deleted by the reviewer entirely.
+
+Closing remarks end the section.
+";
+
+/// The co-author re-wraps paragraph 1, swaps two words in paragraph 2, adds a sentence to
+/// paragraph 3 and deletes paragraph 4.
+const PI_AFTER: &str = "\
+The first paragraph states the research
+question and the motivation  behind the
+whole study.
+
+Our method relies on precise measurements of the sample under four different conditions.
+
+Results are summarised in the next section. They are stable across runs.
+
+Closing remarks end the section.
+";
+
+const MINUS: &str = "\u{2212}";
+
+/// Readability of the paragraph 3 / paragraph 4 change, read from the JSON segments: the
+/// deleted paragraph and the added sentence are each one contiguous run, nothing is
+/// interleaved word by word, and the removed paragraph break is shown. Where the shared
+/// final period sits, and which paragraph number carries the change, are not checked.
+fn assert_deleted_paragraph_and_added_sentence_read_as_prose(env: &Env, since: &str) {
+    let run = env.paper(&["--json", "diff", "--since", since]);
+    run.assert_code(0);
+    let json = run.json();
+    let paragraphs = json["files"][0]["paragraphs"].as_array().unwrap();
+    let is_break = |s: &serde_json::Value| {
+        s["text"]
+            .as_str()
+            .is_some_and(|t| t.matches('\n').count() >= 2 && t.trim().is_empty())
+    };
+    let text_of = |s: &serde_json::Value| s["text"].as_str().unwrap_or("").to_owned();
+    let segments_of = |p: &serde_json::Value| p["segments"].as_array().unwrap().clone();
+
+    // (a) the deleted paragraph is one contiguous removed run.
+    let deleted = "This paragraph will be deleted by the reviewer entirely";
+    let in_paragraph = paragraphs
+        .iter()
+        .find(|p| {
+            segments_of(p)
+                .iter()
+                .any(|s| s["kind"] == "removed" && text_of(s).contains(deleted))
+        })
+        .unwrap_or_else(|| {
+            panic!("(a) no single removed run holds the deleted paragraph: {run:#?}")
+        });
+    // (b) the new sentence is one contiguous added run.
+    let sentence = "They are stable across runs";
+    let added_in = paragraphs
+        .iter()
+        .find(|p| {
+            segments_of(p)
+                .iter()
+                .any(|s| s["kind"] == "added" && text_of(s).contains(sentence))
+        })
+        .unwrap_or_else(|| panic!("(b) no single added run holds the new sentence: {run:#?}"));
+    // (c) in that stretch: at most one removed and one added run (the break aside).
+    let stretch = segments_of(in_paragraph);
+    let removed_runs = stretch
+        .iter()
+        .filter(|s| s["kind"] == "removed" && !is_break(s))
+        .count();
+    let added_runs = segments_of(added_in)
+        .iter()
+        .filter(|s| s["kind"] == "added" && !is_break(s))
+        .count();
+    assert_eq!(removed_runs, 1, "(c) removed text is interleaved: {run:#?}");
+    assert_eq!(added_runs, 1, "(c) added text is interleaved: {run:#?}");
+    // (d) the removed paragraph break is shown.
+    assert!(
+        paragraphs
+            .iter()
+            .flat_map(segments_of)
+            .any(|s| s["kind"] == "removed" && is_break(&s)),
+        "(d) no removed paragraph break: {run:#?}"
+    );
+    // The same, in the plain markup with the wrap undone.
+    let plain = env.paper(&["diff", "--since", since]);
+    let joined = plain
+        .stdout
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(joined.contains("[-\u{b6}-]"), "(d) {plain:#?}");
+    assert!(joined.contains(deleted), "(a) {plain:#?}");
+    assert!(joined.contains(sentence), "(b) {plain:#?}");
+}
+
+// Roadmap v0.3 acceptance: a PI runs `paper diff --since <point>` on a co-author's changes
+// and reads it as prose.
+#[test]
+fn a_pi_reads_a_co_authors_changes_as_prose() {
+    let env = Env::new();
+    env.write("main.tex", MAIN_TEX);
+    env.write("sections/intro.tex", PI_BEFORE);
+    env.paper(&["init"]).assert_code(0);
+    env.paper(&["save", "Draft for the PI"]).assert_code(0);
+    let id = env.change_id("HEAD");
+
+    env.write("sections/intro.tex", PI_AFTER);
+    let run = env.paper(&["diff", "--since", &id[..4]]);
+
+    run.assert_code(0);
+    assert_eq!(run.stderr, "", "{run:#?}");
+    assert!(!run.stdout.contains('\x1b'), "no colour: {run:#?}");
+    // The header counts only the real edits: 2 + 5 words added, 2 + 9 removed.
+    assert!(
+        run.stdout
+            .contains(&format!("sections/intro.tex  +7 words {MINUS}11 words\n")),
+        "{run:#?}"
+    );
+    // Word markup with paragraph numbers on the new side.
+    assert!(run.stdout.contains("[-careful-]{+precise+}"), "{run:#?}");
+    assert!(run.stdout.contains("[-three-]{+four+}"), "{run:#?}");
+    assert!(run.stdout.contains("  \u{b6} 2\n"), "{run:#?}");
+    assert_deleted_paragraph_and_added_sentence_read_as_prose(&env, &id[..4]);
+    // The re-wrapped paragraph is not a change: it does not appear at all.
+    assert!(!run.stdout.contains("  \u{b6} 1\n"), "{run:#?}");
+    assert!(!run.stdout.contains("research question"), "{run:#?}");
+    assert!(!run.stdout.contains("motivation"), "{run:#?}");
+    // Only this one file changed, and it is prose, not a patch.
+    assert!(!run.stdout.contains("@@"), "{run:#?}");
+    assert_eq!(
+        run.stdout
+            .lines()
+            .filter(|l| !l.starts_with(' ') && !l.is_empty())
+            .count(),
+        1,
+        "one file header: {run:#?}"
+    );
+
+    let stat = env.paper(&["diff", "--stat", "--since", &id[..4]]);
+    stat.assert_code(0);
+    assert!(
+        stat.stdout
+            .contains(&format!("1 file changed, +7 words {MINUS}11 words")),
+        "{stat:#?}"
+    );
+    env.fsck();
+}
+
+#[test]
+fn a_pure_re_wrap_diffs_to_spacing_only() {
+    let env = Env::new();
+    env.write("main.tex", MAIN_TEX);
+    env.write("sections/intro.tex", PI_BEFORE);
+    env.paper(&["init"]).assert_code(0);
+    env.paper(&["save", "Draft for the PI"]).assert_code(0);
+    env.write(
+        "sections/intro.tex",
+        &PI_BEFORE.replace("states the research", "states\nthe  research"),
+    );
+
+    let diff = env.paper(&["diff", "--since", "last"]);
+    let status = env.paper(&["status"]);
+
+    diff.assert_code(0);
+    assert_eq!(
+        diff.stdout, "sections/intro.tex  spacing and line breaks only\n",
+        "{diff:#?}"
+    );
+    assert!(status.stdout.contains("spacing only"), "{status:#?}");
     env.fsck();
 }

@@ -34,7 +34,7 @@ more readable hunks than Myers. The output is git's unified format with 3 lines 
   binary. If either side is binary, no hunks are produced: the result is a one-line summary
   with the old and new sizes in bytes.
 
-### Word diff (default for text from v0.3)
+### Word diff (default for text)
 
 1. **Tokenise** each version. The tokeniser is chosen by file extension:
    - **Generic** (all text): Unicode word boundaries (UAX #29) via `unicode-segmentation`.
@@ -70,6 +70,13 @@ more readable hunks than Myers. The output is git's unified format with 3 lines 
      removed between two words of a space-separated script (Latin, Cyrillic, …). A lone space
      next to CJK or punctuation is shown (`한 국어` → `한국어`, `a , b` → `a, b`). If nothing
      else changed, the result has no paragraphs and `layout_only` is true.
+   - **Cleanup.** After alignment, an unchanged run between two changes (neither of them a
+     paragraph break) that holds no `Word`, `Command` or `Comment` token and no paragraph
+     break (single spaces, punctuation, or both) is absorbed:
+     its text becomes part of the removed side and of the added side. A replaced sentence
+     is then one removed run followed by one added run, not words interleaved with spaces.
+     An unchanged word, command or comment between two changes is kept. Counts are
+     unaffected.
    - **Counts.** `+N` and `−M` count `Word` tokens only (a CJK grapheme is one word).
      Punctuation, spaces, commands and comments change the text but not the counts.
    - **Paragraphs.** Numbers are 1-based on the new side. Only paragraphs with a change are
@@ -80,10 +87,26 @@ more readable hunks than Myers. The output is git's unified format with 3 lines 
      first 10 words, a cut marker, and its last 10 words, never inside a token. The cut is
      its own segment (`Cut`), so front-ends decide how to show it.
 3. **Render.** On a colour TTY, deletions are red with strike-through and insertions green,
-   inline. Without colour, use `[-old-]{+new+}`, with a `¶ N` line before each paragraph
+   inline, and a cut is dim. Without colour, use `[-old-]{+new+}`, with a `¶ N` line before each paragraph
    (line breaks at the start and end of a paragraph are not shown) and ` … ` for a cut. Literal `[-`, `-]`, `{+` and `+}` in
    the text are not escaped, as in git's `--word-diff`. The header shows `+N words −M words`
-   and is added by the front-end, not by the library's markup.
+   (`1 word` in the singular) and is added by the front-end, not by the library's markup.
+   The CLI indents the text two spaces and wraps it at the terminal width (80 off a
+   terminal): runs of white space inside a paragraph become one space or a line break, and a
+   line never breaks inside a word or between a marker's delimiter and its text. Lines may
+   also break between two Han or kana characters and between an edit and CJK text next to
+   it; Hangul breaks only at spaces and at the edges of an edit. A line may also break before
+   the opening delimiter of an edit that starts with a space and after the closing delimiter
+   of one that ends in a space. It then
+   reads as the plain markup with line breaks added. In a LaTeX file the first line break
+   after a `%` comment, wherever it falls (unchanged, added or removed text), is kept, since
+   the rest of the file would otherwise read as commented out; a marker open at that point
+   closes before the break and reopens after it, and a paragraph break or a cut that follows a
+   comment also starts a new line. The CLI recognises the comment itself (a `%` not escaped
+   by `\`, to the end of its line), tracking the old and the new text separately. This is
+   judged on the new text: the text after a comment, as it now reads, never appears on the
+   comment's line. Removed text is shown with the spacing paper-diff gives it (#93). A file that differs only in layout
+   prints `spacing and line breaks only` instead of paragraphs.
 
 ```
 sections/intro.tex  +12 words −4 words

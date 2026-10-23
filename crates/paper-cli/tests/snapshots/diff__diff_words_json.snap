@@ -1,0 +1,57 @@
+---
+source: crates/paper-cli/tests/diff.rs
+expression: env.redact_json(&run.stdout)
+---
+{
+  "files": [
+    {
+      "added": 1,
+      "binary": false,
+      "hunks": null,
+      "kind": "modified",
+      "layout_only": false,
+      "new_bytes": null,
+      "old_bytes": null,
+      "paragraphs": [
+        {
+          "number": 1,
+          "segments": [
+            {
+              "kind": "same",
+              "text": "First "
+            },
+            {
+              "kind": "removed",
+              "text": "calm"
+            },
+            {
+              "kind": "added",
+              "text": "stormy"
+            },
+            {
+              "kind": "same",
+              "text": " paragraph.\n"
+            }
+          ]
+        }
+      ],
+      "path": "essay.txt",
+      "removed": 1,
+      "unit": "words"
+    },
+    {
+      "added": 0,
+      "binary": false,
+      "hunks": null,
+      "kind": "modified",
+      "layout_only": true,
+      "new_bytes": null,
+      "old_bytes": null,
+      "paragraphs": [],
+      "path": "layout.txt",
+      "removed": 0,
+      "unit": "words"
+    }
+  ],
+  "schema": 1
+}

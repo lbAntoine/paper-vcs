@@ -34,7 +34,7 @@ use crate::snapshot::SnapshotOptions;
 use crate::view::{View, ViewError};
 
 pub use activity::ActivityEntry;
-pub use diff::{DiffError, DiffRequest, FileDiffEntry};
+pub use diff::{DiffError, DiffMode, DiffRequest, EntryDiff, FileDiffEntry};
 pub use export::ExportError;
 pub use gc::{GcAge, GcError, GcOutcome};
 pub use history::{HistoryEntry, HistoryError, HistoryRequest, ShowError, Shown};
