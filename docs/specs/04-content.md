@@ -54,10 +54,10 @@ more readable hunks than Myers. The output is git's unified format with 3 lines 
      paragraph is found wherever it sits. Tokens found on one side only are changed whatever
      the alignment, so they are taken out before the diff; this keeps prose fast (about 0.1 s
      for 1 MB with scattered edits). As a safety net each call stops aligning after about
-     2 seconds and returns a coarser but valid diff. Only a huge text with a tiny
-     vocabulary gets there, for example a single 1 MB paragraph of 50 distinct words, or
-     a fifth of the words of a 1 MB text replaced. The same input can then give a different,
-     coarser result on a slower machine.
+     2 seconds and returns a coarser but valid diff. A very large text with a very large
+     edit (about 1 MB with a fifth of its words changed) can reach the 2 s limit; the diff
+     then shows most of the text as rewritten. The same input can give a different, coarser
+     result on a slower machine.
    - **Where a change sits.** A pure insertion or deletion that could sit in several places
      (it starts like the text after it) is placed where it ends with a paragraph break, else
      where it starts right after one, so a deleted paragraph is shown whole.

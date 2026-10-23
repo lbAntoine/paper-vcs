@@ -97,8 +97,9 @@ impl WordDiffOptions {
 /// Compare two versions of a text word by word.
 ///
 /// The whole texts are diffed token by token with a patience diff. Tokens
-/// are equal when they have the same kind and text, except that two `Space` tokens are equal
-/// when neither holds a paragraph break (two or more `\n`) or when both do.
+/// are equal when they have the same kind and text, except that two `Space`
+/// tokens are equal when neither holds a paragraph break (two or more `\n`)
+/// or when both do.
 /// Moving line breaks, re-indenting or doubling a space is therefore not a
 /// change, and an unchanged run is reported with the new side's spacing.
 /// White space at the very start or end of a text is likewise layout. A lone
@@ -111,8 +112,10 @@ impl WordDiffOptions {
 /// paragraph before it).
 ///
 /// Reads the clock to bound the alignment of each call to about two seconds.
-/// Past that, `similar` returns a coarser but still correct diff; only a huge
-/// text with a tiny vocabulary gets there.
+/// Past that, `similar` returns a coarser but still correct diff. A very
+/// large text with a very large edit (about 1 MB with a fifth of its words
+/// changed) can reach the limit; the diff then shows most of the text as
+/// rewritten.
 ///
 /// # Panics
 ///
@@ -244,7 +247,7 @@ fn is_plain_space(token: &Token<'_>) -> bool {
 }
 
 /// A key per token such that tokens that count as equal share a key.
-pub(super) fn keys(tokens: &[Token<'_>], ids: &mut HashMap<(u8, String), u32>) -> Vec<u32> {
+fn keys(tokens: &[Token<'_>], ids: &mut HashMap<(u8, String), u32>) -> Vec<u32> {
     tokens
         .iter()
         .map(|t| {
@@ -267,7 +270,7 @@ pub(super) fn keys(tokens: &[Token<'_>], ids: &mut HashMap<(u8, String), u32>) -
         .collect()
 }
 
-pub(crate) fn is_break_token(token: &Token<'_>) -> bool {
+fn is_break_token(token: &Token<'_>) -> bool {
     token.kind == TokenKind::Space && is_break_text(token.text)
 }
 

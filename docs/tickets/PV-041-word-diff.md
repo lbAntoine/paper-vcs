@@ -86,20 +86,20 @@ changed paragraphs, the words added and removed in each, the totals, and a plain
 
 ## Acceptance criteria
 
-- [ ] The spec's example (a word swap plus an added clause) gives exactly the segments and
+- [x] The spec's example (a word swap plus an added clause) gives exactly the segments and
   markup shown, with `+N` and `−M` counted as decided.
-- [ ] A re-wrapped paragraph (line breaks and spacing moved, no words changed) is
+- [x] A re-wrapped paragraph (line breaks and spacing moved, no words changed) is
   `layout_only` with no paragraphs. A real edit inside it shows only the changed words.
-- [ ] An added, a deleted and a split paragraph, and a joined pair of paragraphs, get the right
+- [x] An added, a deleted and a split paragraph, and a joined pair of paragraphs, get the right
   numbers, segments and `¶` markers.
-- [ ] Korean or Japanese edits show only the changed graphemes. A changed LaTeX command shows as
+- [x] Korean or Japanese edits show only the changed graphemes. A changed LaTeX command shows as
   one removed and one added command. A changed `%` comment shows as a comment change.
-- [ ] A long unchanged run inside a changed paragraph is cut as decided, never inside a token.
-- [ ] Round-trip property (proptest): concatenating the `Same` and `Added` text of a diff gives
+- [x] A long unchanged run inside a changed paragraph is cut as decided, never inside a token.
+- [x] Round-trip property (proptest): concatenating the `Same` and `Added` text of a diff gives
   the new text with paragraphs restored, and `Same` plus `Removed` gives the old text, for
   inputs with no cuts. Test against an option that turns cutting off, or a helper that keeps
   everything.
-- [ ] No I/O and no printing. Public items document `# Panics`.
+- [x] No I/O and no printing. Public items document `# Panics`.
 - [ ] fmt, clippy (`-D warnings`) and the full suite pass (CI on Linux, macOS and Windows).
 
 ## Test plan
@@ -116,6 +116,21 @@ changed paragraphs, the words added and removed in each, the totals, and a plain
 - The tests must fail on `origin/main`: the module doesn't exist there.
 
 ## Summary
+
+`paper-diff` has a word diff (`diff_words`, `diff_words_with`, `to_word_markup`). The token
+streams are compared as a whole with a patience diff (tokens found on one side only are taken
+out first, which keeps prose fast), plain spacing is not a change, pure insertions and
+deletions are slid to paragraph boundaries, and the result is grouped by paragraph with long
+unchanged runs cut (`Segment::Cut`). Plain markup is `[-old-]{+new+}` under `¶ N` headers.
+About 0.1 s for 1 MB with scattered edits (release build).
+
+### Known gaps
+
+- Each call stops aligning after about 2 seconds. A very large text with a very large edit
+  (about 1 MB with a fifth of its words changed) can reach that limit, and the diff then shows
+  most of the text as rewritten. The result can differ on a slower machine.
+- A sentence moved inside one paragraph is not slid to a sentence boundary; only paragraph
+  breaks guide where a change sits.
 
 ## Handoff log
 
@@ -165,3 +180,11 @@ changed paragraphs, the words added and removed in each, the totals, and a plain
 - **Tests added:** `edits_in_every_paragraph_plus_one_inserted_paragraph_are_counted_exactly` (6x200 gives +36 -6, 12x100 gives +42 -12); `swapping_the_last_two_paragraphs_reads_as_one_moved_block` (+5 -5, markup asserted); `swapping_two_middle_paragraphs_that_are_both_edited_reads_as_moved_blocks` (+6 -6, markup asserted). Round-trip proptest now draws the plain space for each gap and the break for each paragraph, and compares both rebuilt sides to the inputs after normalising white space (`normalise` in `tests/common`, by whitespace runs rather than by retokenising, so a LaTeX comment cannot change extent). No other assertion changed.
 - **Timings** (`cargo test --release -p paper-diff -- --ignored --nocapture`): 1 MB, scattered edit in every paragraph, repeated words: whole test 0.08 s; 1 MB with 20% of words replaced by fresh words: 77-89 ms; one unrelated 3000-word paragraph rewrite: 63-68 ms; 1 MB Zipf text (2000-word vocabulary, 120-word paragraphs, every 100th word replaced): 96 ms; same with a 300-word vocabulary: 81 ms (asserted under 1 s).
 - **Recorded, not asserted (hit the 2 s deadline, so the result is coarse):** 1 MB single paragraph of a 50-word vocabulary with every 5th word replaced: 2.05 s (+293246 -293246, i.e. fully replaced); 1 MB Zipf text (2000 words) with a fifth of the words replaced: 2.05 s (+190895 -190895). Both documented in 04-content.
+
+### GREEN (post-approval) · rust-engineer · 2026-10-23
+
+- Deleted the stray empty `crates/paper-diff/src/ord.rs`.
+- Deadline wording fixed in `word.rs`, 04-content and `word/align.rs`: the trigger is edit size (about 1 MB with a fifth of the words changed), not vocabulary.
+- Round-trip proptest is stricter: the new side is compared after normalising only paragraph-break runs (`normalise_breaks`), so plain spacing must come back exactly; the old side keeps full normalisation. Comment corrected.
+- `keys` and `is_break_token` are private again; doc comment re-wrapped.
+- Ticket: Summary and Known gaps written; acceptance criteria ticked except the CI one.

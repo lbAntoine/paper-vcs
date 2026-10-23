@@ -120,3 +120,29 @@ fn flush_gap(out: &mut String, gap: &mut String) {
         gap.clear();
     }
 }
+
+/// The text with every white space run that holds a paragraph break written
+/// `"\n\n"`. Other spacing is left exactly as it is.
+pub fn normalise_breaks(text: &str) -> String {
+    let mut out = String::new();
+    let mut gap = String::new();
+    for c in text.chars() {
+        if c.is_whitespace() {
+            gap.push(c);
+            continue;
+        }
+        flush_breaks(&mut out, &mut gap);
+        out.push(c);
+    }
+    flush_breaks(&mut out, &mut gap);
+    out
+}
+
+fn flush_breaks(out: &mut String, gap: &mut String) {
+    out.push_str(if gap.matches('\n').count() >= 2 {
+        "\n\n"
+    } else {
+        gap
+    });
+    gap.clear();
+}

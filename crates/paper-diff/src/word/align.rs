@@ -9,7 +9,7 @@ use similar::{Algorithm, DiffTag, capture_diff_slices_deadline};
 use super::{Token, is_break_token, keys};
 
 /// Longest time one call may spend aligning. Past it `similar` returns a
-/// coarser but valid diff; texts in the tests never get near it.
+/// coarser but valid diff; no test that asserts a result gets near it.
 const DEADLINE: Duration = Duration::from_secs(2);
 
 /// Which tokens are not part of the common text.

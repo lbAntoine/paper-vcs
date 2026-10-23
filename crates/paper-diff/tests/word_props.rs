@@ -66,11 +66,13 @@ proptest! {
     ) {
         for tok in [GEN, TEX] {
             let d = full(&old, &new, tok);
-            // Unchanged text keeps the new side's spacing, so compare the
-            // old side by token keys: spacing is normalised on both.
+            // Unchanged text keeps the new side's spacing. New side: only
+            // the spelling of paragraph breaks may differ (the rebuild
+            // writes an unchanged break as `\n\n`). Old side: all spacing
+            // is normalised.
             let (rebuilt_old, rebuilt_new) = rebuild(&d, BREAK);
             prop_assert_eq!(normalise(&rebuilt_old), normalise(&old));
-            prop_assert_eq!(normalise(&rebuilt_new), normalise(&new));
+            prop_assert_eq!(normalise_breaks(&rebuilt_new), normalise_breaks(&new));
         }
     }
 
