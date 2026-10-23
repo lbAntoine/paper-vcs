@@ -70,6 +70,11 @@ more readable hunks than Myers. The output is git's unified format with 3 lines 
      removed between two words of a space-separated script (Latin, Cyrillic, …). A lone space
      next to CJK or punctuation is shown (`한 국어` → `한국어`, `a , b` → `a, b`). If nothing
      else changed, the result has no paragraphs and `layout_only` is true.
+   - **Cleanup.** After alignment, an unchanged run between two changes that holds no
+     `Word` token and no paragraph break (single spaces, punctuation, or both) is absorbed:
+     its text becomes part of the removed side and of the added side. A replaced sentence
+     is then one removed run followed by one added run, not words interleaved with spaces.
+     An unchanged word between two changes is kept. Counts are unaffected.
    - **Counts.** `+N` and `−M` count `Word` tokens only (a CJK grapheme is one word).
      Punctuation, spaces, commands and comments change the text but not the counts.
    - **Paragraphs.** Numbers are 1-based on the new side. Only paragraphs with a change are

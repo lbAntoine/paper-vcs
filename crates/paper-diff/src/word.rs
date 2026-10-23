@@ -149,7 +149,7 @@ pub fn diff_words_with(
     flow.layout_text(new_trail);
 
     WordDiff {
-        paragraphs: group(flow.items, *options),
+        paragraphs: group(cleanup(&flow.items), *options),
         added: flow.added_words,
         removed: flow.removed_words,
         layout_only: !flow.changed && old != new,
@@ -378,6 +378,90 @@ impl<'a> Flow<'a> {
             self.items.push(item);
         }
     }
+}
+
+/// Semantic cleanup of the aligned items. An unchanged run between two changes that holds no
+/// word and no paragraph break (single spaces, punctuation) belongs to both sides of the
+/// change; the changed stretch then reads as one removed run followed by one added run.
+/// Counts are unaffected, as only non-word text is absorbed.
+fn cleanup<'a>(items: &[Item<'a>]) -> Vec<Item<'a>> {
+    let n = items.len();
+    let mut marked: Vec<(Item<'_>, bool)> = Vec::with_capacity(n);
+    let mut at = 0;
+    while at < n {
+        if items[at].op != Op::Same {
+            marked.push((items[at], false));
+            at += 1;
+            continue;
+        }
+        let end = items[at..]
+            .iter()
+            .position(|i| i.op != Op::Same)
+            .map_or(n, |len| at + len);
+        let run = &items[at..end];
+        let between = at > 0 && end < n;
+        if between && run.iter().all(|i| !i.word && !i.brk) {
+            marked.extend(run.iter().map(|i| {
+                (
+                    Item {
+                        op: Op::Removed,
+                        ..*i
+                    },
+                    true,
+                )
+            }));
+            marked.extend(run.iter().map(|i| {
+                (
+                    Item {
+                        op: Op::Added,
+                        ..*i
+                    },
+                    true,
+                )
+            }));
+        } else {
+            marked.extend(run.iter().map(|i| (*i, false)));
+        }
+        at = end;
+    }
+
+    let mut out = Vec::with_capacity(marked.len());
+    let mut at = 0;
+    while at < marked.len() {
+        if marked[at].0.op == Op::Same {
+            out.push(marked[at].0);
+            at += 1;
+            continue;
+        }
+        let end = marked[at..]
+            .iter()
+            .position(|(i, _)| i.op == Op::Same)
+            .map_or(marked.len(), |len| at + len);
+        let stretch = &marked[at..end];
+        if stretch.iter().any(|(_, absorbed)| *absorbed) {
+            // Removed before added between paragraph breaks, which stay where they are.
+            let mut block: Vec<Item<'_>> = Vec::new();
+            for (item, _) in stretch {
+                if item.brk {
+                    flush_block(&mut block, &mut out);
+                    out.push(*item);
+                } else {
+                    block.push(*item);
+                }
+            }
+            flush_block(&mut block, &mut out);
+        } else {
+            out.extend(stretch.iter().map(|(i, _)| *i));
+        }
+        at = end;
+    }
+    out
+}
+
+fn flush_block<'a>(block: &mut Vec<Item<'a>>, out: &mut Vec<Item<'a>>) {
+    out.extend(block.iter().filter(|i| i.op == Op::Removed));
+    out.extend(block.iter().filter(|i| i.op == Op::Added));
+    block.clear();
 }
 
 /// Cut the items into paragraphs. See [`diff_words`] for the rules.

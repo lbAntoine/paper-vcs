@@ -4,7 +4,7 @@
 - **Issue:** #81
 - **Branch:** `feat/PV-042-words-by-default`
 - **Depends on:** PV-040 (tokenisers) and PV-041 (word diff), both merged. Wave 3 of v0.3-a, alone.
-- **Touches:**
+- **Touches:** (widened 2026-10-23 by the coordinator to `crates/paper-diff/src/word.rs`, `src/word/align.rs`, `tests/word*.rs` (new tests only) and 04-content § Word diff, for the semantic cleanup)
   - **paper-core**
     - `crates/paper-core/src/project/{diff,status}.rs`: the word mode and `ChangeStat::Words`.
     - `crates/paper-core/src/config/{keys,settings}.rs`: `diff.default` defaults to `words`, and its description loses "no effect until v0.3".
@@ -181,3 +181,22 @@ on a co-author's changes and read it as prose.
   - `stat_keeps_the_sizes_line_of_a_binary_file`: the total is `+3 words −1 word` (the old `main.tex` holds only a LaTeX command, no words). The binary sizes assertion is unchanged.
   - `diff_json_in_word_mode_has_unit_paragraphs_and_null_hunks`: `layout.txt` is now saved first, then re-spaced in the draft together with the intro edit and the binary file, and the test runs `diff` (last against the draft). So it still checks a real layout-only file.
 - Both pass against GREEN d69b360 (the whole `diff` test file: 61 pass). `a_pi_reads_a_co_authors_changes_as_prose` is untouched.
+
+### GREEN (unblocked) · rust-engineer · 2026-10-23
+
+- **Cleanup pass** (`cleanup` in `paper-diff/src/word.rs`, between alignment and grouping): a `Same` run between two changes with no `Word` and no paragraph break is turned into a removed and an added copy; each changed stretch that absorbed something is reordered to removed-then-added between paragraph breaks. Counts unchanged. All PV-041 tests pass unchanged; new table tests in `tests/word_cleanup.rs`. Spec: 04-content § Word diff, new Cleanup bullet.
+- **terminal_size:** 0.4.4, published 2026-03-23 (about 7 months). `Cargo.lock` changed only by the `terminal_size` package, its `paper-cli` dependency line (its own dependencies `rustix` and `windows-sys` were already locked).
+- **Test-author fixes** (25d96b8) pulled in as they sit in this branch.
+- **Acceptance test still fails, STOPPED as instructed.** Actual output of `paper diff --since`:
+
+  ```
+  sections/intro.tex  +7 words −11 words
+    ¶ 2
+    Our method relies on [-careful-]{+precise+} measurements of the sample under
+    [-three-]{+four+} different conditions.
+    ¶ 3
+    Results are summarised in the next section.[-¶-][-This paragraph will be
+    deleted by the reviewer entirely-]{+ They are stable across runs+}.
+  ```
+
+  It reads as prose, the counts match and paragraph 1 is silent, but the test wants (a) `They are stable across runs.` with the final period, which is unchanged text after the added run and before the unchanged paragraph break (so not "between two changes"), (b) `¶ 4`, and (c) the removed phrase unsplit (the 80-column wrap breaks it after "will be"). The roadmap Accept line is not ticked.
