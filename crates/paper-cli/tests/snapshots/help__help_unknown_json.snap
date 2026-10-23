@@ -1,0 +1,5 @@
+---
+source: crates/paper-cli/tests/help.rs
+expression: run.stdout
+---
+{"error":{"kind":"user","message":"There is no help topic or command called `nonsense`.","next":[{"command":"paper help","explanation":"see the commands and the help topics"},{"command":"paper help large-files","explanation":"read a topic"}],"why":"`nonsense` is neither a help topic (large-files) nor a command.\nCommands: init, save, history, show, status, diff, config, activity, undo, redo, gc, ignore, unignore, restore"},"schema":1}

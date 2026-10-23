@@ -136,8 +136,9 @@ Draft (unsaved):
   new       figures/ablation.pdf      (318 KB)
   deleted   notes/old-outline.md      +0 −85 lines
 
-Skipped (too large to track, see `paper help large-files`):
-  data/raw_scans.h5                   (2.1 GB)
+Skipped (paper leaves these out of the draft):
+  data/raw_scans.h5  (too large to track, 2.1 GB)
+  Too large to track? See `paper help large-files`.
 
 Remote: 3 new saves on origin/main — run `paper sync`       # v0.6+
 ```
@@ -775,9 +776,17 @@ saved like any other. `ui.editor` is not a key yet.
   brings new commits, `status` shows their edits as your unsaved changes, `history` doesn't
   show their saves, and `paper save` refuses. Importing starts in v0.4 (see above);
   syncing with co-authors (`paper sync`) is v0.6 (roadmap § v0.6: Collaboration).
-- `paper help concepts`, `paper help git` (the vocabulary mapping table from 01) and
-  `paper help large-files` give built-in explanations. *Planned:* `help large-files` ships
-  with v0.3 (roadmap § v0.3); the roadmap gives no version for the other two (the complete
-  set of help topics is v0.8 hardening). *Today:* all three are unknown subcommands. Read
-  [01-concepts](01-concepts.md) and [04-content](04-content.md) instead, and `paper --help`
-  for the commands.
+- `paper help [<topic|command>…]` replaces clap's built-in help command. `paper help` prints
+  `paper --help` followed by the list of help topics; `paper help <command>` prints exactly
+  `paper <command> --help` (nested commands too: `paper help config get`, which replaces
+  `paper config help get`). `-q` is ignored, like for `--help`. An unknown word, extra words
+  after a topic, or extra words after a command with no sub-commands are three-part user
+  errors; an unknown top-level word lists the topics and the commands, and an unknown word
+  under a command lists its sub-commands. `paper help --json` lists the topics and
+  `paper help <topic> --json` gives `{schema, topic, summary, text}`;
+  `paper help <command> --json` is a user error (command help is text only).
+  - `paper help large-files` (shipped in v0.3) explains the two size limits, what "Skipped"
+    means in `status` and the options for a skipped file.
+  - *Planned:* `paper help concepts` and `paper help git` (the vocabulary mapping table from
+    01); the roadmap gives no version for them (the complete set of help topics is v0.8
+    hardening). *Today:* they are unknown topics. Read [01-concepts](01-concepts.md) instead.

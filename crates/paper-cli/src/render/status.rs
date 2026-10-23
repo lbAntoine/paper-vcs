@@ -3,7 +3,7 @@
 use std::fmt::Write as _;
 
 use paper_core::project::{ChangeStat, OutsidePaper, RestoreSkip, Restored, SkippedPath, Status};
-use paper_core::snapshot::ChangeKind;
+use paper_core::snapshot::{ChangeKind, SkipReason};
 
 use super::diff::{binary_sizes, counts};
 use super::human::{change_lines, files, large_lines, size, skipped_lines};
@@ -57,6 +57,13 @@ pub fn status(status: &Status, now: i64, style: Style) -> String {
     if !status.skipped.is_empty() {
         out.push_str("\nSkipped (paper leaves these out of the draft):\n");
         out.push_str(&skipped_lines(&status.skipped));
+        if status
+            .skipped
+            .iter()
+            .any(|item| matches!(item.reason, SkipReason::TooLarge { .. }))
+        {
+            out.push_str("  Too large to track? See `paper help large-files`.\n");
+        }
     }
     if !status.large.is_empty() {
         out.push_str("\nLarge files (tracked, but they make saves slow):\n");

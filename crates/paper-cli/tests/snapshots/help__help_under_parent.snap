@@ -1,0 +1,7 @@
+---
+source: crates/paper-cli/tests/help.rs
+expression: run.stderr
+---
+error: `paper config` has no command `nonsense`.
+  why:  Commands: get, set, list
+  next: paper help config  # see how to use it

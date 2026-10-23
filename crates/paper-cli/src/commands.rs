@@ -71,6 +71,7 @@ pub fn execute(cli: &Cli, style: Style) -> Output {
             why,
         } => ignore(cli, paths, *yes, *local, why.as_deref()),
         Command::Unignore { paths, local } => unignore(cli, paths, *local),
+        Command::Help { topic } => crate::help::run(cli, topic),
         Command::Restore { paths, from } => inspect::restore(cli, paths, from.as_deref()),
     }
 }
