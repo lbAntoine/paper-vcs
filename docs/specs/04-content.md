@@ -50,8 +50,40 @@ more readable hunks than Myers. The output is git's unified format with 3 lines 
    - **Markdown and Typst**: generic in v0.3. Format-aware tokenisers come later if users ask.
 2. **Diff** the token streams with the patience algorithm (`similar`), and group
    the hunks by paragraph (a blank line separates paragraphs).
+   - **Alignment.** The whole token streams are diffed at once, so a moved or inserted
+     paragraph is found wherever it sits. Tokens found on one side only are changed whatever
+     the alignment, so they are taken out before the diff; this keeps prose fast (about 0.1 s
+     for 1 MB with scattered edits). As a safety net each call stops aligning after about
+     2 seconds and returns a coarser but valid diff. A very large text with a very large
+     edit (about 1 MB with a fifth of its words changed) can reach the 2 s limit; the diff
+     then shows most of the text as rewritten. The same input can give a different, coarser
+     result on a slower machine.
+   - **Where a change sits.** A pure insertion or deletion that could sit in several places
+     (it starts like the text after it) is placed where it ends with a paragraph break, else
+     where it starts right after one, so a deleted paragraph is shown whole.
+   - **Comparison.** Tokens are equal when they have the same kind and text, except
+     `Space` tokens: two are equal when neither holds a paragraph break (two or more `\n`)
+     or when both do. Re-wrapping, re-indenting or a double space is not a change, which
+     matters for hard-wrapped LaTeX. Unchanged text is reported with the new side's spacing.
+   - **Layout only.** White space added or removed at the very start or end of the text
+     (a leading or final line break or blank line) is layout. So is a lone space added or
+     removed between two words of a space-separated script (Latin, Cyrillic, …). A lone space
+     next to CJK or punctuation is shown (`한 국어` → `한국어`, `a , b` → `a, b`). If nothing
+     else changed, the result has no paragraphs and `layout_only` is true.
+   - **Counts.** `+N` and `−M` count `Word` tokens only (a CJK grapheme is one word).
+     Punctuation, spaces, commands and comments change the text but not the counts.
+   - **Paragraphs.** Numbers are 1-based on the new side. Only paragraphs with a change are
+     returned. A paragraph that exists only in the old text takes the number of the position
+     where it was; a deleted last paragraph is shown inside the paragraph before it. An
+     added or removed paragraph break is its own segment (`{+¶+}`, `[-¶-]`).
+   - **Cut.** In a returned paragraph, an unchanged run of more than 40 words is cut to its
+     first 10 words, a cut marker, and its last 10 words, never inside a token. The cut is
+     its own segment (`Cut`), so front-ends decide how to show it.
 3. **Render.** On a colour TTY, deletions are red with strike-through and insertions green,
-   inline. Without colour, use `[-old-]{+new+}`. The header shows `+N words −M words`.
+   inline. Without colour, use `[-old-]{+new+}`, with a `¶ N` line before each paragraph
+   (line breaks at the start and end of a paragraph are not shown) and ` … ` for a cut. Literal `[-`, `-]`, `{+` and `+}` in
+   the text are not escaped, as in git's `--word-diff`. The header shows `+N words −M words`
+   and is added by the front-end, not by the library's markup.
 
 ```
 sections/intro.tex  +12 words −4 words
