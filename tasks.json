@@ -42,16 +42,6 @@
       "updated_at": "2026-10-20T19:03:13Z"
     },
     {
-      "id": "e1a0c035",
-      "title": "PV-035: undo after a Unicode-normalisation-only rename deletes the file (macOS)",
-      "description": "GitHub issue #67. Follow-up from PV-018. Ships in v0.2.0 as a known issue (maintainer). Wave 1, parallel with PV-040. Data-safety invariant ticket.",
-      "status": "done",
-      "priority": "high",
-      "sprint": "v0.3-a",
-      "created_at": "2026-10-18T19:30:00Z",
-      "updated_at": "2026-10-20T21:07:50Z"
-    },
-    {
       "id": "e1a0c036",
       "title": "PV-036: paper ignore reports success when a nested .gitignore negation keeps the path visible",
       "description": "GitHub issue #71. From the PV-032 review. Predates PV-032.",
@@ -80,46 +70,6 @@
       "sprint": "v0.3-b",
       "created_at": "2026-10-19T21:49:37Z",
       "updated_at": "2026-10-20T19:03:13Z"
-    },
-    {
-      "id": "e1a0c040",
-      "title": "PV-040: word tokenisers (generic, CJK, LaTeX)",
-      "description": "GitHub issue #79. Wave 1, parallel with PV-035. Size S-M. unicode-segmentation 1.11 (split_word_bounds, graphemes).",
-      "status": "done",
-      "priority": "high",
-      "sprint": "v0.3-a",
-      "created_at": "2026-10-20T19:03:13Z",
-      "updated_at": "2026-10-20T19:12:55Z"
-    },
-    {
-      "id": "e1a0c041",
-      "title": "PV-041: word diff with paragraph grouping and rendering",
-      "description": "GitHub issue #80. Wave 2, parallel with PV-043. Size M. Needs PV-040.",
-      "status": "done",
-      "priority": "high",
-      "sprint": "v0.3-a",
-      "created_at": "2026-10-20T19:03:13Z",
-      "updated_at": "2026-10-21T08:08:02Z"
-    },
-    {
-      "id": "e1a0c042",
-      "title": "PV-042: word diff is the default for text in diff and status",
-      "description": "GitHub issue #81. Wave 3. Size M. Needs PV-041. Roadmap v0.3 acceptance.",
-      "status": "done",
-      "priority": "high",
-      "sprint": "v0.3-a",
-      "created_at": "2026-10-20T19:03:13Z",
-      "updated_at": "2026-10-23T12:16:25Z"
-    },
-    {
-      "id": "e1a0c043",
-      "title": "PV-043: paper help large-files (help topics)",
-      "description": "GitHub issue #82. Wave 2, parallel with PV-041. Size S.",
-      "status": "done",
-      "priority": "medium",
-      "sprint": "v0.3-a",
-      "created_at": "2026-10-20T19:03:13Z",
-      "updated_at": "2026-10-21T09:00:48Z"
     },
     {
       "id": "e1a0c044",
@@ -180,6 +130,36 @@
       "sprint": "v0.3-b",
       "created_at": "2026-10-23T13:35:49Z",
       "updated_at": "2026-10-23T13:35:49Z"
+    },
+    {
+      "id": "e1a0c050",
+      "title": "PV-050: restoring one spelling after a Unicode-form rename deletes the file or gives the wrong reason",
+      "description": "GitHub issue #95. From the v0.3-a verification. Data-safety invariant ticket.",
+      "status": "todo",
+      "priority": "high",
+      "sprint": "v0.3-b",
+      "created_at": "2026-10-25T13:04:21Z",
+      "updated_at": "2026-10-25T13:04:21Z"
+    },
+    {
+      "id": "e1a0c051",
+      "title": "PV-051: the 5 MB word-diff fallback in the spec doesn't exist",
+      "description": "GitHub issue #96. From the v0.3-a verification.",
+      "status": "todo",
+      "priority": "medium",
+      "sprint": "v0.3-b",
+      "created_at": "2026-10-25T13:04:21Z",
+      "updated_at": "2026-10-25T13:04:21Z"
+    },
+    {
+      "id": "e1a0c052",
+      "title": "PV-052: word diff readability from the v0.3-a verification (sentence-end insertions, cuts, comments, .bib)",
+      "description": "GitHub issue #97. From the v0.3-a verification.",
+      "status": "todo",
+      "priority": "medium",
+      "sprint": "v0.3-b",
+      "created_at": "2026-10-25T13:04:21Z",
+      "updated_at": "2026-10-25T13:04:21Z"
     }
   ]
 }

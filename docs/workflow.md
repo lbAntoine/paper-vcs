@@ -78,6 +78,13 @@ catch the tests that pass locally but fail on CI or catch nothing:
   Every new or changed shared test helper (one that captures repository state, redacts output
   or builds fixtures) gets a sanity test that passes on `main` today, so a helper bug shows up
   in RED instead of blocking GREEN.
+- **Algorithms over arbitrary input get a property test in RED.** For a ticket whose output
+  comes from a diff, tokeniser, renderer or wrapping rule, RED adds at least one property test
+  (proptest, or a seeded generator) next to the example tables. It generates random inputs in
+  the ticket's domain (scripts, line endings, comments, edits) and asserts invariants of the
+  output: round trip, nothing lost, balanced markers, bounds such as the line width. A property
+  that can't pass until a known gap is fixed is written anyway, `#[ignore]`d with the issue
+  number.
 
 ## 4. GREEN: rust-engineer
 
