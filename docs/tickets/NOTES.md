@@ -3,6 +3,41 @@
 Dated process lessons and project decisions that aren't architecture (those are ADRs).
 Newest first.
 
+## 2026-10-25: sprint v0.3-a retrospective
+
+Sprint v0.3-a met its goal: researchers read their changes as prose, and the v0.2.0 data-loss
+known issue (#67) is fixed. Five tickets shipped in PRs #86, #88, #90, #91 and #94: word
+tokenisers (PV-040), the same-file rule for Unicode-form and case renames (PV-035), `paper help
+large-files` (PV-043), the word diff (PV-041), and word diff as the default in `diff`, `show`
+and `status` (PV-042). The roadmap's v0.3 acceptance is met: a PI can run `paper diff --since`
+on a co-author's changes and read it as prose. 1424 tests. The goal verification passed 7/8;
+the failing truth was two unlisted gaps (restoring one spelling after a Unicode-form rename,
+#95; a 5 MB fallback the spec promises, #96), carried into v0.3-b.
+
+- **What slowed us down: rendering and diff logic fixed one example at a time.** PV-041 and
+  PV-042 took the most rounds of any tickets so far. Each review found inputs the example tables
+  hadn't covered: paragraphs that start with the same word, heavy rewrites, swapped paragraphs,
+  a comment's line break at the end of a run, then at its start. Two fixes were the
+  coordinator's own designs and made things worse (a paragraph-first alignment that turned edits
+  into whole rewrites; narrow comment patches that each missed the next edge). What finally held
+  in PV-042 was one rule plus a property test over random `.tex` edits, which checks the
+  structure of the output for any input.
+- **What worked: checks by someone other than the author, run against the real binary.** Every
+  regression above was caught before main: diff-only checks with the reviewer's own probes,
+  fuzzing in scratch crates, the RED test-author questioning the ticket (the missing status
+  hint, `layout_only`), and the goal verification. The maintainer made the scope calls when a
+  ticket passed two rounds. One reviewer probe wrote the maintainer's real
+  `~/.config/paper/config.toml` because `XDG_CONFIG_HOME` leaked; briefs now isolate every
+  config root.
+- **Process change:** a ticket whose output comes from an algorithm over arbitrary input (a diff,
+  a tokeniser, a renderer, wrapping) gets a property test in RED, not only example tables. The
+  test generates random inputs and checks invariants of the output (round trip, balanced markers,
+  nothing lost, no line wider than the width), so review starts from a test that already
+  explores the input space (docs/workflow.md, section 3).
+- **Open for v0.3-b:** #95 (restore one spelling), #96 (5 MB fallback), #97 (word-diff
+  readability notes), #87, #89, #92, #93, #72, #75 and the low-priority items carried from
+  earlier.
+
 ## 2026-10-19: sprint v0.2-b retrospective
 
 Sprint v0.2-b met its goal: nothing is ever lost, proven, and released as v0.2.0 (a GitHub
